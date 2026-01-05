@@ -73,3 +73,16 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Ignore all Content except TeamShare & TopDown
+Content/*
+!Content/Characters/
+!Content/Characters/**
+!Content/ThirdPerson/
+!Content/ThirdPerson/**
+!Content/LevelPrototyping/
+!Content/LevelPrototyping/**
+!Content/Develop/
+!Content/Develop/**
+!Content/Main/
+!Content/Main/**
