@@ -6,6 +6,7 @@
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
@@ -210,8 +211,7 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 			}
 		}
 
-		// Online Subsystem이 세션을 생성하면 자동으로 리슨 서버가 시작됩니다.
-		// 명시적으로 ServerTravel을 호출할 필요가 없으며, 오히려 맵이 다시 로드되어 세션이 초기화될 수 있습니다.
+		// 리슨 서버로 시작하기 위해 현재 맵을 ?listen 옵션과 함께 다시 로드
 		UWorld* World = GetWorld();
 		if (World)
 		{
@@ -222,8 +222,37 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				NetMode == NM_Client ? TEXT("Client") :
 				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
 			
-			// 클라이언트가 JoinSession을 통해 연결하면 자동으로 리슨 서버로 전환됩니다.
-			UE_LOG(LogTemp, Log, TEXT("[방 생성] 클라이언트 연결 대기 중..."));
+			// Standalone 모드인 경우에만 리슨 서버로 전환
+			if (NetMode == NM_Standalone)
+			{
+				// 현재 맵 경로 가져오기
+				FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
+				
+				// 맵 경로가 비어있으면 GetMapName() 사용
+				if (CurrentMapName.IsEmpty())
+				{
+					CurrentMapName = World->GetMapName();
+					CurrentMapName.RemoveFromStart(World->StreamingLevelsPrefix);
+				}
+				
+				// 맵 경로 구성 (현재 맵을 리슨 서버로 다시 로드)
+				FString ListenURL = FString::Printf(TEXT("%s?listen"), *CurrentMapName);
+				
+				UE_LOG(LogTemp, Log, TEXT("[방 생성] 리슨 서버로 전환 중: %s"), *ListenURL);
+				UE_LOG(LogTemp, Log, TEXT("[방 생성] 클라이언트 연결 대기 중..."));
+				
+				// 리슨 서버로 전환
+				World->ServerTravel(ListenURL);
+			}
+			else if (NetMode == NM_ListenServer)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[방 생성] 이미 리슨 서버 모드입니다. 클라이언트 연결 대기 중..."));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 리슨 서버로 전환할 수 없습니다. 현재 모드: %s"), 
+					NetMode == NM_Client ? TEXT("Client") : TEXT("DedicatedServer"));
+			}
 		}
 	}
 	else
