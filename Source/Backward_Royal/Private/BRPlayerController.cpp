@@ -7,6 +7,7 @@
 #include "BRGameMode.h"
 #include "GameFramework/GameModeBase.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 
 ABRPlayerController::ABRPlayerController()
 {
@@ -27,14 +28,33 @@ void ABRPlayerController::BeginPlay()
 		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] CheatManager가 초기화되지 않았습니다."));
 	}
 	
-	if (CheatManager)
+	// 네트워크 연결 실패 델리게이트 바인딩
+	if (UEngine* Engine = GEngine)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[PlayerController] CheatManager 초기화 완료 - 콘솔 명령어 사용 가능"));
+		Engine->OnNetworkFailure().AddUObject(this, &ABRPlayerController::HandleNetworkFailure);
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] 네트워크 실패 감지 델리게이트 바인딩 완료"));
 	}
 }
 
-void ABRPlayerController::NotifyConnectionFailure(UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString)
+void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// 네트워크 연결 실패 델리게이트 언바인딩
+	if (UEngine* Engine = GEngine)
+	{
+		Engine->OnNetworkFailure().RemoveAll(this);
+	}
+	
+	Super::EndPlay(EndPlayReason);
+}
+
+void ABRPlayerController::HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString)
+{
+	// 현재 World가 이 PlayerController의 World인지 확인
+	if (World != GetWorld())
+	{
+		return;
+	}
+	
 	FString FailureTypeString;
 	switch (FailureType)
 	{
@@ -96,8 +116,6 @@ void ABRPlayerController::NotifyConnectionFailure(UNetDriver* NetDriver, ENetwor
 		UE_LOG(LogTemp, Error, TEXT("  3. 서버가 다른 맵을 로드하지 않음"));
 		UE_LOG(LogTemp, Error, TEXT("  4. 네트워크 연결 문제"));
 	}
-	
-	Super::NotifyConnectionFailure(NetDriver, FailureType, ErrorString);
 }
 
 void ABRPlayerController::CreateRoom(const FString& RoomName)
@@ -564,4 +582,5 @@ void ABRPlayerController::ShowRoomInfo()
 	}
 	UE_LOG(LogTemp, Log, TEXT("==================="));
 }
+
 
