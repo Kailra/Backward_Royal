@@ -47,6 +47,9 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	
+	// 네트워크 연결 실패 감지
+	virtual void NotifyConnectionFailure(UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString) override;
 
 	// 서버 RPC 함수들
 	UFUNCTION(Server, Reliable)

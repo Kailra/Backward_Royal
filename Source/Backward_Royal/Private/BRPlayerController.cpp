@@ -33,6 +33,73 @@ void ABRPlayerController::BeginPlay()
 	}
 }
 
+void ABRPlayerController::NotifyConnectionFailure(UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString)
+{
+	FString FailureTypeString;
+	switch (FailureType)
+	{
+	case ENetworkFailure::NetDriverAlreadyExists:
+		FailureTypeString = TEXT("NetDriverAlreadyExists");
+		break;
+	case ENetworkFailure::NetDriverCreateFailure:
+		FailureTypeString = TEXT("NetDriverCreateFailure");
+		break;
+	case ENetworkFailure::NetDriverListenFailure:
+		FailureTypeString = TEXT("NetDriverListenFailure");
+		break;
+	case ENetworkFailure::ConnectionLost:
+		FailureTypeString = TEXT("ConnectionLost");
+		break;
+	case ENetworkFailure::ConnectionTimeout:
+		FailureTypeString = TEXT("ConnectionTimeout");
+		break;
+	case ENetworkFailure::FailureReceived:
+		FailureTypeString = TEXT("FailureReceived");
+		break;
+	case ENetworkFailure::OutdatedClient:
+		FailureTypeString = TEXT("OutdatedClient");
+		break;
+	case ENetworkFailure::OutdatedServer:
+		FailureTypeString = TEXT("OutdatedServer");
+		break;
+	case ENetworkFailure::PendingConnectionFailure:
+		FailureTypeString = TEXT("PendingConnectionFailure");
+		break;
+	case ENetworkFailure::NetGuidMismatch:
+		FailureTypeString = TEXT("NetGuidMismatch");
+		break;
+	case ENetworkFailure::NetChecksumMismatch:
+		FailureTypeString = TEXT("NetChecksumMismatch");
+		break;
+	default:
+		FailureTypeString = TEXT("Unknown");
+		break;
+	}
+	
+	UE_LOG(LogTemp, Error, TEXT("[방 참가] 네트워크 연결 실패 감지!"));
+	UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패 유형: %s"), *FailureTypeString);
+	UE_LOG(LogTemp, Error, TEXT("[방 참가] 오류 메시지: %s"), *ErrorString);
+	
+	if (NetDriver)
+	{
+		FString ServerAddress = NetDriver->ServerConnection ? 
+			NetDriver->ServerConnection->LowLevelGetRemoteAddress(true) : TEXT("Unknown");
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] 서버 주소: %s"), *ServerAddress);
+	}
+	
+	// 일반적인 원인 안내
+	if (FailureType == ENetworkFailure::ConnectionTimeout || FailureType == ENetworkFailure::PendingConnectionFailure)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인:"));
+		UE_LOG(LogTemp, Error, TEXT("  1. 서버가 실행 중이지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  2. 방화벽이 포트를 차단함 (포트 7777 확인)"));
+		UE_LOG(LogTemp, Error, TEXT("  3. 서버가 다른 맵을 로드하지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  4. 네트워크 연결 문제"));
+	}
+	
+	Super::NotifyConnectionFailure(NetDriver, FailureType, ErrorString);
+}
+
 void ABRPlayerController::CreateRoom(const FString& RoomName)
 {
 	UE_LOG(LogTemp, Log, TEXT("[방 생성] 명령 실행: %s"), *RoomName);
