@@ -75,7 +75,8 @@ Plugins/**/Intermediate/*
 DerivedDataCache/*
 
 # Ignore all Content except TeamShare & TopDown
-Content/*
+!Content/Asset/
+!Content/Asset/**
 !Content/Template/**
 !Content/Template/
 !Content/Develop/
