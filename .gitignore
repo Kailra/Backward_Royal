@@ -76,8 +76,8 @@ DerivedDataCache/*
 
 # Ignore all Content except TeamShare & TopDown
 Content/*
-!Content/Template/
 !Content/Template/**
+!Content/Template/
 !Content/Develop/
 !Content/Develop/**
 !Content/Main/
