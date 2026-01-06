@@ -6,7 +6,7 @@
 #include "BRGameMode.generated.h"
 
 UCLASS()
-class BACKWARDSROYAL_API ABRGameMode : public AGameModeBase
+class BACKWARD_ROYAL_API ABRGameMode : public AGameModeBase
 {
 	GENERATED_BODY()
 

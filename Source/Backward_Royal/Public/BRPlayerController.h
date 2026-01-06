@@ -6,7 +6,7 @@
 #include "BRPlayerController.generated.h"
 
 UCLASS()
-class BACKWARDSROYAL_API ABRPlayerController : public APlayerController
+class BACKWARD_ROYAL_API ABRPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 

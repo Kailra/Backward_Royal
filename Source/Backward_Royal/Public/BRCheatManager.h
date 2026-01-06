@@ -6,7 +6,7 @@
 #include "BRCheatManager.generated.h"
 
 UCLASS()
-class BACKWARDSROYAL_API UBRCheatManager : public UCheatManager
+class BACKWARD_ROYAL_API UBRCheatManager : public UCheatManager
 {
 	GENERATED_BODY()
 

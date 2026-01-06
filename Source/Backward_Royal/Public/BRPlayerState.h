@@ -6,7 +6,7 @@
 #include "BRPlayerState.generated.h"
 
 UCLASS()
-class BACKWARDSROYAL_API ABRPlayerState : public APlayerState
+class BACKWARD_ROYAL_API ABRPlayerState : public APlayerState
 {
 	GENERATED_BODY()
 

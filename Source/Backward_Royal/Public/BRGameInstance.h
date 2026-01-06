@@ -6,7 +6,7 @@
 #include "BRGameInstance.generated.h"
 
 UCLASS()
-class BACKWARDSROYAL_API UBRGameInstance : public UGameInstance
+class BACKWARD_ROYAL_API UBRGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
 

@@ -15,7 +15,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FOnBRFindSessionsComplete, const TArray<FOnl
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnBRJoinSessionComplete, bool, bWasSuccessful);
 
 UCLASS()
-class BACKWARDSROYAL_API ABRGameSession : public AGameSession
+class BACKWARD_ROYAL_API ABRGameSession : public AGameSession
 {
 	GENERATED_BODY()
 
