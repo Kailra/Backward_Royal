@@ -116,15 +116,56 @@ void ABRGameMode::StartGame()
 
 	UE_LOG(LogTemp, Log, TEXT("[게임 시작] 게임 시작 요청 처리 중..."));
 	
-	// 게임 시작 가능 여부 확인
 	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
 	{
-		if (!BRGameState->bCanStartGame)
+		// 호스트인지 확인
+		bool bIsHost = false;
+		if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 		{
-			UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: 게임을 시작할 수 없습니다."));
-			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 조건 확인: 플레이어 수=%d/%d-%d, 모든 준비=%s"), 
-				BRGameState->PlayerCount, BRGameState->MinPlayers, BRGameState->MaxPlayers,
-				BRGameState->AreAllPlayersReady() ? TEXT("예") : TEXT("아니오"));
+			if (ABRPlayerState* BRPS = PC->GetPlayerState<ABRPlayerState>())
+			{
+				bIsHost = BRPS->bIsHost;
+			}
+		}
+		
+		// 호스트인 경우: 호스트를 제외한 모든 플레이어가 준비되었는지 확인
+		// 호스트가 아닌 경우: 모든 플레이어가 준비되었는지 확인
+		bool bCanStart = false;
+		if (bIsHost)
+		{
+			// 호스트는 자신이 준비하지 않아도 다른 모든 플레이어가 준비되었으면 시작 가능
+			bCanStart = (BRGameState->PlayerCount >= BRGameState->MinPlayers && 
+			            BRGameState->PlayerCount <= BRGameState->MaxPlayers && 
+			            BRGameState->AreAllNonHostPlayersReady());
+			
+			if (bCanStart)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[게임 시작] 호스트: 다른 모든 플레이어가 준비 완료 - 게임 시작 가능"));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 호스트: 조건 불만족 - 플레이어 수=%d/%d-%d, 호스트 제외 모든 준비=%s"), 
+					BRGameState->PlayerCount, BRGameState->MinPlayers, BRGameState->MaxPlayers,
+					BRGameState->AreAllNonHostPlayersReady() ? TEXT("예") : TEXT("아니오"));
+			}
+		}
+		else
+		{
+			// 호스트가 아닌 경우: 기존 로직 사용 (모든 플레이어가 준비되어야 함)
+			BRGameState->CheckCanStartGame();
+			bCanStart = BRGameState->bCanStartGame;
+			
+			if (!bCanStart)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: 게임을 시작할 수 없습니다."));
+				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 조건 확인: 플레이어 수=%d/%d-%d, 모든 준비=%s"), 
+					BRGameState->PlayerCount, BRGameState->MinPlayers, BRGameState->MaxPlayers,
+					BRGameState->AreAllPlayersReady() ? TEXT("예") : TEXT("아니오"));
+			}
+		}
+		
+		if (!bCanStart)
+		{
 			return;
 		}
 	}
