@@ -269,38 +269,94 @@ void ABRPlayerController::ToggleReady()
 void ABRPlayerController::RandomTeams()
 {
 	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 명령 실행"));
-	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		if (!BRPS->bIsHost)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 배정] 실패: 방장만 사용할 수 있습니다."));
-			return;
-		}
-		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 권한 확인 완료, 팀 배정 시작..."));
-		RequestRandomTeams();
+		UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: World를 찾을 수 없습니다."));
+		return;
+	}
+	
+	// 서버(호스트)인 경우 자동으로 사용 가능
+	// 클라이언트인 경우 방장인지 확인
+	bool bCanUse = false;
+	if (HasAuthority())
+	{
+		// 서버인 경우 자동으로 사용 가능
+		bCanUse = true;
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버 권한 확인 완료, 팀 배정 시작..."));
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: PlayerState를 찾을 수 없습니다."));
+		// 클라이언트인 경우 방장인지 확인
+		if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+		{
+			if (BRPS->bIsHost)
+			{
+				bCanUse = true;
+				UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 방장 권한 확인 완료, 팀 배정 시작..."));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 배정] 실패: 방장만 사용할 수 있습니다."));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: PlayerState를 찾을 수 없습니다."));
+		}
+	}
+	
+	if (bCanUse)
+	{
+		RequestRandomTeams();
 	}
 }
 
 void ABRPlayerController::ChangeTeam(int32 PlayerIndex, int32 TeamNumber)
 {
 	UE_LOG(LogTemp, Log, TEXT("[팀 변경] 명령 실행: PlayerIndex=%d, TeamNumber=%d"), PlayerIndex, TeamNumber);
-	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		if (!BRPS->bIsHost)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 실패: 방장만 사용할 수 있습니다."));
-			return;
-		}
-		UE_LOG(LogTemp, Log, TEXT("[팀 변경] 권한 확인 완료, 팀 변경 요청 중..."));
-		RequestChangePlayerTeam(PlayerIndex, TeamNumber);
+		UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: World를 찾을 수 없습니다."));
+		return;
+	}
+	
+	// 서버(호스트)인 경우 자동으로 사용 가능
+	// 클라이언트인 경우 방장인지 확인
+	bool bCanUse = false;
+	if (HasAuthority())
+	{
+		// 서버인 경우 자동으로 사용 가능
+		bCanUse = true;
+		UE_LOG(LogTemp, Log, TEXT("[팀 변경] 서버 권한 확인 완료, 팀 변경 요청 중..."));
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: PlayerState를 찾을 수 없습니다."));
+		// 클라이언트인 경우 방장인지 확인
+		if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+		{
+			if (BRPS->bIsHost)
+			{
+				bCanUse = true;
+				UE_LOG(LogTemp, Log, TEXT("[팀 변경] 방장 권한 확인 완료, 팀 변경 요청 중..."));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 실패: 방장만 사용할 수 있습니다."));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: PlayerState를 찾을 수 없습니다."));
+		}
+	}
+	
+	if (bCanUse)
+	{
+		RequestChangePlayerTeam(PlayerIndex, TeamNumber);
 	}
 }
 
