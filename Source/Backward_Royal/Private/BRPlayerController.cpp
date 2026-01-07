@@ -430,12 +430,51 @@ void ABRPlayerController::ServerToggleReady_Implementation()
 
 void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 {
-	RandomTeams();
+	// 서버에서 직접 팀 배정 실행
+	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
+		BRGameState->AssignRandomTeams();
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: GameState를 찾을 수 없습니다."));
+	}
 }
 
 void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 PlayerIndex, int32 NewTeamNumber)
 {
-	ChangeTeam(PlayerIndex, NewTeamNumber);
+	// 서버에서 직접 팀 변경 실행
+	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
+	{
+		if (PlayerIndex >= 0 && PlayerIndex < BRGameState->PlayerArray.Num())
+		{
+			if (ABRPlayerState* TargetPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[PlayerIndex]))
+			{
+				FString PlayerName = TargetPS->GetPlayerName();
+				if (PlayerName.IsEmpty())
+				{
+					PlayerName = FString::Printf(TEXT("Player %d"), PlayerIndex + 1);
+				}
+				TargetPS->SetTeamNumber(NewTeamNumber);
+				UE_LOG(LogTemp, Log, TEXT("[팀 변경] 서버에서 직접 실행: %s -> 팀 %d"), *PlayerName, NewTeamNumber);
+				BRGameState->OnTeamChanged.Broadcast();
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: PlayerState를 찾을 수 없습니다."));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: 잘못된 PlayerIndex (%d)"), PlayerIndex);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: GameState를 찾을 수 없습니다."));
+	}
 }
 
 void ABRPlayerController::ServerRequestStartGame_Implementation()
@@ -443,74 +482,96 @@ void ABRPlayerController::ServerRequestStartGame_Implementation()
 	StartGame();
 }
 
+void ABRPlayerController::ClientNotifyGameStarting_Implementation()
+{
+	UE_LOG(LogTemp, Log, TEXT("[게임 시작] 클라이언트: 게임 시작 알림 수신 - 맵 이동 대기 중..."));
+	
+	// 클라이언트에서 입력을 일시적으로 중지 (선택사항)
+	// 실제로는 ServerTravel이 자동으로 클라이언트를 따라오므로 특별한 처리가 필요하지 않을 수 있습니다
+	// 하지만 로그를 남겨서 알림이 도착했는지 확인할 수 있습니다
+}
+
 void ABRPlayerController::RequestRandomTeams()
 {
-	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		if (BRPS->bIsHost && HasAuthority())
+		UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: World를 찾을 수 없습니다."));
+		return;
+	}
+	
+	// 서버에서 직접 실행
+	if (HasAuthority())
+	{
+		if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
 		{
-			if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
-			{
-				UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 시작: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
-				BRGameState->AssignRandomTeams();
-				UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: GameState를 찾을 수 없습니다."));
-			}
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
+			BRGameState->AssignRandomTeams();
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
 		}
 		else
 		{
-			// 클라이언트에서 서버로 요청
-			ServerRequestRandomTeams();
+			UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] 실패: GameState를 찾을 수 없습니다."));
 		}
+	}
+	else
+	{
+		// 클라이언트에서 서버로 요청
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 클라이언트에서 서버로 요청 전송..."));
+		ServerRequestRandomTeams();
 	}
 }
 
 void ABRPlayerController::RequestChangePlayerTeam(int32 PlayerIndex, int32 NewTeamNumber)
 {
-	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		if (BRPS->bIsHost && HasAuthority())
+		UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: World를 찾을 수 없습니다."));
+		return;
+	}
+	
+	// 서버에서 직접 실행
+	if (HasAuthority())
+	{
+		if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
 		{
-			if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
+			if (PlayerIndex >= 0 && PlayerIndex < BRGameState->PlayerArray.Num())
 			{
-				if (PlayerIndex >= 0 && PlayerIndex < BRGameState->PlayerArray.Num())
+				if (ABRPlayerState* TargetPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[PlayerIndex]))
 				{
-					if (ABRPlayerState* TargetPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[PlayerIndex]))
+					FString PlayerName = TargetPS->GetPlayerName();
+					if (PlayerName.IsEmpty())
 					{
-						FString PlayerName = TargetPS->GetPlayerName();
-						if (PlayerName.IsEmpty())
-						{
-							PlayerName = FString::Printf(TEXT("Player %d"), PlayerIndex + 1);
-						}
-						int32 OldTeam = TargetPS->TeamNumber;
-						TargetPS->SetTeamNumber(NewTeamNumber);
-						UE_LOG(LogTemp, Log, TEXT("[팀 변경] 성공: %s의 팀이 %d에서 %d로 변경되었습니다."), 
-							*PlayerName, OldTeam, NewTeamNumber);
+						PlayerName = FString::Printf(TEXT("Player %d"), PlayerIndex + 1);
 					}
-					else
-					{
-						UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: PlayerState 캐스팅 실패"));
-					}
+					int32 OldTeam = TargetPS->TeamNumber;
+					TargetPS->SetTeamNumber(NewTeamNumber);
+					UE_LOG(LogTemp, Log, TEXT("[팀 변경] 서버에서 직접 실행: %s의 팀이 %d에서 %d로 변경되었습니다."), 
+						*PlayerName, OldTeam, NewTeamNumber);
+					BRGameState->OnTeamChanged.Broadcast();
 				}
 				else
 				{
-					UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: 잘못된 PlayerIndex (%d), 현재 플레이어 수: %d"), 
-						PlayerIndex, BRGameState->PlayerArray.Num());
+					UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: PlayerState 캐스팅 실패"));
 				}
 			}
 			else
 			{
-				UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: GameState를 찾을 수 없습니다."));
+				UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: 잘못된 PlayerIndex (%d), 현재 플레이어 수: %d"), 
+					PlayerIndex, BRGameState->PlayerArray.Num());
 			}
 		}
 		else
 		{
-			// 클라이언트에서 서버로 요청
-			ServerRequestChangePlayerTeam(PlayerIndex, NewTeamNumber);
+			UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: GameState를 찾을 수 없습니다."));
 		}
+	}
+	else
+	{
+		// 클라이언트에서 서버로 요청
+		UE_LOG(LogTemp, Log, TEXT("[팀 변경] 클라이언트에서 서버로 요청 전송..."));
+		ServerRequestChangePlayerTeam(PlayerIndex, NewTeamNumber);
 	}
 }
 
