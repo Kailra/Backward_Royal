@@ -1,12 +1,17 @@
 // BRPlayerState.cpp
 #include "BRPlayerState.h"
+#include "BRGameState.h"
 #include "Net/UnrealNetwork.h"
+#include "GameFramework/GameStateBase.h"
+#include "Engine/World.h"
 
 ABRPlayerState::ABRPlayerState()
 {
 	TeamNumber = 0;
 	bIsHost = false;
 	bIsReady = false;
+	bIsLowerBody = true; // 기본값은 하체
+	ConnectedPlayerIndex = -1; // 기본값은 연결 없음
 }
 
 void ABRPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -16,6 +21,8 @@ void ABRPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABRPlayerState, TeamNumber);
 	DOREPLIFETIME(ABRPlayerState, bIsHost);
 	DOREPLIFETIME(ABRPlayerState, bIsReady);
+	DOREPLIFETIME(ABRPlayerState, bIsLowerBody);
+	DOREPLIFETIME(ABRPlayerState, ConnectedPlayerIndex);
 }
 
 void ABRPlayerState::BeginPlay()
@@ -73,6 +80,15 @@ void ABRPlayerState::ToggleReady()
 			bWasReady ? TEXT("준비 완료") : TEXT("대기 중"),
 			bIsReady ? TEXT("준비 완료") : TEXT("대기 중"));
 		OnRep_IsReady();
+		
+		// 준비 상태 변경 후 게임 시작 가능 여부 확인
+		if (UWorld* World = GetWorld())
+		{
+			if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
+			{
+				BRGameState->CheckCanStartGame();
+			}
+		}
 	}
 }
 
@@ -87,6 +103,29 @@ void ABRPlayerState::OnRep_IsHost()
 }
 
 void ABRPlayerState::OnRep_IsReady()
+{
+	// UI 업데이트를 위한 이벤트 발생 가능
+}
+
+void ABRPlayerState::SetPlayerRole(bool bLowerBody, int32 ConnectedIndex)
+{
+	if (HasAuthority())
+	{
+		bIsLowerBody = bLowerBody;
+		ConnectedPlayerIndex = ConnectedIndex;
+		FString PlayerName = GetPlayerName();
+		if (PlayerName.IsEmpty())
+		{
+			PlayerName = TEXT("Unknown Player");
+		}
+		FString RoleName = bLowerBody ? TEXT("하체") : TEXT("상체");
+		UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: %s 역할 할당 (연결된 플레이어 인덱스: %d)"), 
+			*PlayerName, *RoleName, ConnectedIndex);
+		OnRep_PlayerRole();
+	}
+}
+
+void ABRPlayerState::OnRep_PlayerRole()
 {
 	// UI 업데이트를 위한 이벤트 발생 가능
 }

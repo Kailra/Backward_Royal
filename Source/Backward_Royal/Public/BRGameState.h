@@ -55,6 +55,10 @@ public:
 	// 모든 플레이어가 준비되었는지 확인
 	UFUNCTION(BlueprintCallable, Category = "Room")
 	bool AreAllPlayersReady() const;
+	
+	// 호스트를 제외한 모든 플레이어가 준비되었는지 확인
+	UFUNCTION(BlueprintCallable, Category = "Room")
+	bool AreAllNonHostPlayersReady() const;
 
 	// 플레이어 수 변경 시 호출
 	UFUNCTION()
