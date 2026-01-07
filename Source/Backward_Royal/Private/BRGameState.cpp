@@ -121,6 +121,35 @@ bool ABRGameState::AreAllPlayersReady() const
 	return true;
 }
 
+bool ABRGameState::AreAllNonHostPlayersReady() const
+{
+	if (PlayerCount < MinPlayers)
+		return false;
+
+	int32 NonHostPlayerCount = 0;
+	int32 ReadyNonHostPlayerCount = 0;
+
+	for (APlayerState* PS : PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			// 호스트가 아닌 플레이어만 확인
+			if (!BRPS->bIsHost)
+			{
+				NonHostPlayerCount++;
+				if (BRPS->bIsReady)
+				{
+					ReadyNonHostPlayerCount++;
+				}
+			}
+		}
+	}
+
+	// 호스트를 제외한 모든 플레이어가 준비되었는지 확인
+	// 최소 플레이어 수는 호스트를 포함하므로, 호스트를 제외한 플레이어는 (MinPlayers - 1) 이상이어야 함
+	return (NonHostPlayerCount >= (MinPlayers - 1)) && (ReadyNonHostPlayerCount == NonHostPlayerCount);
+}
+
 void ABRGameState::OnRep_PlayerCount()
 {
 	OnPlayerListChanged.Broadcast();
