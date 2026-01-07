@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "InputActionValue.h"
-#include "UpperBodyPawn.generated.h"
+#include "UpperBodyPawn.generated.h" // 항상 마지막 include여야 함
 
 class APlayerCharacter;
 class UInputMappingContext;
@@ -20,7 +20,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
-	// [추가] 매 프레임마다 몸통 회전을 따라가기 위해 Tick이 필요합니다.
+	// 매 프레임마다 몸통 회전을 따라가기 위해 Tick이 필요합니다.
 	virtual void Tick(float DeltaTime) override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -28,6 +28,10 @@ protected:
 	void Look(const FInputActionValue& Value);
 	void Attack(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
+
+	// [네트워크 추가] 서버에게 공격 요청 (Server RPC)
+	UFUNCTION(Server, Reliable)
+	void Server_RequestAttack();
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -53,9 +57,8 @@ public:
 
 	// 공격 몽타주
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
-	UAnimMontage* AttackMontage;
+	class UAnimMontage* AttackMontage;
 
-	// 무기가 아닌 캐릭터가 이 상태를 관리합니다. (이동 제한, 중복 입력 방지 등)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
 	bool bIsAttacking;
 
@@ -63,11 +66,6 @@ private:
 	UPROPERTY()
 	class APlayerCharacter* ParentBodyCharacter;
 
-	// [추가] 지난 프레임의 몸통 각도를 저장할 변수
+	// 지난 프레임의 몸통 각도를 저장할 변수
 	float LastBodyYaw;
-
-	// 몽타주 종료 시 호출될 델리게이트 함수
-	//UFUNCTION()
-	//void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
 };

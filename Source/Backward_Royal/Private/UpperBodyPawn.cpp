@@ -50,6 +50,10 @@ AUpperBodyPawn::AUpperBodyPawn()
 	ParentBodyCharacter = nullptr;
 
 	InteractionDistance = 300.0f;
+
+	// [필수] 이 폰은 네트워크 복제가 되어야 함
+	bReplicates = true;
+	SetReplicateMovement(true); // 움직임(부착된 상태) 동기화
 }
 
 void AUpperBodyPawn::BeginPlay()
@@ -73,7 +77,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 1. 부모(몸통) 찾기 및 초기화 (기존 코드 유지)
+	// 1. 부모(몸통) 찾기 및 초기화
 	if (!ParentBodyCharacter)
 	{
 		ParentBodyCharacter = Cast<APlayerCharacter>(GetAttachParentActor());
@@ -91,7 +95,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 
 	if (!ParentBodyCharacter || !Controller) return;
 
-	// 2. 몸통 회전 동기화 (기존 코드 유지)
+	// 2. 몸통 회전 동기화
 	float CurrentBodyYaw = ParentBodyCharacter->GetActorRotation().Yaw;
 	float DeltaYaw = CurrentBodyYaw - LastBodyYaw;
 
@@ -109,19 +113,13 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	// -----------------------------------------------------------------
 	FRotator CurrentControlRot = Controller->GetControlRotation();
 
-	// 3. 좌우(Yaw) 시야각 제한 (기존 코드 유지)
+	// 3. 좌우(Yaw) 시야각 제한
 	float BodyFrontYaw = ParentBodyCharacter->GetActorRotation().Yaw + 180.0f;
 	float RelativeYaw = FRotator::NormalizeAxis(CurrentControlRot.Yaw - BodyFrontYaw);
 	float ClampedYaw = FMath::Clamp(RelativeYaw, -90.0f, 90.0f);
 
-	// =================================================================
-	// [수정된 부분] 4. 위아래(Pitch) 시야각 제한
-	// 기존: FMath::Clamp(CurrentPitch, 0.0f, 90.0f); -> 정면 아래 불가
-	// 변경: FMath::Clamp(CurrentPitch, -90.0f, 90.0f); -> 바닥(-90)부터 하늘(90)까지 가능
-	// =================================================================
+	// 4. 위아래(Pitch) 시야각 제한 (-90 ~ 90)
 	float CurrentPitch = FRotator::NormalizeAxis(CurrentControlRot.Pitch);
-
-	// -90도(수직 아래) ~ 90도(수직 위)까지 허용
 	float ClampedPitch = FMath::Clamp(CurrentPitch, -90.0f, 90.0f);
 
 	// 5. 제한된 각도 적용
@@ -132,7 +130,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	{
 		CurrentControlRot.Yaw = BodyFrontYaw + ClampedYaw;
 		CurrentControlRot.Pitch = ClampedPitch;
-		Controller->SetControlRotation(CurrentControlRot);	
+		Controller->SetControlRotation(CurrentControlRot);
 	}
 }
 
@@ -168,6 +166,13 @@ void AUpperBodyPawn::Look(const FInputActionValue& Value)
 
 void AUpperBodyPawn::Attack(const FInputActionValue& Value)
 {
+	// [네트워크] 서버에 공격 요청 (로컬에서 바로 실행 X)
+	Server_RequestAttack();
+}
+
+// [네트워크] 서버 RPC 구현 (실제 로직은 여기서)
+void AUpperBodyPawn::Server_RequestAttack_Implementation()
+{
 	if (!ParentBodyCharacter)
 	{
 		ParentBodyCharacter = Cast<APlayerCharacter>(GetAttachParentActor());
@@ -175,8 +180,8 @@ void AUpperBodyPawn::Attack(const FInputActionValue& Value)
 
 	if (ParentBodyCharacter)
 	{
-		// 하체 캐릭터에게 공격 신호를 보냄
-		ParentBodyCharacter->TriggerUpperBodyAttack();
+		// 서버가 PlayerCharacter의 멀티캐스트 함수를 호출 -> 모든 클라이언트에 전파
+		ParentBodyCharacter->Multi_PlayAttack();
 	}
 }
 
@@ -184,7 +189,6 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 {
 	// =================================================================
 	// [테스트 1] 입력 확인용 메시지 출력
-	// E키를 누르면 화면 왼쪽 위에 초록색 글씨가 뜹니다.
 	// =================================================================
 	if (GEngine)
 	{
@@ -216,7 +220,6 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 	}
 
 	// 방향: 카메라는 계속 정면을 보고 있으므로, 카메라의 Forward Vector를 사용합니다.
-	// (머리에서 발사되지만, 플레이어가 보고 있는 방향으로 나갑니다)
 	FVector End = Start + (FrontCamera->GetForwardVector() * InteractionDistance);
 
 	FHitResult HitResult;
@@ -235,7 +238,6 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 
 	// =================================================================
 	// [테스트 2] 레이캐스트 시각화 (레이저 쏘기)
-	// 충돌 시 초록색, 허공이면 빨간색 선이 2초간 표시됩니다.
 	// =================================================================
 	if (bHit)
 	{
