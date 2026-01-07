@@ -307,19 +307,47 @@ void ABRPlayerController::ChangeTeam(int32 PlayerIndex, int32 TeamNumber)
 void ABRPlayerController::StartGame()
 {
 	UE_LOG(LogTemp, Log, TEXT("[게임 시작] 명령 실행"));
-	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	
+	UWorld* World = GetWorld();
+	if (!World)
 	{
-		if (!BRPS->bIsHost)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 실패: 방장만 사용할 수 있습니다."));
-			return;
-		}
-		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 권한 확인 완료, 게임 시작 요청 중..."));
-		RequestStartGame();
+		UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: World를 찾을 수 없습니다."));
+		return;
+	}
+	
+	// 서버(호스트)인 경우 자동으로 게임 시작 가능
+	// 클라이언트인 경우 방장인지 확인
+	bool bCanStart = false;
+	if (HasAuthority())
+	{
+		// 서버인 경우 자동으로 시작 가능
+		bCanStart = true;
+		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 서버 권한 확인 완료, 게임 시작 요청 중..."));
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: PlayerState를 찾을 수 없습니다."));
+		// 클라이언트인 경우 방장인지 확인
+		if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+		{
+			if (BRPS->bIsHost)
+			{
+				bCanStart = true;
+				UE_LOG(LogTemp, Log, TEXT("[게임 시작] 방장 권한 확인 완료, 게임 시작 요청 중..."));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 실패: 방장만 사용할 수 있습니다."));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: PlayerState를 찾을 수 없습니다."));
+		}
+	}
+	
+	if (bCanStart)
+	{
+		RequestStartGame();
 	}
 }
 
