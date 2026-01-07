@@ -1,251 +1,179 @@
-// BaseWeapon.cpp
 #include "BaseWeapon.h"
+#include "BaseCharacter.h"
 #include "Kismet/GameplayStatics.h"
-#include "DrawDebugHelpers.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "GameFramework/Character.h"
 
-// 로그 카테고리 정의
-DEFINE_LOG_CATEGORY(LogBaseWeapon);
+// 로그 매크로
+DEFINE_LOG_CATEGORY_STATIC(LogBaseWeapon, Display, All);
+
+#define LOG_WEAPON(Verbosity, Format, ...) \
+    UE_LOG(LogBaseWeapon, Verbosity, TEXT("%s - %s"), *FString(__FUNCTION__), *FString::Printf(TEXT(Format), ##__VA_ARGS__))
 
 ABaseWeapon::ABaseWeapon()
 {
-    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bCanEverTick = false;
 
+    // 1. 메시 생성 및 루트 설정
     WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
     RootComponent = WeaponMesh;
 
-    // 물리 트레이스를 직접 수행하므로, 메쉬 자체의 충돌 이벤트는 비활성화하거나 QueryOnly로 설정
-    WeaponMesh->SetCollisionProfileName(TEXT("NoCollision"));
+    // 2. 충돌 설정 (매우 중요)
+    // BoxComponent 때와 똑같은 설정을 메시에 직접 적용합니다.
+    WeaponMesh->SetNotifyRigidBodyCollision(true); // Simulation Generates Hit Events
+    WeaponMesh->SetCollisionProfileName(TEXT("Custom")); // 커스텀 설정 사용
 
-    // 기본값 설정
-    TraceChannel = ECC_Pawn; // 캐릭터를 감지하도록 설정
-    bShowDebugTrace = false;
-    bIsAttacking = false;
+    // 초기 상태: 물리 충돌은 꺼두거나(NoCollision) 혹은 들고 다니는 상태에 맞춤
+    WeaponMesh->SetSimulatePhysics(true);
+    WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);    
 
-    // 기본 스탯 초기화 (나중에 CSV/JSON에서 덮어씌워짐)
-    WeaponStats.BaseDamage = 10.0f;
-    WeaponStats.MassKg = 1.5f; // 예: 1.5kg 한손검
+    WeaponMesh->SetCollisionObjectType(ECollisionChannel::ECC_WorldDynamic);
+    WeaponMesh->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
+
+    // 공격 시 켜질 때를 대비한 기본 반응 (Pawn과 PhysicsBody는 막음)
+    WeaponMesh->SetCollisionResponseToChannel(ECollisionChannel::ECC_WorldStatic, ECollisionResponse::ECR_Block);
+    WeaponMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    
+    WeaponMesh->SetUseCCD(true);
+    WeaponMesh->bTraceComplexOnMove = true;
+
+    bIsEquipped = false;
+    WeaponWeight = 1.0f;
+
 }
 
 void ABaseWeapon::BeginPlay()
 {
     Super::BeginPlay();
 
-    WEAPON_LOG(Display, TEXT("Weapon Initialized. Mass: %f kg"), WeaponStats.MassKg);
-
-    // 소켓 초기 위치 캐싱
-    for (const FName& SocketName : TraceSocketNames)
+    // 메시 자체의 Hit 이벤트 바인딩
+    if (WeaponMesh)
     {
-        if (WeaponMesh->DoesSocketExist(SocketName))
-        {
-            PreviousSocketLocations.Add(SocketName, WeaponMesh->GetSocketLocation(SocketName));
-        }
-        else
-        {
-            WEAPON_LOG(Warning, TEXT("Socket '%s' not found on WeaponMesh!"), *SocketName.ToString());
-        }
+        WeaponMesh->OnComponentHit.AddDynamic(this, &ABaseWeapon::OnWeaponHit);
     }
 }
 
 void ABaseWeapon::StartAttack()
 {
-    bIsAttacking = true;
-    HitActors.Empty(); // 타격 목록 초기화
+    LOG_WEAPON(Display, "StartAttack: Mesh Physics Blocking Enabled");
 
-    // 공격 시작 시점의 위치로 갱신 (공격 안 할 때 텔레포트 등으로 위치가 튀는 것 방지)
-    for (const FName& SocketName : TraceSocketNames)
+    HitActors.Empty();
+    // 메시의 충돌을 켭니다.
+    if (WeaponMesh)
     {
-        if (WeaponMesh->DoesSocketExist(SocketName))
-        {
-            PreviousSocketLocations.Add(SocketName, WeaponMesh->GetSocketLocation(SocketName));
-        }
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     }
-
-    WEAPON_LOG(Log, TEXT("Attack Trace Started"));
 }
 
-void ABaseWeapon::EndAttack()
+void ABaseWeapon::StopAttack()
 {
-    bIsAttacking = false;
-    WEAPON_LOG(Log, TEXT("Attack Trace Ended"));
+    LOG_WEAPON(Display, "StopAttack: Mesh Collision Disabled");
+
+    // 메시의 충돌을 끕니다.
+    if (WeaponMesh)
+    {
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
 }
 
-void ABaseWeapon::Tick(float DeltaTime)
+void ABaseWeapon::ApplyHitStop() // 함수명은 유지하거나 StopOwnerAnimation으로 변경 가능
 {
-    Super::Tick(DeltaTime);
+    // 무기 소유자를 BaseCharacter로 캐스팅
+    if (ABaseCharacter* OwnerChar = Cast<ABaseCharacter>(GetOwner()))
+    {
+        StopAttack();
 
-    // 공격 중일 때만 물리 트레이스 및 데미지 판정 수행
-    if (bIsAttacking)
-    {
-        PerformWeaponTrace();
-    }
-    else
-    {
-        // 공격 중이 아닐 때도 위치는 계속 추적해야 다음 공격 시작 시 궤적이 튀지 않음
-        for (const FName& SocketName : TraceSocketNames)
+        if (UAnimInstance* AnimInst = OwnerChar->GetMesh()->GetAnimInstance())
         {
-            if (WeaponMesh->DoesSocketExist(SocketName))
-            {
-                PreviousSocketLocations.Add(SocketName, WeaponMesh->GetSocketLocation(SocketName));
-            }
+            // [수정] 애니메이션 일시 정지가 아닌 현재 재생 중인 몽타주를 즉시 종료
+            // 블렌드 아웃 시간(예: 0.1s)을 주면 동작이 좀 더 부드럽게 끊깁니다.
+            AnimInst->Montage_Stop(0.1f, OwnerChar->GetCurrentMontage());
+
+            LOG_WEAPON(Display, "Hit Detected: Stopping Attack Montage.");
         }
     }
 }
 
-void ABaseWeapon::PerformWeaponTrace()
+// 상호작용 실행 시 호출
+void ABaseWeapon::Interact(ABaseCharacter* Character)
 {
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(this);
-    QueryParams.AddIgnoredActor(GetOwner());
-    QueryParams.bTraceComplex = true;
-    QueryParams.bReturnPhysicalMaterial = true;
-
-    float DeltaTime = GetWorld()->GetDeltaSeconds();
-
-    for (const FName& SocketName : TraceSocketNames)
+    if (Character)
     {
-        if (!WeaponMesh->DoesSocketExist(SocketName)) continue;
+        // 캐릭터의 장착 함수 호출
+        Character->EquipWeapon(this);
+    }
+}
 
-        // [변수 정의 위치] 여기서 StartLoc과 EndLoc이 생성됩니다.
-        FVector StartLoc = PreviousSocketLocations[SocketName];
-        FVector EndLoc = WeaponMesh->GetSocketLocation(SocketName);
+// UI에 표시될 문구
+FText ABaseWeapon::GetInteractionPrompt()
+{
+    return FText::Format(NSLOCTEXT("Interaction", "EquipWeapon", "장착: {0}"), FText::FromString(GetName()));
+}
 
-        // 1. 소켓별 이동 거리 및 속도 계산
-        float DistanceMoved = FVector::Dist(StartLoc, EndLoc);
-        float ImpactSpeed = (DeltaTime > 0.f) ? (DistanceMoved / DeltaTime) : 0.f;
+void ABaseWeapon::OnEquipped()
+{
+    // 장착 시 물리 끄기 및 충돌 설정 변경
+    if (WeaponMesh)
+    {
+        WeaponMesh->SetSimulatePhysics(false);
+        WeaponMesh->SetCollisionResponseToChannel(ECollisionChannel::ECC_Pawn, ECollisionResponse::ECR_Block);
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        bIsEquipped = true;
+    }
+}
 
-        // 2. 레이캐스트 수행
-        FHitResult HitResult;
-        bool bHit = GetWorld()->LineTraceSingleByChannel(
-            HitResult,
-            StartLoc,
-            EndLoc,
-            TraceChannel,
-            QueryParams
+void ABaseWeapon::OnDropped()
+{
+    // 버릴 때 다시 물리 켜기
+    if (WeaponMesh)
+    {
+        FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
+        DetachFromActor(DetachRules);
+
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        WeaponMesh->SetSimulatePhysics(true);
+        WeaponMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+        bIsEquipped = false;
+    }
+}
+
+void ABaseWeapon::OnWeaponHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+    // 유효성 검사: 대상이 있고, 자기 자신이나 소유자가 아니어야 함
+    if (OtherActor && OtherActor != this && OtherActor != GetOwner() && bIsEquipped)
+    {
+        // [핵심] 이미 이번 휘두르기에 맞았던 액터인지 확인
+        if (HitActors.Contains(OtherActor))
+        {
+            return; // 이미 맞았으면 아무것도 안 함
+        }
+
+        // 충격량 계산 로직
+        float ImpactForce = NormalImpulse.Size();
+        float DamageCoefficient = 0.01f;
+        float CalculatedDamage = ImpactForce * DamageCoefficient;
+
+        if (CalculatedDamage < 5.0f) return;
+        CalculatedDamage = FMath::Min(CalculatedDamage, 100.0f);
+
+        LOG_WEAPON(Warning, "MESH HIT! Force: %.2f -> Damage: %.2f", ImpactForce, CalculatedDamage);
+
+        // 2. 데미지 적용
+        UGameplayStatics::ApplyDamage(
+            OtherActor,
+            CalculatedDamage,
+            GetInstigatorController(),
+            this,
+            UDamageType::StaticClass()
         );
 
-        // 디버그 드로잉
-        if (bShowDebugTrace)
+        // 3. 물리 반동 적용
+        if (OtherComp && OtherComp->IsSimulatingPhysics())
         {
-            DrawDebugLine(GetWorld(), StartLoc, EndLoc, bHit ? FColor::Green : FColor::Red, false, 1.0f, 0, 1.0f);
+            FVector HitDirection = -Hit.ImpactNormal;
+            float PushMultiplier = 0.5f;
+            OtherComp->AddImpulseAtLocation(HitDirection * ImpactForce * PushMultiplier, Hit.ImpactPoint);
         }
 
-        // 3. 충돌 처리
-        if (bHit && HitResult.GetActor())
-        {
-            if (!HitActors.Contains(HitResult.GetActor()))
-            {
-                HitActors.Add(HitResult.GetActor());
-
-                // 데미지 계산
-                float FinalDamage = CalculatePhysicsDamage(HitResult, SocketName, ImpactSpeed);
-
-                // 타격 방향 벡터 (시작점 -> 끝점)
-                FVector AttackDirection = (EndLoc - StartLoc).GetSafeNormal();
-
-                // 데미지 적용
-                UGameplayStatics::ApplyPointDamage(
-                    HitResult.GetActor(),
-                    FinalDamage,
-                    AttackDirection,
-                    HitResult,
-                    GetInstigatorController(),
-                    this,
-                    UDamageType::StaticClass()
-                );
-
-                // ==========================================================
-                // [추가된 넉백 로직] StartLoc, EndLoc이 유효한 이 블록 안에 작성해야 합니다.
-                // ==========================================================
-
-                // 충격량 계산: (무기 질량 * 타격 속도) * 조절계수
-                float KnockbackForce = (WeaponStats.MassKg * ImpactSpeed) * 0.5f;
-
-                // 일정 힘 이상일 때만 밀려남
-                if (KnockbackForce > 100.0f)
-                {
-                    ACharacter* TargetCharacter = Cast<ACharacter>(HitResult.GetActor());
-                    if (TargetCharacter)
-                    {
-                        // 캐릭터를 띄우면서 밀어내기 위한 벡터 계산
-                        FVector LaunchVelocity = AttackDirection * KnockbackForce;
-
-                        // 바닥 마찰을 무시하기 위해 Z축으로 살짝 띄워줍니다 (최소 100~200)
-                        LaunchVelocity.Z = FMath::Max(LaunchVelocity.Z, 150.0f);
-
-                        // 캐릭터 밀쳐내기 실행 (LaunchCharacter는 CharacterMovementComponent 호환 함수)
-                        TargetCharacter->LaunchCharacter(LaunchVelocity, false, false);
-
-                        WEAPON_LOG(Log, TEXT("Knockback Applied! Force: %f"), KnockbackForce);
-                    }
-                    // 캐릭터가 아니라 물체(박스 등)인 경우 물리 시뮬레이션 적용
-                    else if (HitResult.GetComponent() && HitResult.GetComponent()->IsSimulatingPhysics())
-                    {
-                        // 물체는 훨씬 더 큰 힘이 필요하므로 계수를 높임
-                        HitResult.GetComponent()->AddImpulseAtLocation(AttackDirection * KnockbackForce * 50.0f, HitResult.ImpactPoint);
-                    }
-                }
-                // ==========================================================
-            }
-        }
-
-        // 현재 위치 저장 (다음 프레임용)
-        PreviousSocketLocations.Add(SocketName, EndLoc);
+        // [핵심] 맞은 대상을 목록에 추가하여 다음 히트 시 무시되도록 함
+        HitActors.Add(OtherActor);
     }
-}
-
-float ABaseWeapon::CalculatePhysicsDamage(const FHitResult& HitResult, FName HitSocketName, float ImpactSpeed)
-{
-    // --- [물리 연산 파트] ---
-    // 안쪽 소켓은 ImpactSpeed가 낮아 데미지가 자연스럽게 낮게 나옵니다.
-    float SpeedFactor = FMath::Clamp(ImpactSpeed / 1000.0f, 0.0f, 3.0f); // 1000cm/s를 기준속도로 가정
-
-    // F = ma 개념 응용: 질량 * 속도 팩터 * 상수(밸런싱용)
-    float PhysicsDamage = WeaponStats.MassKg * SpeedFactor * 10.0f;
-
-    // 1. 기본 데미지와 물리 데미지 합산
-    float RawDamage = WeaponStats.BaseDamage + PhysicsDamage;
-
-    WEAPON_LOG(Verbose, TEXT("Socket: %s, Speed: %f, PhysicsDmg: %f"), *HitSocketName.ToString(), ImpactSpeed, PhysicsDamage);
-
-    // --- [타입 및 재질 보정 파트] ---
-    float Multiplier = 1.0f;
-
-    // A. 방어구 착용 여부 판별 (Tag 혹은 Interface 사용)
-    // 예시: 태그로 'Armored'를 가진 적에게는 도검류가 약함
-    bool bIsArmored = HitResult.GetActor()->ActorHasTag(TEXT("Armored"));
-
-    if (WeaponStats.DamageCategory == EDamageCategory::Slash_Pierce)
-    {
-        // 도검류: 방어구에 50% 데미지, 맨몸에 100~120% 데미지
-        Multiplier = bIsArmored ? 0.5f : WeaponStats.FleshDamageMultiplier;
-    }
-    else if (WeaponStats.DamageCategory == EDamageCategory::Blunt)
-    {
-        // 둔기류: 방어구 관통 효율이 좋음 (예: 120%), 맨몸엔 평범 (100%)
-        Multiplier = bIsArmored ? 1.2f : 1.0f;
-    }
-
-    // B. 약점 부위(Head) 판별
-    // Skeletal Mesh의 Bone Name을 확인하여 헤드샷 판정
-    if (HitResult.BoneName == TEXT("Head"))
-    {
-        Multiplier *= 2.0f; // 헤드샷 2배
-        WEAPON_LOG(Warning, TEXT("CRITICAL HIT! Headshot on %s"), *HitResult.GetActor()->GetName());
-    }
-
-    // 최종 데미지 산출
-    float FinalDamage = RawDamage * Multiplier;
-
-    WEAPON_LOG(Log, TEXT("Hit Actor: %s | Part: %s | FinalDmg: %f (Base: %.1f + Phys: %.1f) x Mod: %.1f"),
-        *HitResult.GetActor()->GetName(),
-        *HitResult.BoneName.ToString(),
-        FinalDamage,
-        WeaponStats.BaseDamage,
-        PhysicsDamage,
-        Multiplier
-    );
-
-    return FinalDamage;
 }
