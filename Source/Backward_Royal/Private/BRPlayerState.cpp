@@ -1,6 +1,9 @@
 // BRPlayerState.cpp
 #include "BRPlayerState.h"
+#include "BRGameState.h"
 #include "Net/UnrealNetwork.h"
+#include "GameFramework/GameStateBase.h"
+#include "Engine/World.h"
 
 ABRPlayerState::ABRPlayerState()
 {
@@ -73,6 +76,15 @@ void ABRPlayerState::ToggleReady()
 			bWasReady ? TEXT("준비 완료") : TEXT("대기 중"),
 			bIsReady ? TEXT("준비 완료") : TEXT("대기 중"));
 		OnRep_IsReady();
+		
+		// 준비 상태 변경 후 게임 시작 가능 여부 확인
+		if (UWorld* World = GetWorld())
+		{
+			if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
+			{
+				BRGameState->CheckCanStartGame();
+			}
+		}
 	}
 }
 
