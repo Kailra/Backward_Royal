@@ -1,0 +1,34 @@
+{
+  "Data": [
+    {
+      "Name": "Weapon_01",
+      "DisplayName": "대형망치",
+      "BaseDamage": 10.0,
+      "MassKg": 1.0,
+      "ArmorPenetration": 1.0,
+      "FleshDamageMultiplier": 1.0,
+      "DamageCategory": 1,
+      "WeaponType": 1
+    },
+    {
+      "Name": "Weapon_02",
+      "DisplayName": "대검1",
+      "BaseDamage": 10.0,
+      "MassKg": 1.0,
+      "ArmorPenetration": 1.0,
+      "FleshDamageMultiplier": 1.0,
+      "DamageCategory": 0,
+      "WeaponType": 1
+    },
+    {
+      "Name": "Weapon_03",
+      "DisplayName": "대검2",
+      "BaseDamage": 10.0,
+      "MassKg": 5.0,
+      "ArmorPenetration": 1.0,
+      "FleshDamageMultiplier": 1.0,
+      "DamageCategory": 0,
+      "WeaponType": 1
+    }
+  ]
+}

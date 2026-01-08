@@ -3,7 +3,11 @@
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
+#include "WeaponTypes.h"
+#include "ArmorTypes.h"
 #include "BRGameInstance.generated.h"
+
+DECLARE_LOG_CATEGORY_EXTERN(LogBRGameInstance, Log, All);
 
 UCLASS()
 class BACKWARD_ROYAL_API UBRGameInstance : public UGameInstance
@@ -42,5 +46,22 @@ public:
 	// 현재 상태 확인
 	UFUNCTION(Exec)
 	void ShowRoomInfo();
+
+	/** * [확장형 구조]
+	 * Key: JSON 파일 이름 (확장자 제외, 예: "WeaponBalance")
+	 * Value: 매칭될 데이터 테이블 에셋
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data|Config")
+	TMap<FString, class UDataTable*> ConfigDataMap;
+
+	// --- [핵심] JSON 로드 및 밸런싱 적용 ---
+	UFUNCTION(Exec, Category = "Data")
+	void ReloadAllConfigs();
+
+protected:
+	// 실제 JSON 파싱 로직
+	void LoadConfigFromJson(const FString& FileName, class UDataTable* TargetTable);
+
+	FString GetConfigDirectory();
 };
 

@@ -31,6 +31,9 @@ struct FWeaponData : public FTableRowBase
     UStaticMesh* WeaponMesh;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FName DisplayName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float BaseDamage; // 기본 데미지
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)

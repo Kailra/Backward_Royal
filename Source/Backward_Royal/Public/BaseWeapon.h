@@ -37,9 +37,15 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
     UStaticMeshComponent* WeaponMesh;
 
-    // [수정] 무기 고유 스탯 (메시, 데미지, 무게 등 포함)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
-    FWeaponData WeaponStats;
+    UDataTable* MyDataTable;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+    FName WeaponRowName;
+
+    // 로드된 데이터를 저장할 변수 (내부 로직용)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    FWeaponData CurrentWeaponData;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
     FName GripSocketName;
@@ -47,6 +53,9 @@ public:
     // [추가] 데이터 테이블 등에서 가져온 정보를 실제 컴포넌트에 적용하는 함수
     UFUNCTION(BlueprintCallable, Category = "Weapon")
     void InitializeWeaponStats(const FWeaponData& NewStats);
+
+    // 데이터 테이블에서 수치를 읽어오는 헬퍼 함수
+    void LoadWeaponData();
 
     UFUNCTION(BlueprintCallable, Category = "Weapon")
     void StartAttack();

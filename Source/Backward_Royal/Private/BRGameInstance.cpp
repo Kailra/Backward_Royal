@@ -3,9 +3,20 @@
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
 #include "BRGameMode.h"
+#include "HAL/PlatformFileManager.h"
+#include "JsonObjectConverter.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "BaseWeapon.h"
 #include "GameFramework/GameModeBase.h"
+
+DEFINE_LOG_CATEGORY(LogBRGameInstance);
+
+#define GI_LOG(Verbosity, Format, ...) UE_LOG(LogBRGameInstance, Verbosity, TEXT("%s: ") Format, *FString(__FUNCTION__), ##__VA_ARGS__)
 
 UBRGameInstance::UBRGameInstance()
 {
@@ -15,6 +26,7 @@ void UBRGameInstance::Init()
 {
 	Super::Init();
 	UE_LOG(LogTemp, Log, TEXT("[GameInstance] BRGameInstance 초기화 완료 - 콘솔 명령어 사용 가능"));
+	ReloadAllConfigs();
 }
 
 void UBRGameInstance::CreateRoom(const FString& RoomName)
@@ -197,3 +209,82 @@ void UBRGameInstance::ShowRoomInfo()
 	}
 }
 
+void UBRGameInstance::ReloadAllConfigs()
+{
+	GI_LOG(Display, TEXT("Starting Global Config Reload..."));
+
+	for (auto& Elem : ConfigDataMap)
+	{
+		// Key가 파일 이름이 되고, Value가 대상 테이블이 됨
+		LoadConfigFromJson(Elem.Key, Elem.Value);
+	}
+
+	// 1. 월드에 이미 존재하는 무기들에게 최신 설계도를 다시 읽으라고 시킵니다.
+	for (TActorIterator<ABaseWeapon> It(GetWorld()); It; ++It)
+	{
+		// 이 함수 내부에서 MyDataTable->FindRow를 다시 호출하여 
+		// 갱신된 JSON 수치를 CurrentWeaponData에 덮어씁니다.
+		It->LoadWeaponData();
+	}
+}
+
+void UBRGameInstance::LoadConfigFromJson(const FString& FileName, UDataTable* TargetTable)
+{
+	if (!TargetTable) return;
+
+	// 경로: 프로젝트/Config/파일명.json
+	FString FilePath = GetConfigDirectory() + FileName + TEXT(".json");
+	FString JsonString;
+
+	if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
+	{
+		GI_LOG(Warning, TEXT("File not found: %s"), *FilePath);
+		return;
+	}
+
+	TSharedPtr<FJsonObject> RootObject;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+
+	if (FJsonSerializer::Deserialize(Reader, RootObject) && RootObject.IsValid())
+	{
+		const TArray<TSharedPtr<FJsonValue>>* DataArray;
+		// 모든 JSON의 최상위 배열 키를 "Data"로 통일하거나 파일명과 맞춥니다.
+		if (RootObject->TryGetArrayField(TEXT("Data"), DataArray))
+		{
+			// const UScriptStruct* 로 선언하여 타입 에러 해결
+			const UScriptStruct* TableStruct = TargetTable->GetRowStruct();
+
+			for (const auto& Value : *DataArray)
+			{
+				TSharedPtr<FJsonObject> DataObj = Value->AsObject();
+				if (!DataObj.IsValid()) continue;
+
+				FName RowID = FName(*DataObj->GetStringField(TEXT("Name")));
+				uint8* RowPtr = TargetTable->FindRowUnchecked(RowID);
+
+				if (RowPtr && TableStruct)
+				{
+					// 수치 데이터 주입
+					FJsonObjectConverter::JsonObjectToUStruct(DataObj.ToSharedRef(), TableStruct, RowPtr);
+					GI_LOG(Log, TEXT("[%s.json] Row Updated: %s"), *FileName, *RowID.ToString());
+				}
+			}
+		}
+	}
+}
+
+FString UBRGameInstance::GetConfigDirectory()
+{
+	FString TargetPath;
+
+#if WITH_EDITOR
+	// 1. 에디터 환경: 프로젝트 루트의 Data 폴더
+	TargetPath = FPaths::ProjectDir() / TEXT("Data/");
+#else
+	// 2. 패키징 환경: 빌드된 .exe 옆의 Data 폴더 (예: Build/Windows/MyProject/Data/)
+	// FPaths::ProjectDir()는 패키징 후에도 실행 파일 기준 경로를 반환합니다.
+	TargetPath = FPaths::ProjectDir() / TEXT("Data/");
+#endif
+
+	return TargetPath;
+}
