@@ -12,7 +12,13 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "BaseWeapon.h"
+#include "UObject/Package.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "GameFramework/GameModeBase.h"
+
+#if WITH_EDITOR
+#include "UObject/SavePackage.h"
+#endif
 
 DEFINE_LOG_CATEGORY(LogBRGameInstance);
 
@@ -209,23 +215,44 @@ void UBRGameInstance::ShowRoomInfo()
 	}
 }
 
+/** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */
 void UBRGameInstance::ReloadAllConfigs()
 {
-	GI_LOG(Display, TEXT("Starting Global Config Reload..."));
+	GI_LOG(Display, TEXT("=== Starting Global Config Reload and Asset Sync ==="));
+
+	if (ConfigDataMap.Num() == 0)
+	{
+		GI_LOG(Warning, TEXT("ConfigDataMap이 비어 있습니다. 에디터에서 설정이 필요합니다."));
+		return;
+	}
 
 	for (auto& Elem : ConfigDataMap)
 	{
-		// Key가 파일 이름이 되고, Value가 대상 테이블이 됨
-		LoadConfigFromJson(Elem.Key, Elem.Value);
+		const FString& JsonFileName = Elem.Key;
+		UDataTable* TargetTable = Elem.Value;
+
+		if (TargetTable)
+		{
+			// 1. JSON 파일 읽어서 메모리상 DT 업데이트
+			UpdateDataTableFromJson(TargetTable, JsonFileName);
+
+			// 2. 에디터 환경인 경우 .uasset 파일로 영구 저장
+		#if WITH_EDITOR
+			SaveDataTableToAsset(TargetTable);
+		#endif
+		}
 	}
 
-	// 1. 월드에 이미 존재하는 무기들에게 최신 설계도를 다시 읽으라고 시킵니다.
-	for (TActorIterator<ABaseWeapon> It(GetWorld()); It; ++It)
+	// 3. 월드에 이미 존재하는 무기들에게 최신 데이터를 적용 (기존 로직 유지)
+	if (GetWorld())
 	{
-		// 이 함수 내부에서 MyDataTable->FindRow를 다시 호출하여 
-		// 갱신된 JSON 수치를 CurrentWeaponData에 덮어씁니다.
-		It->LoadWeaponData();
+		for (TActorIterator<ABaseWeapon> It(GetWorld()); It; ++It)
+		{
+			It->LoadWeaponData();
+		}
 	}
+
+	GI_LOG(Display, TEXT("=== Global Config Reload Complete ==="));
 }
 
 void UBRGameInstance::LoadConfigFromJson(const FString& FileName, UDataTable* TargetTable)
@@ -287,4 +314,109 @@ FString UBRGameInstance::GetConfigDirectory()
 #endif
 
 	return TargetPath;
+}
+
+/** JSON 문자열을 DataTable에 주입 */
+void UBRGameInstance::UpdateDataTableFromJson(UDataTable* TargetTable, FString FileName)
+{
+	if (!TargetTable) return;
+
+	FString FullPath = GetConfigDirectory() + FileName + TEXT(".json");
+	FString JsonString;
+
+	if (!FFileHelper::LoadFileToString(JsonString, *FullPath))
+	{
+		GI_LOG(Warning, TEXT("JSON 파일을 찾을 수 없습니다: %s"), *FullPath);
+		return;
+	}
+
+	// 1. JSON 파싱
+	TSharedPtr<FJsonObject> RootObject;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+
+	if (FJsonSerializer::Deserialize(Reader, RootObject) && RootObject.IsValid())
+	{
+		const TArray<TSharedPtr<FJsonValue>>* DataArray;
+		// JSON의 "Data" 배열 필드를 가져옴
+		if (RootObject->TryGetArrayField(TEXT("Data"), DataArray))
+		{
+			const UScriptStruct* TableStruct = TargetTable->GetRowStruct();
+
+			for (const auto& Value : *DataArray)
+			{
+				TSharedPtr<FJsonObject> DataObj = Value->AsObject();
+				if (!DataObj.IsValid()) continue;
+
+				// 1. 행 이름(Name) 확인
+				FString NameStr = DataObj->GetStringField(TEXT("Name"));
+				if (NameStr.IsEmpty()) continue;
+
+				FName RowName = FName(*NameStr);
+
+				// 2. 기존 행 찾기
+				uint8* RowPtr = TargetTable->FindRowUnchecked(RowName);
+
+				// 3. 행이 없으면 새로 추가
+				if (!RowPtr)
+				{
+					// 빈 데이터 구조체를 생성하여 테이블에 추가
+					TargetTable->AddRow(RowName, FTableRowBase());
+					// 추가된 행의 포인터를 다시 가져옴
+					RowPtr = TargetTable->FindRowUnchecked(RowName);
+
+					GI_LOG(Log, TEXT("[%s] 새로운 행 생성됨: %s"), *FileName, *RowName.ToString());
+				}
+
+				// 4. 데이터 주입 (기본적으로 기존 데이터는 유지하고 JSON에 있는 필드만 덮어씀)
+				if (RowPtr && TableStruct)
+				{
+					FJsonObjectConverter::JsonObjectToUStruct(DataObj.ToSharedRef(), TableStruct, RowPtr);
+					GI_LOG(Log, TEXT("[%s] 데이터 업데이트 완료: %s"), *FileName, *RowName.ToString());
+				}
+			}
+
+			// 데이터 테이블 구조 갱신 알림 (에디터 UI 등에 즉시 반영)
+			TargetTable->Modify();
+
+			#if WITH_EDITOR
+			// 에디터에게 데이터 테이블의 구조나 내용이 바뀌었음을 알림
+			// 이 함수는 UDataTable에 정의되어 있으며, 에디터 UI를 즉시 새로고침합니다.
+				TargetTable->OnDataTableChanged().Broadcast();
+
+			// (선택 사항) 데이터 테이블 에셋 아이콘에 별표(*) 표시 (수정됨 표시)
+				TargetTable->PostEditChange();
+			#endif
+		}
+	}
+}
+
+
+/** 에셋 파일(.uasset)로 영구 저장 */
+void UBRGameInstance::SaveDataTableToAsset(UDataTable* TargetTable)
+{
+#if WITH_EDITOR
+	if (!TargetTable) return;
+
+	UPackage* Package = TargetTable->GetOutermost();
+	if (!Package) return;
+
+	FString PackageFileName = FPackageName::LongPackageNameToFilename(
+		Package->GetName(),
+		FPackageName::GetAssetPackageExtension()
+	);
+
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	SaveArgs.Error = GError;
+	SaveArgs.bForceByteSwapping = true;
+
+	if (UPackage::SavePackage(Package, TargetTable, *PackageFileName, SaveArgs))
+	{
+		GI_LOG(Log, TEXT("Asset 영구 저장 성공: %s"), *PackageFileName);
+	}
+	else
+	{
+		GI_LOG(Error, TEXT("Asset 저장 실패: %s"), *PackageFileName);
+	}
+#endif
 }
