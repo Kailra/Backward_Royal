@@ -58,6 +58,13 @@ public:
 	UFUNCTION(Exec, Category = "Data")
 	void ReloadAllConfigs();
 
+	/** JSON 파일을 읽어 데이터 테이블 업데이트 */
+	UFUNCTION(BlueprintCallable, Category = "Data")
+	void UpdateDataTableFromJson(UDataTable* TargetTable, FString FileName);
+
+	/** 데이터 테이블 변경 사항을 .uasset 파일로 영구 저장 (에디터 전용) */
+	void SaveDataTableToAsset(UDataTable* TargetTable);
+		
 protected:
 	// 실제 JSON 파싱 로직
 	void LoadConfigFromJson(const FString& FileName, class UDataTable* TargetTable);
