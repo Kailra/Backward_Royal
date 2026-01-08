@@ -14,7 +14,7 @@
       "Name": "Weapon_02",
       "DisplayName": "대검1",
       "BaseDamage": 10.0,
-      "MassKg": 3.0,
+      "MassKg": 1.0,
       "ArmorPenetration": 1.0,
       "FleshDamageMultiplier": 1.0,
       "DamageCategory": 0,
