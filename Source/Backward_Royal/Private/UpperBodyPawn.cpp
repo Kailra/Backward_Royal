@@ -176,11 +176,6 @@ void AUpperBodyPawn::Look(const FInputActionValue& Value)
 	AddControllerYawInput(LookAxisVector.X);
 	AddControllerPitchInput(LookAxisVector.Y * -1.0f); // 마우스 Y축 반전 (위로 올리면 위를 봄)
 
-	if (ParentBodyCharacter)
-	{
-		// 애니메이션 블루프린트로 회전값을 전달 (허리 비틀기용)
-		ParentBodyCharacter->SetUpperBodyRotation(GetControlRotation());
-	}
 }
 
 void AUpperBodyPawn::Attack(const FInputActionValue& Value)
