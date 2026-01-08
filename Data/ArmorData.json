@@ -1,0 +1,54 @@
+{
+	"Data" : [
+		{
+			"Name": "Armor_01",
+			"DisplayName": "TestHead",
+			"ArmorMesh": "/Script/Engine.SkeletalMesh'/Game/Asset/Character/CR/LQ/CharacterModular/Modular_012_Grian08/Mesh/SKM_Grian08_Head_1.SKM_Grian08_Head_1'",
+			"Type": "Plate",
+			"EquipSlot": "Head",
+			"DefensePower": 0,
+			"WeightKg": 0,
+			"Durability": 0
+		},
+		{
+			"Name": "Armor_02",
+			"DisplayName": "TestChest",
+			"ArmorMesh": "/Script/Engine.SkeletalMesh'/Game/Asset/Character/CR/LQ/CharacterModular/Modular_012_Grian08/Mesh/SKM_Grian08_Chest_1.SKM_Grian08_Chest_1'",
+			"Type": "Plate",
+			"EquipSlot": "Chest",
+			"DefensePower": 0,
+			"WeightKg": 0,
+			"Durability": 0
+		},
+		{
+			"Name": "Armor_03",
+			"DisplayName": "TestHand",
+			"ArmorMesh": "/Script/Engine.SkeletalMesh'/Game/Asset/Character/CR/LQ/CharacterModular/Modular_012_Grian08/Mesh/SKM_Grian08_Hand_1.SKM_Grian08_Hand_1'",
+			"Type": "Plate",
+			"EquipSlot": "Hands",
+			"DefensePower": 0,
+			"WeightKg": 0,
+			"Durability": 0
+		},
+		{
+			"Name": "Armor_04",
+			"DisplayName": "TestLeg",
+			"ArmorMesh": "/Script/Engine.SkeletalMesh'/Game/Asset/Character/CR/LQ/CharacterModular/Modular_012_Grian08/Mesh/SKM_Grian08_Leg_1.SKM_Grian08_Leg_1'",
+			"Type": "Plate",
+			"EquipSlot": "Legs",
+			"DefensePower": 0,
+			"WeightKg": 0,
+			"Durability": 0
+		},
+		{
+			"Name": "Armor_05",
+			"DisplayName": "TestFoot",
+			"ArmorMesh": "/Script/Engine.SkeletalMesh'/Game/Asset/Character/CR/LQ/CharacterModular/Modular_012_Grian08/Mesh/SKM_Grian08_Foot_1.SKM_Grian08_Foot_1'",
+			"Type": "Plate",
+			"EquipSlot": "Feet",
+			"DefensePower": 0,
+			"WeightKg": 0,
+			"Durability": 0
+		}
+	]
+}
