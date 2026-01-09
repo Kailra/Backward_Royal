@@ -41,6 +41,10 @@ void ABRGameMode::BeginPlay()
 
 void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 {
+	// 역할을 먼저 할당해야 SpawnDefaultPawnFor_Implementation에서 올바른 Pawn을 스폰할 수 있음
+	// 하지만 PlayerState는 Super::PostLogin에서 생성되므로, 먼저 호출해야 함
+	// 따라서 Super::PostLogin을 호출하되, 역할 할당 후 Pawn을 다시 확인/교체
+	
 	Super::PostLogin(NewPlayer);
 
 	if (ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>())
@@ -94,41 +98,44 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			}
 
 			// 역할 할당 후 Pawn 스폰
-			if (PlayerNumber % 2 == 1) // 홀수번째 (하체)
+			// Super::PostLogin에서 이미 SpawnDefaultPawnFor_Implementation이 호출되어
+			// 역할에 따라 올바른 Pawn이 스폰되었을 수 있음
+			// 하지만 역할 할당이 PostLogin 이후에 이루어지므로, 여기서 다시 확인 필요
+			
+			// Pawn이 없으면 스폰 (SpawnDefaultPawnFor_Implementation이 호출됨)
+			if (NewPlayer->GetPawn() == nullptr)
 			{
-				// 하체 플레이어는 일반적으로 Pawn 스폰
-				if (NewPlayer->GetPawn() == nullptr)
+				RestartPlayer(NewPlayer);
+			}
+			else
+			{
+				// Pawn이 이미 있지만 역할과 맞지 않을 수 있음
+				// 상체 플레이어인데 하체 Pawn이 스폰된 경우 교체 필요
+				if (!BRPS->bIsLowerBody)
 				{
-					RestartPlayer(NewPlayer);
+					APawn* CurrentPawn = NewPlayer->GetPawn();
+					// 하체 Pawn인지 확인 (BP_LowerBodyCharacter)
+					if (CurrentPawn && CurrentPawn->GetClass()->GetName().Contains(TEXT("LowerBody")))
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[상체 플레이어] 잘못된 Pawn이 스폰되었습니다. 교체 중..."));
+						// 잘못된 Pawn 삭제
+						NewPlayer->UnPossess();
+						CurrentPawn->Destroy();
+						// 올바른 Pawn 스폰
+						RestartPlayer(NewPlayer);
+					}
 				}
 			}
-			else // 짝수번째 (상체)
+			
+			// 상체 플레이어인 경우 하체 플레이어에 연결
+			if (!BRPS->bIsLowerBody && LowerBodyPlayerIndex >= 0)
 			{
-				// 상체 플레이어는 기본 Pawn을 삭제하고 UpperBodyPawn만 스폰
-				APawn* ExistingPawn = NewPlayer->GetPawn();
-				if (ExistingPawn)
+				// 짧은 딜레이 후 하체 플레이어에 연결 (하체 플레이어의 Pawn이 준비될 때까지 대기)
+				FTimerHandle TimerHandle;
+				GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, NewPlayer, LowerBodyPlayerIndex]()
 				{
-					// 기본 Pawn이 스폰되었다면 삭제
-					UE_LOG(LogTemp, Log, TEXT("[상체 플레이어] 기본 Pawn 삭제: %s"), *ExistingPawn->GetClass()->GetName());
-					NewPlayer->UnPossess();
-					ExistingPawn->Destroy();
-				}
-				
-				// UpperBodyPawn 즉시 스폰 (딜레이 없이 - Pawn이 없으면 서버가 클라이언트를 킥함)
-				if (LowerBodyPlayerIndex >= 0)
-				{
-					// 하체 플레이어가 준비될 때까지 약간의 딜레이 (하지만 Pawn은 즉시 스폰)
-					// 먼저 UpperBodyPawn을 스폰하고, 그 다음 연결
-					FTimerHandle TimerHandle;
-					GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, NewPlayer, LowerBodyPlayerIndex]()
-					{
-						SpawnAndAttachUpperBody(NewPlayer, LowerBodyPlayerIndex);
-					}, 0.1f, false);
-					
-					// 즉시 임시로 UpperBodyPawn 스폰 (연결은 나중에)
-					// 이렇게 하면 Pawn이 없어서 킥되는 것을 방지
-					SpawnUpperBodyPawnImmediately(NewPlayer);
-				}
+					AttachUpperBodyToLowerBody(NewPlayer, LowerBodyPlayerIndex);
+				}, 0.3f, false);
 			}
 		}
 	}
@@ -151,8 +158,9 @@ APawn* ABRGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, A
 	ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>();
 	if (!BRPS)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Pawn 스폰] PlayerState를 찾을 수 없습니다."));
-		return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+		UE_LOG(LogTemp, Warning, TEXT("[Pawn 스폰] PlayerState를 찾을 수 없습니다. 기본 Pawn 스폰을 건너뜁니다."));
+		// PlayerState가 없으면 Pawn을 스폰하지 않음 (PostLogin에서 역할 할당 후 스폰)
+		return nullptr;
 	}
 
 	// 역할에 따라 Pawn 클래스 결정
@@ -171,11 +179,12 @@ APawn* ABRGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, A
 		UE_LOG(LogTemp, Log, TEXT("[Pawn 스폰] 상체 플레이어용 Pawn 스폰"));
 	}
 
-	// Pawn 클래스가 설정되지 않은 경우 기본 클래스 사용
+	// Pawn 클래스가 설정되지 않은 경우
 	if (!PawnClassToSpawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Pawn 스폰] Pawn 클래스가 설정되지 않았습니다. 기본 Pawn을 사용합니다."));
-		return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+		UE_LOG(LogTemp, Warning, TEXT("[Pawn 스폰] Pawn 클래스가 설정되지 않았습니다. 기본 Pawn 스폰을 건너뜁니다."));
+		// PostLogin에서 역할 할당 후 스폰하도록 nullptr 반환
+		return nullptr;
 	}
 
 	// StartSpot이 없으면 찾기
