@@ -64,8 +64,9 @@ Build/*/**
 # Don't ignore icon files in Build
 !Build/**/*.ico
 
-# Packaging Data
-Windows/*
+# Windows
+**/Windows/
+Windows/
 
 # Built data for maps
 *_BuiltData.uasset
