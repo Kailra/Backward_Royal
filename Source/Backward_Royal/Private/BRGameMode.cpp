@@ -7,6 +7,10 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "PlayerCharacter.h"
+#include "UpperBodyPawn.h"
+#include "Components/SceneComponent.h"
+#include "TimerManager.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -18,6 +22,9 @@ ABRGameMode::ABRGameMode()
 
 	// 리슨 서버 설정
 	bUseSeamlessTravel = true;
+
+	// 기본 Pawn 클래스는 nullptr로 설정 (역할에 따라 동적으로 결정)
+	DefaultPawnClass = nullptr;
 }
 
 void ABRGameMode::BeginPlay()
@@ -57,24 +64,21 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			}
 
 			// 플레이어 역할 할당 (하체/상체)
+			// 홀수번째(1, 3, 5...) = 하체, 짝수번째(2, 4, 6...) = 직전 플레이어의 상체
 			int32 CurrentPlayerIndex = BRGameState->PlayerArray.Num() - 1; // 0부터 시작
+			int32 PlayerNumber = CurrentPlayerIndex + 1; // 실제 입장 순서 (1부터 시작)
+			int32 LowerBodyPlayerIndex = -1; // 하체 플레이어 인덱스 (상체인 경우에만 사용)
 			
-			if (CurrentPlayerIndex == 0)
+			if (PlayerNumber % 2 == 1) // 홀수번째 (1, 3, 5...)
 			{
-				// 첫 번째 플레이어 = 하체
+				// 홀수번째 플레이어 = 하체
 				BRPS->SetPlayerRole(true, -1); // 하체, 연결된 상체 없음
-				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
+				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당 (입장 순서: %d번째)"), *PlayerName, PlayerNumber);
 			}
-			else if (CurrentPlayerIndex % 2 == 0)
+			else // 짝수번째 (2, 4, 6...)
 			{
-				// 홀수 번째 플레이어 (인덱스가 짝수, 0부터 시작하므로) = 하체
-				BRPS->SetPlayerRole(true, -1); // 하체, 연결된 상체 없음
-				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
-			}
-			else
-			{
-				// 짝수 번째 플레이어 = 이전 플레이어의 상체
-				int32 LowerBodyPlayerIndex = CurrentPlayerIndex - 1;
+				// 짝수번째 플레이어 = 직전 플레이어의 상체
+				LowerBodyPlayerIndex = CurrentPlayerIndex - 1;
 				if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
 				{
 					if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
@@ -83,9 +87,42 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 						BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
 						// 하체 플레이어의 연결된 상체 인덱스 업데이트
 						LowerBodyPS->SetPlayerRole(true, CurrentPlayerIndex);
-						UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 상체 역할 할당 (하체 플레이어 인덱스: %d)"), 
-							*PlayerName, LowerBodyPlayerIndex);
+						UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 상체 역할 할당 (하체 플레이어 인덱스: %d, 입장 순서: %d번째)"), 
+							*PlayerName, LowerBodyPlayerIndex, PlayerNumber);
 					}
+				}
+			}
+
+			// 역할 할당 후 Pawn 스폰
+			if (PlayerNumber % 2 == 1) // 홀수번째 (하체)
+			{
+				// 하체 플레이어는 일반적으로 Pawn 스폰
+				if (NewPlayer->GetPawn() == nullptr)
+				{
+					RestartPlayer(NewPlayer);
+				}
+			}
+			else // 짝수번째 (상체)
+			{
+				// 상체 플레이어는 기본 Pawn을 삭제하고 UpperBodyPawn만 스폰
+				APawn* ExistingPawn = NewPlayer->GetPawn();
+				if (ExistingPawn)
+				{
+					// 기본 Pawn이 스폰되었다면 삭제
+					UE_LOG(LogTemp, Log, TEXT("[상체 플레이어] 기본 Pawn 삭제: %s"), *ExistingPawn->GetClass()->GetName());
+					NewPlayer->UnPossess();
+					ExistingPawn->Destroy();
+				}
+				
+				// UpperBodyPawn 스폰
+				if (LowerBodyPlayerIndex >= 0)
+				{
+					// 짧은 딜레이 후 UpperBodyPawn 스폰 및 연결 (Blueprint의 Delay와 동일)
+					FTimerHandle TimerHandle;
+					GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, NewPlayer, LowerBodyPlayerIndex]()
+					{
+						SpawnAndAttachUpperBody(NewPlayer, LowerBodyPlayerIndex);
+					}, 0.2f, false);
 				}
 			}
 		}
@@ -95,6 +132,272 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
 	{
 		BRGameState->UpdatePlayerList();
+	}
+}
+
+APawn* ABRGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, AActor* StartSpot)
+{
+	if (!NewPlayer)
+	{
+		return nullptr;
+	}
+
+	// PlayerState에서 역할 확인
+	ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>();
+	if (!BRPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Pawn 스폰] PlayerState를 찾을 수 없습니다."));
+		return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+	}
+
+	// 역할에 따라 Pawn 클래스 결정
+	TSubclassOf<APawn> PawnClassToSpawn = nullptr;
+	
+	if (BRPS->bIsLowerBody)
+	{
+		// 하체 플레이어
+		PawnClassToSpawn = LowerBodyPawnClass;
+		UE_LOG(LogTemp, Log, TEXT("[Pawn 스폰] 하체 플레이어용 Pawn 스폰"));
+	}
+	else
+	{
+		// 상체 플레이어
+		PawnClassToSpawn = UpperBodyPawnClass;
+		UE_LOG(LogTemp, Log, TEXT("[Pawn 스폰] 상체 플레이어용 Pawn 스폰"));
+	}
+
+	// Pawn 클래스가 설정되지 않은 경우 기본 클래스 사용
+	if (!PawnClassToSpawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Pawn 스폰] Pawn 클래스가 설정되지 않았습니다. 기본 Pawn을 사용합니다."));
+		return Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
+	}
+
+	// StartSpot이 없으면 찾기
+	if (!StartSpot)
+	{
+		StartSpot = FindPlayerStart(NewPlayer);
+	}
+
+	if (!StartSpot)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Pawn 스폰] StartSpot을 찾을 수 없습니다."));
+		return nullptr;
+	}
+
+	// Pawn 스폰
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = NewPlayer;
+	SpawnParams.Instigator = GetInstigator();
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	FVector SpawnLocation = StartSpot->GetActorLocation();
+	FRotator SpawnRotation = StartSpot->GetActorRotation();
+
+	APawn* SpawnedPawn = GetWorld()->SpawnActor<APawn>(PawnClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
+	
+	if (SpawnedPawn)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Pawn 스폰] 성공: %s"), *SpawnedPawn->GetClass()->GetName());
+		// Controller에 Pawn 설정
+		NewPlayer->Possess(SpawnedPawn);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Pawn 스폰] 실패: Pawn을 생성할 수 없습니다."));
+	}
+
+	return SpawnedPawn;
+}
+
+void ABRGameMode::SpawnAndAttachUpperBody(APlayerController* UpperBodyController, int32 LowerBodyPlayerIndex)
+{
+	if (!UpperBodyController)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[상체 스폰] UpperBodyController가 유효하지 않습니다."));
+		return;
+	}
+
+	// UpperBodyPawn 클래스 확인
+	if (!UpperBodyPawnClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[상체 스폰] UpperBodyPawnClass가 설정되지 않았습니다."));
+		return;
+	}
+
+	// GameState에서 하체 플레이어 찾기
+	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	{
+		if (LowerBodyPlayerIndex < 0 || LowerBodyPlayerIndex >= BRGameState->PlayerArray.Num())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 스폰] 하체 플레이어 인덱스가 유효하지 않습니다: %d"), LowerBodyPlayerIndex);
+			return;
+		}
+
+		// 하체 플레이어의 Controller 찾기
+		APlayerController* LowerBodyController = nullptr;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (APlayerController* PC = It->Get())
+			{
+				if (ABRPlayerState* PS = PC->GetPlayerState<ABRPlayerState>())
+				{
+					if (PS == BRGameState->PlayerArray[LowerBodyPlayerIndex])
+					{
+						LowerBodyController = PC;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!LowerBodyController)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 스폰] 하체 플레이어의 Controller를 찾을 수 없습니다."));
+			return;
+		}
+
+		// 하체 플레이어의 Pawn 가져오기
+		APawn* LowerBodyPawn = LowerBodyController->GetPawn();
+		if (!LowerBodyPawn)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 스폰] 하체 플레이어의 Pawn을 찾을 수 없습니다."));
+			return;
+		}
+
+		// PlayerCharacter로 캐스팅
+		APlayerCharacter* LowerBodyCharacter = Cast<APlayerCharacter>(LowerBodyPawn);
+		if (!LowerBodyCharacter)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 스폰] 하체 Pawn을 PlayerCharacter로 캐스팅할 수 없습니다."));
+			return;
+		}
+
+		// HeadMountPoint 가져오기
+		USceneComponent* HeadMountPoint = LowerBodyCharacter->HeadMountPoint;
+		if (!HeadMountPoint)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 스폰] HeadMountPoint를 찾을 수 없습니다."));
+			return;
+		}
+
+		// UpperBodyPawn 스폰 (HeadMountPoint 위치에)
+		FTransform SpawnTransform = HeadMountPoint->GetComponentTransform();
+		
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = UpperBodyController;
+		SpawnParams.Instigator = GetInstigator();
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+		APawn* SpawnedUpperBodyPawn = GetWorld()->SpawnActor<APawn>(UpperBodyPawnClass, SpawnTransform.GetLocation(), SpawnTransform.GetRotation().Rotator(), SpawnParams);
+		
+		if (SpawnedUpperBodyPawn)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[상체 스폰] UpperBodyPawn 스폰 성공: %s"), *SpawnedUpperBodyPawn->GetClass()->GetName());
+			
+			// Controller에 Pawn 설정
+			UpperBodyController->Possess(SpawnedUpperBodyPawn);
+			
+			// HeadMountPoint에 Attach
+			FAttachmentTransformRules AttachRules(
+				EAttachmentRule::SnapToTarget,
+				EAttachmentRule::SnapToTarget,
+				EAttachmentRule::SnapToTarget,
+				true
+			);
+
+			SpawnedUpperBodyPawn->AttachToComponent(HeadMountPoint, AttachRules);
+			UE_LOG(LogTemp, Log, TEXT("[상체 스폰] 상체 플레이어를 하체 플레이어의 HeadMountPoint에 연결했습니다."));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[상체 스폰] UpperBodyPawn 스폰 실패"));
+		}
+	}
+}
+
+void ABRGameMode::AttachUpperBodyToLowerBody(APlayerController* UpperBodyController, int32 LowerBodyPlayerIndex)
+{
+	if (!UpperBodyController)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[상체 연결] UpperBodyController가 유효하지 않습니다."));
+		return;
+	}
+
+	// 상체 플레이어의 Pawn 가져오기
+	APawn* UpperBodyPawn = UpperBodyController->GetPawn();
+	if (!UpperBodyPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 상체 플레이어의 Pawn을 찾을 수 없습니다."));
+		return;
+	}
+
+	// GameState에서 하체 플레이어 찾기
+	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	{
+		if (LowerBodyPlayerIndex < 0 || LowerBodyPlayerIndex >= BRGameState->PlayerArray.Num())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 하체 플레이어 인덱스가 유효하지 않습니다: %d"), LowerBodyPlayerIndex);
+			return;
+		}
+
+		// 하체 플레이어의 Controller 찾기
+		APlayerController* LowerBodyController = nullptr;
+		for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (APlayerController* PC = It->Get())
+			{
+				if (ABRPlayerState* PS = PC->GetPlayerState<ABRPlayerState>())
+				{
+					if (PS == BRGameState->PlayerArray[LowerBodyPlayerIndex])
+					{
+						LowerBodyController = PC;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!LowerBodyController)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 하체 플레이어의 Controller를 찾을 수 없습니다."));
+			return;
+		}
+
+		// 하체 플레이어의 Pawn 가져오기
+		APawn* LowerBodyPawn = LowerBodyController->GetPawn();
+		if (!LowerBodyPawn)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 하체 플레이어의 Pawn을 찾을 수 없습니다."));
+			return;
+		}
+
+		// PlayerCharacter로 캐스팅
+		APlayerCharacter* LowerBodyCharacter = Cast<APlayerCharacter>(LowerBodyPawn);
+		if (!LowerBodyCharacter)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 하체 Pawn을 PlayerCharacter로 캐스팅할 수 없습니다."));
+			return;
+		}
+
+		// HeadMountPoint 가져오기
+		USceneComponent* HeadMountPoint = LowerBodyCharacter->HeadMountPoint;
+		if (!HeadMountPoint)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 연결] HeadMountPoint를 찾을 수 없습니다."));
+			return;
+		}
+
+		// 상체를 HeadMountPoint에 Attach
+		FAttachmentTransformRules AttachRules(
+			EAttachmentRule::SnapToTarget,
+			EAttachmentRule::SnapToTarget,
+			EAttachmentRule::SnapToTarget,
+			true
+		);
+
+		UpperBodyPawn->AttachToComponent(HeadMountPoint, AttachRules);
+		UE_LOG(LogTemp, Log, TEXT("[상체 연결] 성공: 상체 플레이어를 하체 플레이어의 HeadMountPoint에 연결했습니다."));
 	}
 }
 
@@ -168,23 +471,21 @@ void ABRGameMode::Logout(AController* Exiting)
 		BRGameState->UpdatePlayerList();
 		
 		// 남은 플레이어들의 역할 재할당 (순서대로)
+		// 홀수번째(1, 3, 5...) = 하체, 짝수번째(2, 4, 6...) = 직전 플레이어의 상체
 		for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
 		{
 			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
 			{
-				if (i == 0)
+				int32 PlayerNumber = i + 1; // 실제 입장 순서 (1부터 시작)
+				
+				if (PlayerNumber % 2 == 1) // 홀수번째 (1, 3, 5...)
 				{
-					// 첫 번째 플레이어 = 하체
+					// 홀수번째 플레이어 = 하체
 					BRPS->SetPlayerRole(true, -1);
 				}
-				else if (i % 2 == 0)
+				else // 짝수번째 (2, 4, 6...)
 				{
-					// 홀수 번째 플레이어 (인덱스가 짝수) = 하체
-					BRPS->SetPlayerRole(true, -1);
-				}
-				else
-				{
-					// 짝수 번째 플레이어 = 이전 플레이어의 상체
+					// 짝수번째 플레이어 = 직전 플레이어의 상체
 					int32 LowerBodyPlayerIndex = i - 1;
 					if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
 					{
