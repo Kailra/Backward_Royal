@@ -114,15 +114,20 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 					ExistingPawn->Destroy();
 				}
 				
-				// UpperBodyPawn 스폰
+				// UpperBodyPawn 즉시 스폰 (딜레이 없이 - Pawn이 없으면 서버가 클라이언트를 킥함)
 				if (LowerBodyPlayerIndex >= 0)
 				{
-					// 짧은 딜레이 후 UpperBodyPawn 스폰 및 연결 (Blueprint의 Delay와 동일)
+					// 하체 플레이어가 준비될 때까지 약간의 딜레이 (하지만 Pawn은 즉시 스폰)
+					// 먼저 UpperBodyPawn을 스폰하고, 그 다음 연결
 					FTimerHandle TimerHandle;
 					GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, NewPlayer, LowerBodyPlayerIndex]()
 					{
 						SpawnAndAttachUpperBody(NewPlayer, LowerBodyPlayerIndex);
-					}, 0.2f, false);
+					}, 0.1f, false);
+					
+					// 즉시 임시로 UpperBodyPawn 스폰 (연결은 나중에)
+					// 이렇게 하면 Pawn이 없어서 킥되는 것을 방지
+					SpawnUpperBodyPawnImmediately(NewPlayer);
 				}
 			}
 		}
@@ -210,6 +215,59 @@ APawn* ABRGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, A
 	return SpawnedPawn;
 }
 
+void ABRGameMode::SpawnUpperBodyPawnImmediately(APlayerController* UpperBodyController)
+{
+	if (!UpperBodyController)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[상체 즉시 스폰] UpperBodyController가 유효하지 않습니다."));
+		return;
+	}
+
+	// 이미 Pawn이 있으면 스킵
+	if (UpperBodyController->GetPawn())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[상체 즉시 스폰] 이미 Pawn이 있습니다."));
+		return;
+	}
+
+	// UpperBodyPawn 클래스 확인
+	if (!UpperBodyPawnClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[상체 즉시 스폰] UpperBodyPawnClass가 설정되지 않았습니다."));
+		return;
+	}
+
+	// StartSpot 찾기
+	AActor* StartSpot = FindPlayerStart(UpperBodyController);
+	if (!StartSpot)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[상체 즉시 스폰] StartSpot을 찾을 수 없습니다."));
+		return;
+	}
+
+	// UpperBodyPawn 즉시 스폰 (임시 위치에, 나중에 하체에 연결)
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = UpperBodyController;
+	SpawnParams.Instigator = GetInstigator();
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	FVector SpawnLocation = StartSpot->GetActorLocation();
+	FRotator SpawnRotation = StartSpot->GetActorRotation();
+
+	APawn* SpawnedUpperBodyPawn = GetWorld()->SpawnActor<APawn>(UpperBodyPawnClass, SpawnLocation, SpawnRotation, SpawnParams);
+	
+	if (SpawnedUpperBodyPawn)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[상체 즉시 스폰] UpperBodyPawn 즉시 스폰 성공: %s"), *SpawnedUpperBodyPawn->GetClass()->GetName());
+		// Controller에 Pawn 설정 (이렇게 하면 킥되지 않음)
+		UpperBodyController->Possess(SpawnedUpperBodyPawn);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[상체 즉시 스폰] UpperBodyPawn 스폰 실패"));
+	}
+}
+
 void ABRGameMode::SpawnAndAttachUpperBody(APlayerController* UpperBodyController, int32 LowerBodyPlayerIndex)
 {
 	if (!UpperBodyController)
@@ -281,38 +339,48 @@ void ABRGameMode::SpawnAndAttachUpperBody(APlayerController* UpperBodyController
 			return;
 		}
 
-		// UpperBodyPawn 스폰 (HeadMountPoint 위치에)
-		FTransform SpawnTransform = HeadMountPoint->GetComponentTransform();
+		// 기존 Pawn이 있으면 사용, 없으면 새로 스폰
+		APawn* UpperBodyPawn = UpperBodyController->GetPawn();
 		
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = UpperBodyController;
-		SpawnParams.Instigator = GetInstigator();
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-		APawn* SpawnedUpperBodyPawn = GetWorld()->SpawnActor<APawn>(UpperBodyPawnClass, SpawnTransform.GetLocation(), SpawnTransform.GetRotation().Rotator(), SpawnParams);
-		
-		if (SpawnedUpperBodyPawn)
+		if (!UpperBodyPawn)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[상체 스폰] UpperBodyPawn 스폰 성공: %s"), *SpawnedUpperBodyPawn->GetClass()->GetName());
+			// UpperBodyPawn 스폰 (HeadMountPoint 위치에)
+			FTransform SpawnTransform = HeadMountPoint->GetComponentTransform();
 			
-			// Controller에 Pawn 설정
-			UpperBodyController->Possess(SpawnedUpperBodyPawn);
-			
-			// HeadMountPoint에 Attach
-			FAttachmentTransformRules AttachRules(
-				EAttachmentRule::SnapToTarget,
-				EAttachmentRule::SnapToTarget,
-				EAttachmentRule::SnapToTarget,
-				true
-			);
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.Owner = UpperBodyController;
+			SpawnParams.Instigator = GetInstigator();
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-			SpawnedUpperBodyPawn->AttachToComponent(HeadMountPoint, AttachRules);
-			UE_LOG(LogTemp, Log, TEXT("[상체 스폰] 상체 플레이어를 하체 플레이어의 HeadMountPoint에 연결했습니다."));
+			UpperBodyPawn = GetWorld()->SpawnActor<APawn>(UpperBodyPawnClass, SpawnTransform.GetLocation(), SpawnTransform.GetRotation().Rotator(), SpawnParams);
+			
+			if (UpperBodyPawn)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[상체 스폰] UpperBodyPawn 스폰 성공: %s"), *UpperBodyPawn->GetClass()->GetName());
+				// Controller에 Pawn 설정
+				UpperBodyController->Possess(UpperBodyPawn);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[상체 스폰] UpperBodyPawn 스폰 실패"));
+				return;
+			}
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[상체 스폰] UpperBodyPawn 스폰 실패"));
+			UE_LOG(LogTemp, Log, TEXT("[상체 스폰] 기존 UpperBodyPawn 사용: %s"), *UpperBodyPawn->GetClass()->GetName());
 		}
+		
+		// HeadMountPoint에 Attach
+		FAttachmentTransformRules AttachRules(
+			EAttachmentRule::SnapToTarget,
+			EAttachmentRule::SnapToTarget,
+			EAttachmentRule::SnapToTarget,
+			true
+		);
+
+		UpperBodyPawn->AttachToComponent(HeadMountPoint, AttachRules);
+		UE_LOG(LogTemp, Log, TEXT("[상체 스폰] 상체 플레이어를 하체 플레이어의 HeadMountPoint에 연결했습니다."));
 	}
 }
 

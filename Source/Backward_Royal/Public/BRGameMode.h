@@ -52,6 +52,9 @@ public:
 	// 상체 플레이어 Pawn 스폰 및 하체에 연결
 	void SpawnAndAttachUpperBody(APlayerController* UpperBodyController, int32 LowerBodyPlayerIndex);
 
+	// 상체 플레이어 Pawn 즉시 스폰 (연결 없이, 킥 방지용)
+	void SpawnUpperBodyPawnImmediately(APlayerController* UpperBodyController);
+
 protected:
 	virtual void BeginPlay() override;
 };
