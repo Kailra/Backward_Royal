@@ -63,6 +63,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Player Role")
 	void SetPlayerRole(bool bLowerBody, int32 ConnectedIndex);
 
+	// 하체 역할 여부 가져오기 (Blueprint에서 사용)
+	UFUNCTION(BlueprintPure, Category = "Player Role")
+	bool GetIsLowerBody() const { return bIsLowerBody; }
+
 	// 플레이어 역할 변경 시 호출되는 이벤트
 	UFUNCTION()
 	void OnRep_PlayerRole();

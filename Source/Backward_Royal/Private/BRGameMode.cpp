@@ -4,12 +4,14 @@
 #include "BRPlayerState.h"
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
+#include "PlayerCharacter.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerStart.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Components/SceneComponent.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -150,9 +152,10 @@ void ABRGameMode::StartGame()
 	}
 }
 
-APawn* ABRGameMode::SpawnPawnForPlayer(AController* NewPlayer, AActor* StartSpot)
+// Static 버전 함수들
+APawn* ABRGameMode::SpawnPawnForPlayer(AGameModeBase* GameMode, AController* NewPlayer, AActor* StartSpot)
 {
-	if (!NewPlayer || !HasAuthority())
+	if (!GameMode || !NewPlayer || !GameMode->HasAuthority())
 	{
 		return nullptr;
 	}
@@ -162,50 +165,52 @@ APawn* ABRGameMode::SpawnPawnForPlayer(AController* NewPlayer, AActor* StartSpot
 	if (!BRPS)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Pawn 생성] PlayerState를 찾을 수 없습니다. 기본 Pawn을 생성합니다."));
-		return Super::SpawnDefaultPawnFor(NewPlayer, StartSpot);
+		return GameMode->SpawnDefaultPawnFor(NewPlayer, StartSpot);
 	}
 
-	// 역할에 따라 다른 Pawn 클래스 선택
+	// BRGameMode로 캐스팅하여 Pawn 클래스 가져오기
 	TSubclassOf<APawn> PawnClassToSpawn = nullptr;
-	
-	if (BRPS->bIsLowerBody)
+	if (ABRGameMode* BRGameMode = Cast<ABRGameMode>(GameMode))
 	{
-		// 하체 역할
-		PawnClassToSpawn = LowerBodyPawnClass;
-		UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 하체 Pawn 생성: %s"), *GetNameSafe(NewPlayer));
-	}
-	else
-	{
-		// 상체 역할
-		PawnClassToSpawn = UpperBodyPawnClass;
-		UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 상체 Pawn 생성: %s"), *GetNameSafe(NewPlayer));
+		if (BRPS->bIsLowerBody)
+		{
+			// 하체 역할
+			PawnClassToSpawn = BRGameMode->LowerBodyPawnClass;
+			UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 하체 Pawn 생성: %s"), *GetNameSafe(NewPlayer));
+		}
+		else
+		{
+			// 상체 역할
+			PawnClassToSpawn = BRGameMode->UpperBodyPawnClass;
+			UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 상체 Pawn 생성: %s"), *GetNameSafe(NewPlayer));
+		}
 	}
 
 	// Pawn 클래스가 설정되지 않은 경우 기본 클래스 사용
 	if (!PawnClassToSpawn)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Pawn 생성] Pawn 클래스가 설정되지 않았습니다. 기본 Pawn을 생성합니다."));
-		return Super::SpawnDefaultPawnFor(NewPlayer, StartSpot);
+		return GameMode->SpawnDefaultPawnFor(NewPlayer, StartSpot);
 	}
 
 	// Spawn 위치 및 회전 결정
 	FVector SpawnLocation = FVector::ZeroVector;
 	FRotator SpawnRotation = FRotator::ZeroRotator;
 	
-		if (StartSpot)
+	if (StartSpot)
+	{
+		SpawnLocation = StartSpot->GetActorLocation();
+		SpawnRotation = StartSpot->GetActorRotation();
+	}
+	else
+	{
+		// StartSpot이 없으면 World의 기본 위치 사용
+		if (AActor* PlayerStart = GameMode->FindPlayerStart(NewPlayer))
 		{
-			SpawnLocation = StartSpot->GetActorLocation();
-			SpawnRotation = StartSpot->GetActorRotation();
+			SpawnLocation = PlayerStart->GetActorLocation();
+			SpawnRotation = PlayerStart->GetActorRotation();
 		}
-		else
-		{
-			// StartSpot이 없으면 World의 기본 위치 사용
-			if (AActor* PlayerStart = FindPlayerStart(NewPlayer))
-			{
-				SpawnLocation = PlayerStart->GetActorLocation();
-				SpawnRotation = PlayerStart->GetActorRotation();
-			}
-		}
+	}
 
 	// Pawn 생성
 	FActorSpawnParameters SpawnParams;
@@ -213,7 +218,7 @@ APawn* ABRGameMode::SpawnPawnForPlayer(AController* NewPlayer, AActor* StartSpot
 	SpawnParams.Instigator = nullptr;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-	APawn* SpawnedPawn = GetWorld()->SpawnActor<APawn>(PawnClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
+	APawn* SpawnedPawn = GameMode->GetWorld()->SpawnActor<APawn>(PawnClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
 	
 	if (SpawnedPawn)
 	{
@@ -225,24 +230,36 @@ APawn* ABRGameMode::SpawnPawnForPlayer(AController* NewPlayer, AActor* StartSpot
 	{
 		UE_LOG(LogTemp, Error, TEXT("[Pawn 생성] 실패: %s"), *GetNameSafe(PawnClassToSpawn));
 		// 실패 시 기본 Pawn 생성
-		return Super::SpawnDefaultPawnFor(NewPlayer, StartSpot);
+		return GameMode->SpawnDefaultPawnFor(NewPlayer, StartSpot);
 	}
 
 	return SpawnedPawn;
 }
 
-APawn* ABRGameMode::SpawnDefaultPawnFor(AController* NewPlayer, AActor* StartSpot)
+// 인스턴스 버전 함수
+APawn* ABRGameMode::SpawnPawnForPlayerInstance(AController* NewPlayer, AActor* StartSpot)
 {
-	// 가상 함수는 내부 함수를 호출
-	return SpawnPawnForPlayer(NewPlayer, StartSpot);
+	return SpawnPawnForPlayer(this, NewPlayer, StartSpot);
 }
 
-void ABRGameMode::HandlePlayerPostLogin(APlayerController* NewPlayer)
+APawn* ABRGameMode::SpawnDefaultPawnFor(AController* NewPlayer, AActor* StartSpot)
 {
+	// 가상 함수는 인스턴스 함수를 호출
+	return SpawnPawnForPlayerInstance(NewPlayer, StartSpot);
+}
+
+// Static 버전 함수
+void ABRGameMode::HandlePlayerPostLogin(AGameModeBase* GameMode, APlayerController* NewPlayer)
+{
+	if (!GameMode || !NewPlayer)
+	{
+		return;
+	}
+
 	// PostLogin 로직을 여기로 이동
 	if (ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>())
 	{
-		if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+		if (ABRGameState* BRGameState = GameMode->GetGameState<ABRGameState>())
 		{
 			FString PlayerName = BRPS->GetPlayerName();
 			if (PlayerName.IsEmpty())
@@ -296,16 +313,25 @@ void ABRGameMode::HandlePlayerPostLogin(APlayerController* NewPlayer)
 	}
 
 	// 플레이어 목록 업데이트
-	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	if (GameMode)
 	{
-		BRGameState->UpdatePlayerList();
+		if (ABRGameState* BRGameState = GameMode->GetGameState<ABRGameState>())
+		{
+			BRGameState->UpdatePlayerList();
+		}
 	}
+}
+
+// 인스턴스 버전 함수
+void ABRGameMode::HandlePlayerPostLoginInstance(APlayerController* NewPlayer)
+{
+	HandlePlayerPostLogin(this, NewPlayer);
 }
 
 void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
-	HandlePlayerPostLogin(NewPlayer);
+	HandlePlayerPostLoginInstance(NewPlayer);
 }
 
 void ABRGameMode::HandlePlayerLogout(AController* Exiting)
@@ -412,5 +438,79 @@ void ABRGameMode::Logout(AController* Exiting)
 {
 	HandlePlayerLogout(Exiting);
 	Super::Logout(Exiting);
+}
+
+// Static 버전 함수
+void ABRGameMode::AttachUpperBodyToLowerBody(AGameModeBase* GameMode, APawn* UpperBodyPawn, APlayerController* UpperBodyController)
+{
+	if (!GameMode || !UpperBodyPawn || !UpperBodyController)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 실패: GameMode, UpperBodyPawn 또는 UpperBodyController가 유효하지 않습니다."));
+		return;
+	}
+
+	// PlayerState에서 연결된 하체 플레이어 인덱스 확인
+	if (ABRPlayerState* BRPS = UpperBodyController->GetPlayerState<ABRPlayerState>())
+	{
+		if (BRPS->ConnectedPlayerIndex < 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 연결된 하체 플레이어 인덱스가 없습니다."));
+			return;
+		}
+
+		// GameState에서 하체 플레이어 찾기
+		if (ABRGameState* BRGameState = GameMode->GetGameState<ABRGameState>())
+		{
+			if (BRPS->ConnectedPlayerIndex < BRGameState->PlayerArray.Num())
+			{
+				if (APlayerState* LowerBodyPS = BRGameState->PlayerArray[BRPS->ConnectedPlayerIndex])
+				{
+					// 하체 플레이어의 Controller 찾기
+					if (APlayerController* LowerBodyController = Cast<APlayerController>(LowerBodyPS->GetOwner()))
+					{
+						if (APawn* LowerBodyPawn = LowerBodyController->GetPawn())
+						{
+							// PlayerCharacter로 캐스팅하여 HeadMountPoint 찾기
+							if (APlayerCharacter* LowerBodyCharacter = Cast<APlayerCharacter>(LowerBodyPawn))
+							{
+								if (USceneComponent* HeadMountPoint = LowerBodyCharacter->HeadMountPoint)
+								{
+									// 상체를 하체의 HeadMountPoint에 연결
+									UpperBodyPawn->AttachToComponent(HeadMountPoint, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+									UE_LOG(LogTemp, Log, TEXT("[상체 연결] 성공: 상체 Pawn을 하체 캐릭터의 HeadMountPoint에 연결했습니다."));
+								}
+								else
+								{
+									UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 실패: 하체 캐릭터의 HeadMountPoint를 찾을 수 없습니다."));
+								}
+							}
+							else
+							{
+								UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 실패: 하체 Pawn을 PlayerCharacter로 캐스팅할 수 없습니다."));
+							}
+						}
+						else
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 실패: 하체 플레이어의 Pawn을 찾을 수 없습니다."));
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 실패: 하체 플레이어의 Controller를 찾을 수 없습니다."));
+					}
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[상체 연결] 실패: 연결된 하체 플레이어 인덱스(%d)가 유효하지 않습니다."), BRPS->ConnectedPlayerIndex);
+			}
+		}
+	}
+}
+
+// 인스턴스 버전 함수
+void ABRGameMode::AttachUpperBodyToLowerBodyInstance(APawn* UpperBodyPawn, APlayerController* UpperBodyController)
+{
+	AttachUpperBodyToLowerBody(this, UpperBodyPawn, UpperBodyController);
 }
 

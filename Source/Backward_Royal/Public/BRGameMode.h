@@ -37,17 +37,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Game")
 	void StartGame();
 
-	// 역할에 따라 Pawn 생성 (Blueprint에서 호출 가능)
+	// 역할에 따라 Pawn 생성 (Blueprint에서 호출 가능, static 버전)
+	UFUNCTION(BlueprintCallable, Category = "Pawn", meta = (CallInEditor = "true"))
+	static APawn* SpawnPawnForPlayer(AGameModeBase* GameMode, AController* NewPlayer, AActor* StartSpot);
+
+	// 역할에 따라 Pawn 생성 (인스턴스 버전)
 	UFUNCTION(BlueprintCallable, Category = "Pawn")
-	APawn* SpawnPawnForPlayer(AController* NewPlayer, AActor* StartSpot);
+	APawn* SpawnPawnForPlayerInstance(AController* NewPlayer, AActor* StartSpot);
 
 	// 역할에 따라 Pawn 생성 (가상 함수 오버라이드)
 	// 주의: AGameModeBase에는 이 함수가 없을 수 있으므로 override 제거
 	virtual APawn* SpawnDefaultPawnFor(AController* NewPlayer, AActor* StartSpot);
 
-	// 플레이어 로그인 처리 (Blueprint에서 호출 가능)
+	// 플레이어 로그인 처리 (Blueprint에서 호출 가능, static 버전)
+	UFUNCTION(BlueprintCallable, Category = "Player", meta = (CallInEditor = "true"))
+	static void HandlePlayerPostLogin(AGameModeBase* GameMode, APlayerController* NewPlayer);
+
+	// 플레이어 로그인 처리 (인스턴스 버전)
 	UFUNCTION(BlueprintCallable, Category = "Player")
-	void HandlePlayerPostLogin(APlayerController* NewPlayer);
+	void HandlePlayerPostLoginInstance(APlayerController* NewPlayer);
 
 	// 플레이어 로그인 처리 (가상 함수 오버라이드)
 	virtual void PostLogin(APlayerController* NewPlayer) override;
@@ -58,6 +66,14 @@ public:
 
 	// 플레이어 로그아웃 처리 (가상 함수 오버라이드)
 	virtual void Logout(AController* Exiting) override;
+
+	// 상체 Pawn을 하체 캐릭터에 연결 (Blueprint에서 호출 가능, static 버전)
+	UFUNCTION(BlueprintCallable, Category = "Pawn", meta = (CallInEditor = "true"))
+	static void AttachUpperBodyToLowerBody(AGameModeBase* GameMode, APawn* UpperBodyPawn, APlayerController* UpperBodyController);
+
+	// 상체 Pawn을 하체 캐릭터에 연결 (인스턴스 버전)
+	UFUNCTION(BlueprintCallable, Category = "Pawn")
+	void AttachUpperBodyToLowerBodyInstance(APawn* UpperBodyPawn, APlayerController* UpperBodyController);
 
 protected:
 	virtual void BeginPlay() override;
