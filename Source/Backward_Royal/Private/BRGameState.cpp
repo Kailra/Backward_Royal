@@ -92,6 +92,8 @@ void ABRGameState::AssignRandomTeams()
 	}
 
 	// 2인 1조로 팀 배정
+	TMap<int32, TArray<ABRPlayerState*>> TeamPlayers; // 팀 번호 -> 플레이어 배열
+	
 	for (int32 i = 0; i < NumPlayers; i++)
 	{
 		int32 TeamNumber = (i / 2) + 1; // 0,1 -> 팀1, 2,3 -> 팀2, ...
@@ -102,41 +104,78 @@ void ABRGameState::AssignRandomTeams()
 		}
 		Players[i]->SetTeamNumber(TeamNumber);
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] %s -> 팀 %d"), *PlayerName, TeamNumber);
+		
+		// 팀별 플레이어 목록 구성
+		if (!TeamPlayers.Contains(TeamNumber))
+		{
+			TeamPlayers.Add(TeamNumber, TArray<ABRPlayerState*>());
+		}
+		TeamPlayers[TeamNumber].Add(Players[i]);
 	}
 
-	// 팀 배정 후, 입장 순서(원래 PlayerArray 인덱스)에 따라 하체/상체 역할 재할당
-	// PlayerArray의 인덱스 순서대로 정렬된 플레이어 리스트 생성
-	TArray<ABRPlayerState*> SortedPlayers;
-	for (int32 i = 0; i < PlayerArray.Num(); i++)
+	// 팀별로 역할 할당
+	// 각 팀의 첫 번째 플레이어 = 하체, 두 번째 플레이어 = 상체
+	for (auto& TeamPair : TeamPlayers)
 	{
-		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerArray[i]))
+		int32 TeamNumber = TeamPair.Key;
+		TArray<ABRPlayerState*>& TeamPlayerList = TeamPair.Value;
+		
+		if (TeamPlayerList.Num() < 2)
 		{
-			SortedPlayers.Add(BRPS);
+			UE_LOG(LogTemp, Warning, TEXT("[팀 역할 할당] 팀 %d에 플레이어가 2명 미만입니다. 역할 할당을 건너뜁니다."), TeamNumber);
+			continue;
 		}
-	}
-
-	// 입장 순서대로 하체/상체 역할 할당
-	for (int32 i = 0; i < SortedPlayers.Num(); i++)
-	{
-		if (i == 0)
+		
+		// 팀의 첫 번째 플레이어 = 하체
+		ABRPlayerState* LowerBodyPS = TeamPlayerList[0];
+		// 팀의 두 번째 플레이어 = 상체
+		ABRPlayerState* UpperBodyPS = TeamPlayerList[1];
+		
+		FString LowerBodyName = LowerBodyPS->GetPlayerName();
+		if (LowerBodyName.IsEmpty())
 		{
-			// 첫 번째 플레이어 = 하체
-			SortedPlayers[i]->SetPlayerRole(true, -1);
+			LowerBodyName = FString::Printf(TEXT("Player %d"), 1);
 		}
-		else if (i % 2 == 0)
+		
+		FString UpperBodyName = UpperBodyPS->GetPlayerName();
+		if (UpperBodyName.IsEmpty())
 		{
-			// 홀수 번째 플레이어 (인덱스가 짝수) = 하체
-			SortedPlayers[i]->SetPlayerRole(true, -1);
+			UpperBodyName = FString::Printf(TEXT("Player %d"), 2);
 		}
-		else
+		
+		// PlayerArray에서의 인덱스 찾기
+		int32 LowerBodyIndex = -1;
+		int32 UpperBodyIndex = -1;
+		
+		for (int32 j = 0; j < PlayerArray.Num(); j++)
 		{
-			// 짝수 번째 플레이어 = 이전 플레이어의 상체
-			int32 LowerBodyPlayerIndex = i - 1;
-			if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < SortedPlayers.Num())
+			if (PlayerArray[j] == LowerBodyPS)
 			{
-				SortedPlayers[i]->SetPlayerRole(false, LowerBodyPlayerIndex);
-				SortedPlayers[LowerBodyPlayerIndex]->SetPlayerRole(true, i);
+				LowerBodyIndex = j;
 			}
+			else if (PlayerArray[j] == UpperBodyPS)
+			{
+				UpperBodyIndex = j;
+			}
+			
+			// 두 인덱스를 모두 찾았으면 루프 종료
+			if (LowerBodyIndex >= 0 && UpperBodyIndex >= 0)
+			{
+				break;
+			}
+		}
+		
+		// 하체 역할 할당
+		LowerBodyPS->SetPlayerRole(true, UpperBodyIndex >= 0 ? UpperBodyIndex : -1);
+		UE_LOG(LogTemp, Log, TEXT("[팀 역할 할당] 팀 %d의 첫 번째 플레이어 %s: 하체 역할 (연결된 상체 인덱스: %d)"), 
+			TeamNumber, *LowerBodyName, UpperBodyIndex);
+		
+		// 상체 역할 할당
+		if (UpperBodyIndex >= 0)
+		{
+			UpperBodyPS->SetPlayerRole(false, LowerBodyIndex >= 0 ? LowerBodyIndex : -1);
+			UE_LOG(LogTemp, Log, TEXT("[팀 역할 할당] 팀 %d의 두 번째 플레이어 %s: 상체 역할 (연결된 하체 인덱스: %d)"), 
+				TeamNumber, *UpperBodyName, LowerBodyIndex);
 		}
 	}
 

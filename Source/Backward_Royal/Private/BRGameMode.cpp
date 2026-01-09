@@ -7,6 +7,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/Engine.h"
+#include "GameFramework/PlayerStart.h"
+#include "UObject/ConstructorHelpers.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -18,6 +21,20 @@ ABRGameMode::ABRGameMode()
 
 	// 리슨 서버 설정
 	bUseSeamlessTravel = true;
+
+	// Pawn 클래스 경로 설정 (Blueprint 클래스)
+	static ConstructorHelpers::FClassFinder<APawn> LowerBodyPawnBPClass(TEXT("/Game/Main/Character/PlayerCharacter/LowerBody/BP_LowerBodyCharacter"));
+	static ConstructorHelpers::FClassFinder<APawn> UpperBodyPawnBPClass(TEXT("/Game/Main/Character/PlayerCharacter/UpperBody/BP_UpperBodyPawn"));
+
+	if (LowerBodyPawnBPClass.Class != nullptr)
+	{
+		LowerBodyPawnClass = LowerBodyPawnBPClass.Class;
+	}
+
+	if (UpperBodyPawnBPClass.Class != nullptr)
+	{
+		UpperBodyPawnClass = UpperBodyPawnBPClass.Class;
+	}
 }
 
 void ABRGameMode::BeginPlay()
@@ -29,174 +46,6 @@ void ABRGameMode::BeginPlay()
 	{
 		BRGameState->MinPlayers = MinPlayers;
 		BRGameState->MaxPlayers = MaxPlayers;
-	}
-}
-
-void ABRGameMode::PostLogin(APlayerController* NewPlayer)
-{
-	Super::PostLogin(NewPlayer);
-
-	if (ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>())
-	{
-		if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
-		{
-			FString PlayerName = BRPS->GetPlayerName();
-			if (PlayerName.IsEmpty())
-			{
-				PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
-			}
-			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] %s가 게임에 입장했습니다. (현재 인원: %d/%d)"), 
-				*PlayerName, BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
-			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 참고: 실제 방(세션)을 만들려면 'CreateRoom [방이름]' 명령어를 사용하세요."));
-			
-			// 첫 번째 플레이어를 방장으로 설정
-			if (BRGameState->PlayerArray.Num() == 1)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 첫 번째 플레이어이므로 방장으로 설정됩니다."));
-				BRPS->SetIsHost(true);
-			}
-
-			// 플레이어 역할 할당 (하체/상체)
-			int32 CurrentPlayerIndex = BRGameState->PlayerArray.Num() - 1; // 0부터 시작
-			
-			if (CurrentPlayerIndex == 0)
-			{
-				// 첫 번째 플레이어 = 하체
-				BRPS->SetPlayerRole(true, -1); // 하체, 연결된 상체 없음
-				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
-			}
-			else if (CurrentPlayerIndex % 2 == 0)
-			{
-				// 홀수 번째 플레이어 (인덱스가 짝수, 0부터 시작하므로) = 하체
-				BRPS->SetPlayerRole(true, -1); // 하체, 연결된 상체 없음
-				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
-			}
-			else
-			{
-				// 짝수 번째 플레이어 = 이전 플레이어의 상체
-				int32 LowerBodyPlayerIndex = CurrentPlayerIndex - 1;
-				if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
-				{
-					if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
-					{
-						// 상체 역할 할당
-						BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
-						// 하체 플레이어의 연결된 상체 인덱스 업데이트
-						LowerBodyPS->SetPlayerRole(true, CurrentPlayerIndex);
-						UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 상체 역할 할당 (하체 플레이어 인덱스: %d)"), 
-							*PlayerName, LowerBodyPlayerIndex);
-					}
-				}
-			}
-		}
-	}
-
-	// 플레이어 목록 업데이트
-	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
-	{
-		BRGameState->UpdatePlayerList();
-	}
-}
-
-void ABRGameMode::Logout(AController* Exiting)
-{
-	// 방장이 나갔을 경우 새로운 방장 지정 및 역할 재할당
-	if (ABRPlayerState* ExitingPS = Exiting->GetPlayerState<ABRPlayerState>())
-	{
-		FString ExitingPlayerName = ExitingPS->GetPlayerName();
-		if (ExitingPlayerName.IsEmpty())
-		{
-			ExitingPlayerName = TEXT("Unknown Player");
-		}
-		
-		if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
-		{
-			UE_LOG(LogTemp, Log, TEXT("[플레이어 퇴장] %s가 방을 나갔습니다. (남은 인원: %d/%d)"), 
-				*ExitingPlayerName, BRGameState->PlayerArray.Num() - 1, BRGameState->MaxPlayers);
-			
-			// 나가는 플레이어가 상체인 경우, 연결된 하체 플레이어의 연결 해제
-			if (!ExitingPS->bIsLowerBody && ExitingPS->ConnectedPlayerIndex >= 0)
-			{
-				if (ExitingPS->ConnectedPlayerIndex < BRGameState->PlayerArray.Num())
-				{
-					if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[ExitingPS->ConnectedPlayerIndex]))
-					{
-						LowerBodyPS->SetPlayerRole(true, -1); // 연결된 상체 없음
-						UE_LOG(LogTemp, Log, TEXT("[플레이어 퇴장] 하체 플레이어의 상체 연결 해제"));
-					}
-				}
-			}
-			// 나가는 플레이어가 하체인 경우, 연결된 상체 플레이어도 처리
-			else if (ExitingPS->bIsLowerBody && ExitingPS->ConnectedPlayerIndex >= 0)
-			{
-				if (ExitingPS->ConnectedPlayerIndex < BRGameState->PlayerArray.Num())
-				{
-					if (ABRPlayerState* UpperBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[ExitingPS->ConnectedPlayerIndex]))
-					{
-						// 상체 플레이어도 나가야 하거나, 다른 하체에 연결시킬 수 있음
-						// 여기서는 단순히 연결 해제만 함
-						UpperBodyPS->SetPlayerRole(false, -1);
-						UE_LOG(LogTemp, Log, TEXT("[플레이어 퇴장] 상체 플레이어의 하체 연결 해제"));
-					}
-				}
-			}
-			
-			if (ExitingPS->bIsHost && BRGameState->PlayerArray.Num() > 1)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[플레이어 퇴장] 방장이 나갔으므로 새로운 방장을 지정합니다."));
-				// 다음 플레이어를 방장으로 설정
-				for (APlayerState* PS : BRGameState->PlayerArray)
-				{
-					if (PS != ExitingPS)
-					{
-						if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
-						{
-							BRPS->SetIsHost(true);
-							break;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	Super::Logout(Exiting);
-
-	// 플레이어 목록 업데이트 및 역할 재할당
-	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
-	{
-		BRGameState->UpdatePlayerList();
-		
-		// 남은 플레이어들의 역할 재할당 (순서대로)
-		for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
-		{
-			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
-			{
-				if (i == 0)
-				{
-					// 첫 번째 플레이어 = 하체
-					BRPS->SetPlayerRole(true, -1);
-				}
-				else if (i % 2 == 0)
-				{
-					// 홀수 번째 플레이어 (인덱스가 짝수) = 하체
-					BRPS->SetPlayerRole(true, -1);
-				}
-				else
-				{
-					// 짝수 번째 플레이어 = 이전 플레이어의 상체
-					int32 LowerBodyPlayerIndex = i - 1;
-					if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
-					{
-						if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
-						{
-							BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
-							LowerBodyPS->SetPlayerRole(true, i);
-						}
-					}
-				}
-			}
-		}
 	}
 }
 
@@ -299,5 +148,269 @@ void ABRGameMode::StartGame()
 	{
 		World->ServerTravel(TravelURL);
 	}
+}
+
+APawn* ABRGameMode::SpawnPawnForPlayer(AController* NewPlayer, AActor* StartSpot)
+{
+	if (!NewPlayer || !HasAuthority())
+	{
+		return nullptr;
+	}
+
+	// PlayerState에서 역할 확인
+	ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>();
+	if (!BRPS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Pawn 생성] PlayerState를 찾을 수 없습니다. 기본 Pawn을 생성합니다."));
+		return Super::SpawnDefaultPawnFor(NewPlayer, StartSpot);
+	}
+
+	// 역할에 따라 다른 Pawn 클래스 선택
+	TSubclassOf<APawn> PawnClassToSpawn = nullptr;
+	
+	if (BRPS->bIsLowerBody)
+	{
+		// 하체 역할
+		PawnClassToSpawn = LowerBodyPawnClass;
+		UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 하체 Pawn 생성: %s"), *GetNameSafe(NewPlayer));
+	}
+	else
+	{
+		// 상체 역할
+		PawnClassToSpawn = UpperBodyPawnClass;
+		UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 상체 Pawn 생성: %s"), *GetNameSafe(NewPlayer));
+	}
+
+	// Pawn 클래스가 설정되지 않은 경우 기본 클래스 사용
+	if (!PawnClassToSpawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Pawn 생성] Pawn 클래스가 설정되지 않았습니다. 기본 Pawn을 생성합니다."));
+		return Super::SpawnDefaultPawnFor(NewPlayer, StartSpot);
+	}
+
+	// Spawn 위치 및 회전 결정
+	FVector SpawnLocation = FVector::ZeroVector;
+	FRotator SpawnRotation = FRotator::ZeroRotator;
+	
+		if (StartSpot)
+		{
+			SpawnLocation = StartSpot->GetActorLocation();
+			SpawnRotation = StartSpot->GetActorRotation();
+		}
+		else
+		{
+			// StartSpot이 없으면 World의 기본 위치 사용
+			if (AActor* PlayerStart = FindPlayerStart(NewPlayer))
+			{
+				SpawnLocation = PlayerStart->GetActorLocation();
+				SpawnRotation = PlayerStart->GetActorRotation();
+			}
+		}
+
+	// Pawn 생성
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = NewPlayer;
+	SpawnParams.Instigator = nullptr;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	APawn* SpawnedPawn = GetWorld()->SpawnActor<APawn>(PawnClassToSpawn, SpawnLocation, SpawnRotation, SpawnParams);
+	
+	if (SpawnedPawn)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Pawn 생성] 성공: %s (역할: %s)"), 
+			*GetNameSafe(SpawnedPawn), 
+			BRPS->bIsLowerBody ? TEXT("하체") : TEXT("상체"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Pawn 생성] 실패: %s"), *GetNameSafe(PawnClassToSpawn));
+		// 실패 시 기본 Pawn 생성
+		return Super::SpawnDefaultPawnFor(NewPlayer, StartSpot);
+	}
+
+	return SpawnedPawn;
+}
+
+APawn* ABRGameMode::SpawnDefaultPawnFor(AController* NewPlayer, AActor* StartSpot)
+{
+	// 가상 함수는 내부 함수를 호출
+	return SpawnPawnForPlayer(NewPlayer, StartSpot);
+}
+
+void ABRGameMode::HandlePlayerPostLogin(APlayerController* NewPlayer)
+{
+	// PostLogin 로직을 여기로 이동
+	if (ABRPlayerState* BRPS = NewPlayer->GetPlayerState<ABRPlayerState>())
+	{
+		if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+		{
+			FString PlayerName = BRPS->GetPlayerName();
+			if (PlayerName.IsEmpty())
+			{
+				PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
+			}
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] %s가 게임에 입장했습니다. (현재 인원: %d/%d)"), 
+				*PlayerName, BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 참고: 실제 방(세션)을 만들려면 'CreateRoom [방이름]' 명령어를 사용하세요."));
+			
+			// 첫 번째 플레이어를 방장으로 설정
+			if (BRGameState->PlayerArray.Num() == 1)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 첫 번째 플레이어이므로 방장으로 설정됩니다."));
+				BRPS->SetIsHost(true);
+			}
+
+			// 플레이어 역할 할당 (하체/상체)
+			int32 CurrentPlayerIndex = BRGameState->PlayerArray.Num() - 1; // 0부터 시작
+			
+			if (CurrentPlayerIndex == 0)
+			{
+				// 첫 번째 플레이어 = 하체
+				BRPS->SetPlayerRole(true, -1); // 하체, 연결된 상체 없음
+				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
+			}
+			else if (CurrentPlayerIndex % 2 == 0)
+			{
+				// 홀수 번째 플레이어 (인덱스가 짝수, 0부터 시작하므로) = 하체
+				BRPS->SetPlayerRole(true, -1); // 하체, 연결된 상체 없음
+				UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
+			}
+			else
+			{
+				// 짝수 번째 플레이어 = 이전 플레이어의 상체
+				int32 LowerBodyPlayerIndex = CurrentPlayerIndex - 1;
+				if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
+				{
+					if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
+					{
+						// 상체 역할 할당
+						BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
+						// 하체 플레이어의 연결된 상체 인덱스 업데이트
+						LowerBodyPS->SetPlayerRole(true, CurrentPlayerIndex);
+						UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 상체 역할 할당 (하체 플레이어 인덱스: %d)"), 
+							*PlayerName, LowerBodyPlayerIndex);
+					}
+				}
+			}
+		}
+	}
+
+	// 플레이어 목록 업데이트
+	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	{
+		BRGameState->UpdatePlayerList();
+	}
+}
+
+void ABRGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+	HandlePlayerPostLogin(NewPlayer);
+}
+
+void ABRGameMode::HandlePlayerLogout(AController* Exiting)
+{
+	// Logout 로직을 여기로 이동
+	if (ABRPlayerState* ExitingPS = Exiting->GetPlayerState<ABRPlayerState>())
+	{
+		FString ExitingPlayerName = ExitingPS->GetPlayerName();
+		if (ExitingPlayerName.IsEmpty())
+		{
+			ExitingPlayerName = TEXT("Unknown Player");
+		}
+		
+		if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+		{
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 퇴장] %s가 방을 나갔습니다. (남은 인원: %d/%d)"), 
+				*ExitingPlayerName, BRGameState->PlayerArray.Num() - 1, BRGameState->MaxPlayers);
+			
+			// 나가는 플레이어가 상체인 경우, 연결된 하체 플레이어의 연결 해제
+			if (!ExitingPS->bIsLowerBody && ExitingPS->ConnectedPlayerIndex >= 0)
+			{
+				if (ExitingPS->ConnectedPlayerIndex < BRGameState->PlayerArray.Num())
+				{
+					if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[ExitingPS->ConnectedPlayerIndex]))
+					{
+						LowerBodyPS->SetPlayerRole(true, -1); // 연결된 상체 없음
+						UE_LOG(LogTemp, Log, TEXT("[플레이어 퇴장] 하체 플레이어의 상체 연결 해제"));
+					}
+				}
+			}
+			// 나가는 플레이어가 하체인 경우, 연결된 상체 플레이어도 처리
+			else if (ExitingPS->bIsLowerBody && ExitingPS->ConnectedPlayerIndex >= 0)
+			{
+				if (ExitingPS->ConnectedPlayerIndex < BRGameState->PlayerArray.Num())
+				{
+					if (ABRPlayerState* UpperBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[ExitingPS->ConnectedPlayerIndex]))
+					{
+						// 상체 플레이어도 나가야 하거나, 다른 하체에 연결시킬 수 있음
+						// 여기서는 단순히 연결 해제만 함
+						UpperBodyPS->SetPlayerRole(false, -1);
+						UE_LOG(LogTemp, Log, TEXT("[플레이어 퇴장] 상체 플레이어의 하체 연결 해제"));
+					}
+				}
+			}
+			
+			if (ExitingPS->bIsHost && BRGameState->PlayerArray.Num() > 1)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[플레이어 퇴장] 방장이 나갔으므로 새로운 방장을 지정합니다."));
+				// 다음 플레이어를 방장으로 설정
+				for (APlayerState* PS : BRGameState->PlayerArray)
+				{
+					if (PS != ExitingPS)
+					{
+						if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+						{
+							BRPS->SetIsHost(true);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 플레이어 목록 업데이트 및 역할 재할당
+	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	{
+		BRGameState->UpdatePlayerList();
+		
+		// 남은 플레이어들의 역할 재할당 (순서대로)
+		for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
+			{
+				if (i == 0)
+				{
+					// 첫 번째 플레이어 = 하체
+					BRPS->SetPlayerRole(true, -1);
+				}
+				else if (i % 2 == 0)
+				{
+					// 홀수 번째 플레이어 (인덱스가 짝수) = 하체
+					BRPS->SetPlayerRole(true, -1);
+				}
+				else
+				{
+					// 짝수 번째 플레이어 = 이전 플레이어의 상체
+					int32 LowerBodyPlayerIndex = i - 1;
+					if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
+					{
+						if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
+						{
+							BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
+							LowerBodyPS->SetPlayerRole(true, i);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+void ABRGameMode::Logout(AController* Exiting)
+{
+	HandlePlayerLogout(Exiting);
+	Super::Logout(Exiting);
 }
 
