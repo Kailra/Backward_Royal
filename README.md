@@ -7,6 +7,7 @@
 [![Google Drive](https://img.shields.io/badge/Google_Drive-프로젝트_폴더-FBBC05?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/1etBfwQcma6jF_t84D6MC_Kz6qs5d9qQz?usp=sharing)
 [![Google Docs](https://img.shields.io/badge/Google_Docs-기획서-4285F4?style=for-the-badge&logo=googledocs&logoColor=white)](https://docs.google.com/document/d/1gOZUQdxsdSx1_8nlnFHAVHUjaaqVJ2rRD9nGF-k7c9Y/edit?usp=sharing)
 [![Google Docs](https://img.shields.io/badge/Google_Docs-협업_규칙-34A853?style=for-the-badge&logo=googledocs&logoColor=white)](https://docs.google.com/document/d/1NX_WE08bDh2432Rs42QQr6q8Jr_KsDkwkf30p7JBhzk/edit?usp=sharing)
+[![Google Docs](https://img.shields.io/badge/Google_Docs-기술_문서-1A7D90?style=for-the-badge&logo=googledocs&logoColor=white)](https://docs.google.com/document/d/1JPuusqn3770yIvaBkk9mt0OYxdQ8c-YQrQeYgs1FwiU/edit?usp=sharing)
 [![Jira](https://img.shields.io/badge/Jira-스케줄_관리-0052CC?style=for-the-badge&logo=jirasoftware&logoColor=white)](https://giman979.atlassian.net/jira/software/projects/SCRUM/summary)
 
 ---
@@ -48,4 +49,4 @@
 
 
 ---
-최종 업데이트: 2026-01-07
+최종 업데이트: 2026-01-12
