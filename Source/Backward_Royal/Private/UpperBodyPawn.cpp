@@ -1,4 +1,4 @@
-#include "UpperBodyPawn.h"
+ï»¿#include "UpperBodyPawn.h"
 #include "PlayerCharacter.h"
 #include "DropItem.h"
 #include "InteractableInterface.h"
@@ -8,7 +8,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
-#include "Components/SkeletalMeshComponent.h" 
+#include "BRAttackComponent.h"
+#include "BRPlayerController.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogUpperBodyPawn, Log, All);
@@ -16,7 +18,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogUpperBodyPawn, Log, All);
 
 AUpperBodyPawn::AUpperBodyPawn()
 {
-	// [Áß¿ä] Æ½ ±×·ì ¼³Á¤: ¸ğµç ¹°¸®/ÀÌµ¿ °è»êÀÌ ³¡³­ ÈÄ Ä«¸Ş¶ó¸¦ °»½ÅÇØ¾ß ¶³¸²ÀÌ ¾ø½À´Ï´Ù.
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickGroup = TG_PostUpdateWork;
 
@@ -25,12 +26,7 @@ AUpperBodyPawn::AUpperBodyPawn()
 	FrontCameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("FrontCameraBoom"));
 	FrontCameraBoom->SetupAttachment(RootComponent);
 
-	// =================================================================
-	// [ÇÙ½É 1] Àı´ë È¸Àü »ç¿ë (Absolute Rotation)
-	// ¸öÅë(Ã´Ãß)ÀÌ ¾Ö´Ï¸ŞÀÌ¼ÇÀ¸·Î Èçµé·Áµµ, Ä«¸Ş¶ó´Â ¸¶¿ì½º ¹æÇâÀ» ±»°ÇÈ÷ À¯ÁöÇÕ´Ï´Ù.
-	// =================================================================
 	FrontCameraBoom->SetUsingAbsoluteRotation(true);
-
 	FrontCameraBoom->bUsePawnControlRotation = true;
 	FrontCameraBoom->bDoCollisionTest = false;
 	FrontCameraBoom->TargetArmLength = 0.0f;
@@ -39,10 +35,6 @@ AUpperBodyPawn::AUpperBodyPawn()
 	FrontCameraBoom->bInheritYaw = true;
 	FrontCameraBoom->bInheritRoll = false;
 
-	// =================================================================
-	// [ÇÙ½É 2] Ä«¸Ş¶ó ·º(Lag) ²ô±â
-	// °ø°İ ¼Óµµ°¡ ºü¸¦ ¶§ Ä«¸Ş¶ó°¡ µÚÃÄÁ®¼­ Ä³¸¯ÅÍ°¡ È­¸é ¹ÛÀ¸·Î ³ª°¡´Â Çö»óÀ» ¹æÁöÇÕ´Ï´Ù.
-	// =================================================================
 	FrontCameraBoom->bEnableCameraLag = false;
 	FrontCameraBoom->bEnableCameraRotationLag = false;
 
@@ -52,7 +44,6 @@ AUpperBodyPawn::AUpperBodyPawn()
 
 	LastBodyYaw = 0.0f;
 	ParentBodyCharacter = nullptr;
-
 	InteractionDistance = 300.0f;
 }
 
@@ -60,7 +51,7 @@ void AUpperBodyPawn::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// ÀÔ·Â ¸ÅÇÎ µî·Ï
+	// ì…ë ¥ ë§¤í•‘ ë“±ë¡
 	if (APlayerController* PC = Cast<APlayerController>(Controller))
 	{
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
@@ -71,13 +62,35 @@ void AUpperBodyPawn::BeginPlay()
 			}
 		}
 	}
+
+	if (GEngine)
+	{
+		// 1. í˜„ì¬ ë„¤íŠ¸ì›Œí¬ ìƒíƒœ í™•ì¸
+		FString NetRole = TEXT("None");
+		switch (GetLocalRole())
+		{
+		case ROLE_Authority: NetRole = TEXT("Authority (Server)"); break;
+		case ROLE_AutonomousProxy: NetRole = TEXT("AutonomousProxy (Client)"); break;
+		case ROLE_SimulatedProxy: NetRole = TEXT("SimulatedProxy (Other)"); break;
+		}
+
+		// 2. ì†Œìœ ì ë° ì»¨íŠ¸ë¡¤ëŸ¬ í™•ì¸ (ì´ì œ ì•ˆì „í•¨)
+		FString OwnerName = GetOwner() ? GetOwner()->GetName() : TEXT("No Owner");
+		FString ControllerName = GetController() ? GetController()->GetName() : TEXT("No Controller");
+
+		// 3. í™”ë©´ ì¶œë ¥
+		FString DebugMsg = FString::Printf(TEXT("[%s] Pawn: %s | Owner: %s | Controller: %s"),
+			*NetRole, *GetName(), *OwnerName, *ControllerName);
+
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, DebugMsg);
+	}
 }
 
 void AUpperBodyPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 1. ºÎ¸ğ(¸öÅë) Ã£±â ¹× ÃÊ±âÈ­
+	// 1. ë¶€ëª¨(ëª¸í†µ) ì°¾ê¸° ë° ì´ˆê¸°í™”
 	if (!ParentBodyCharacter)
 	{
 		ParentBodyCharacter = Cast<APlayerCharacter>(GetAttachParentActor());
@@ -87,7 +100,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 			float CurrentBodyYaw = ParentBodyCharacter->GetActorRotation().Yaw;
 			FRotator NewRotation = Controller->GetControlRotation();
 
-			// [º¹±¸] Ä«¸Ş¶ó ÃÊ±â À§Ä¡´Â ¾ûµ¢ÀÌ(µî) ÂÊÀÌ¾î¾ß ÇÏ¹Ç·Î 180µµ À¯Áö°¡ ¸Â½À´Ï´Ù.
+			// [ë³µêµ¬] ì¹´ë©”ë¼ ì´ˆê¸° ìœ„ì¹˜ëŠ” ì—‰ë©ì´(ë“±) ìª½ì´ì–´ì•¼ í•˜ë¯€ë¡œ 180ë„ ìœ ì§€ê°€ ë§ìŠµë‹ˆë‹¤.
 			NewRotation.Yaw = CurrentBodyYaw + 180.0f;
 
 			Controller->SetControlRotation(NewRotation);
@@ -98,7 +111,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 
 	if (!ParentBodyCharacter || !Controller) return;
 
-	// 2. ¸öÅë È¸Àü µ¿±âÈ­ (ÅÊÅ©°¡ È¸ÀüÇÏ¸é »óÃ¼ Ä«¸Ş¶óµµ °°ÀÌ È¸Àü)
+	// 2. ëª¸í†µ íšŒì „ ë™ê¸°í™” (íƒ±í¬ê°€ íšŒì „í•˜ë©´ ìƒì²´ ì¹´ë©”ë¼ë„ ê°™ì´ íšŒì „)
 	float CurrentBodyYaw = ParentBodyCharacter->GetActorRotation().Yaw;
 	float DeltaYaw = CurrentBodyYaw - LastBodyYaw;
 
@@ -112,21 +125,21 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	LastBodyYaw = CurrentBodyYaw;
 
 	// -----------------------------------------------------------------
-	// [°¢µµ Á¦ÇÑ ·ÎÁ÷]
+	// [ê°ë„ ì œí•œ ë¡œì§]
 	// -----------------------------------------------------------------
 	FRotator CurrentControlRot = Controller->GetControlRotation();
 
-	// 3. ÁÂ¿ì(Yaw) ½Ã¾ß°¢ Á¦ÇÑ (µî µÚ ±âÁØ)
-	// [º¹±¸] ±âÁØÁ¡µµ ´Ù½Ã +180(µî µÚ)À¸·Î Àâ½À´Ï´Ù.
+	// 3. ì¢Œìš°(Yaw) ì‹œì•¼ê° ì œí•œ (ë“± ë’¤ ê¸°ì¤€)
+	// [ë³µêµ¬] ê¸°ì¤€ì ë„ ë‹¤ì‹œ +180(ë“± ë’¤)ìœ¼ë¡œ ì¡ìŠµë‹ˆë‹¤.
 	float BodyFrontYaw = ParentBodyCharacter->GetActorRotation().Yaw + 180.0f;
 	float RelativeYaw = FRotator::NormalizeAxis(CurrentControlRot.Yaw - BodyFrontYaw);
 	float ClampedYaw = FMath::Clamp(RelativeYaw, -90.0f, 90.0f);
 
-	// 4. À§¾Æ·¡(Pitch) ½Ã¾ß°¢ Á¦ÇÑ
+	// 4. ìœ„ì•„ë˜(Pitch) ì‹œì•¼ê° ì œí•œ
 	float CurrentPitch = FRotator::NormalizeAxis(CurrentControlRot.Pitch);
 	float ClampedPitch = FMath::Clamp(CurrentPitch, -90.0f, 90.0f);
 
-	// 5. Á¦ÇÑµÈ °¢µµ Àû¿ë
+	// 5. ì œí•œëœ ê°ë„ ì ìš©
 	bool bYawChanged = !FMath::IsNearlyEqual(RelativeYaw, ClampedYaw);
 	bool bPitchChanged = !FMath::IsNearlyEqual(CurrentPitch, ClampedPitch);
 
@@ -138,14 +151,14 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	}
 
 	// =================================================================
-	// [ÁøÂ¥ ÇØ°áÃ¥] »óÃ¼ ½Ã¼± Àü´Ş (¸Ó¸® ¹æÇâ ±³Á¤)
+	// [ì§„ì§œ í•´ê²°ì±…] ìƒì²´ ì‹œì„  ì „ë‹¬ (ë¨¸ë¦¬ ë°©í–¥ êµì •)
 	// =================================================================
 	if (ParentBodyCharacter)
 	{
-		// ¹®Á¦ ¿øÀÎ: Ä«¸Ş¶ó´Â 180µµ(µî µÚ)¸¦ º¸°í ÀÖ´Âµ¥, ±× °ªÀ» ±×´ë·Î ¸Ó¸®¿¡ ÁÖ´Ï±î
-		// ¸Ó¸®µµ 180µµ µÚ¸¦ ºÁ¼­ "¿¢¼Ò½Ã½ºÆ®"°¡ µÇ´Â °ÍÀÔ´Ï´Ù.
+		// ë¬¸ì œ ì›ì¸: ì¹´ë©”ë¼ëŠ” 180ë„(ë“± ë’¤)ë¥¼ ë³´ê³  ìˆëŠ”ë°, ê·¸ ê°’ì„ ê·¸ëŒ€ë¡œ ë¨¸ë¦¬ì— ì£¼ë‹ˆê¹Œ
+		// ë¨¸ë¦¬ë„ 180ë„ ë’¤ë¥¼ ë´ì„œ "ì—‘ì†Œì‹œìŠ¤íŠ¸"ê°€ ë˜ëŠ” ê²ƒì…ë‹ˆë‹¤.
 
-		// ÇØ°á: ¸Ó¸®(¾Ö´Ï¸ŞÀÌ¼Ç)¿¡ Àü´ŞÇÒ ¶§¸¸ 180µµ¸¦ ´Ù½Ã µÚÁı¾î¼­ "¾Õ"À» º¸°Ô ¸¸µì´Ï´Ù.
+		// í•´ê²°: ë¨¸ë¦¬(ì• ë‹ˆë©”ì´ì…˜)ì— ì „ë‹¬í•  ë•Œë§Œ 180ë„ë¥¼ ë‹¤ì‹œ ë’¤ì§‘ì–´ì„œ "ì•"ì„ ë³´ê²Œ ë§Œë“­ë‹ˆë‹¤.
 		FRotator TargetHeadRot = Controller->GetControlRotation();
 		TargetHeadRot.Yaw += 180.0f;
 
@@ -153,8 +166,36 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	}
 }
 
+void AUpperBodyPawn::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	if (IsLocallyControlled())
+	{
+		// 1. ì…ë ¥ ì»´í¬ë„ŒíŠ¸ ì¬ì„¤ì • (ì¡°ì¢…ê¸° ì—­í•  ë³µêµ¬)
+		if (InputComponent)
+		{
+			SetupPlayerInputComponent(InputComponent);
+			UE_LOG(LogTemp, Warning, TEXT("ìƒì²´ ì—­í•  ë³µê·€: ì…ë ¥ ë°”ì¸ë”© ì¬ì„¤ì • ì™„ë£Œ"));
+		}
+
+		// 2. ìƒì²´ìš© IMC(ì…ë ¥ ë§¤í•‘) ê°•ì œ ë¡œë“œ
+		if (ABRPlayerController* PC = Cast<ABRPlayerController>(GetController()))
+		{
+			PC->SetupRoleInput(false); // ìƒì²´ëŠ” false
+			PC->SetIgnoreMoveInput(true); // ìƒì²´ ì¡°ì¢… ì¤‘ì—ëŠ” í•˜ì²´ ì´ë™ ì…ë ¥ ë¬´ì‹œ(í•„ìš”ì‹œ)
+			PC->SetViewTarget(this);
+		}
+	}
+}
+
 void AUpperBodyPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	if (!PlayerInputComponent) return;
+
+	// ê¸°ì¡´ ë°”ì¸ë”© ì œê±° (ì¤‘ìš”)
+	PlayerInputComponent->ClearActionBindings();
+
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
@@ -174,71 +215,72 @@ void AUpperBodyPawn::Look(const FInputActionValue& Value)
 {
 	FVector2D LookAxisVector = Value.Get<FVector2D>();
 	AddControllerYawInput(LookAxisVector.X);
-	AddControllerPitchInput(LookAxisVector.Y * -1.0f); // ¸¶¿ì½º YÃà ¹İÀü (À§·Î ¿Ã¸®¸é À§¸¦ º½)
+	AddControllerPitchInput(LookAxisVector.Y * -1.0f); // ë§ˆìš°ìŠ¤ Yì¶• ë°˜ì „ (ìœ„ë¡œ ì˜¬ë¦¬ë©´ ìœ„ë¥¼ ë´„)
 
 }
 
 void AUpperBodyPawn::Attack(const FInputActionValue& Value)
 {
-	// 1. ÀÌ¹Ì °ø°İ ÁßÀÌ¸é Áï½Ã ¸®ÅÏÇÏ¿© ÀÔ·ÂÀ» ¹«½Ã
-	if (bIsAttacking) return;
+	// 1. ì†Œìœ ì(Owner) ì´ë¦„ í™•ì¸
+	AActor* CurrentOwner = GetOwner();
+	FString OwnerName = CurrentOwner ? CurrentOwner->GetName() : TEXT("No Owner");
 
-	if (!ParentBodyCharacter)
+	// 2. ì»¨íŠ¸ë¡¤ëŸ¬ ë° ê¶Œí•œ í™•ì¸
+	FString ControllerName = GetController() ? GetController()->GetName() : TEXT("No Controller");
+	FString NetRole = (GetLocalRole() == ROLE_Authority) ? TEXT("Authority (Server)") : TEXT("Simulated/Autonomous (Client)");
+
+	// í™”ë©´ì— ì¶œë ¥
+	if (GEngine)
 	{
-		ParentBodyCharacter = Cast<APlayerCharacter>(GetAttachParentActor());
+		FString DebugMsg = FString::Printf(TEXT("Pawn: %s | Owner: %s | Controller: %s | Role: %s"),
+			*GetName(), *OwnerName, *ControllerName, *NetRole);
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, DebugMsg);
 	}
 
-	if (ParentBodyCharacter)
+	// ë³¸ì¸ì´ ë¡œì»¬ì—ì„œ ì»¨íŠ¸ë¡¤ ì¤‘ì¸ Pawnì´ ì•„ë‹ˆë©´ ë¬´ì‹œ
+	if (!IsLocallyControlled() || bIsAttacking || !ParentBodyCharacter) return;
+
+	bIsAttacking = true;
+	ServerRequestSetAttackDetection(true);
+}
+
+void AUpperBodyPawn::ServerRequestSetAttackDetection_Implementation(bool bEnabled)
+{
+	FString NetMode = HasAuthority() ? TEXT("Server") : TEXT("Client");
+	GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan,
+		FString::Printf(TEXT("[%s] Collision Enabled (Pawn: %s)"), *NetMode, *GetName()));
+
+	if (!ParentBodyCharacter) return;
+
+	if (bEnabled)
 	{
-		UAnimInstance* AnimInst = ParentBodyCharacter->GetMesh()->GetAnimInstance();
-		if (AnimInst)
+		// ì„œë²„ê°€ "í•˜ì²´ ìºë¦­í„°"ì—ê²Œ ë©€í‹°ìºìŠ¤íŠ¸ ì¬ìƒì„ ëª…ë ¹í•©ë‹ˆë‹¤.
+		// í•˜ì²´ëŠ” ëª¨ë“  í”Œë ˆì´ì–´ê°€ ê³µìœ í•˜ë¯€ë¡œ ì„œë²„ ì›”ë“œì—ì„œë„ ë¬´ê¸°ê°€ ì›€ì§ì…ë‹ˆë‹¤.
+		ParentBodyCharacter->MulticastPlayAttack(this);
+
+		if (ParentBodyCharacter->AttackComponent)
 		{
-			// 2. °ø°İ »óÅÂ·Î ÀüÈ¯
-			bIsAttacking = true;
-
-			// 3. ¸ùÅ¸ÁÖ Á¾·á µ¨¸®°ÔÀÌÆ® ¼³Á¤
-			FOnMontageEnded EndDelegate;
-			EndDelegate.BindUObject(this, &AUpperBodyPawn::OnAttackMontageEnded);
-
-			// 4. Ä³¸¯ÅÍ¿¡°Ô °ø°İ ¿äÃ» (TriggerUpperBodyAttackÀÌ ³»ºÎÀûÀ¸·Î Montage_Play¸¦ È£ÃâÇÑ´Ù°í °¡Á¤)
-			ParentBodyCharacter->TriggerUpperBodyAttack();
-
-			// 5. ÇöÀç Àç»ı ÁßÀÎ ¸ùÅ¸ÁÖ¿¡ Á¾·á µ¨¸®°ÔÀÌÆ®¸¦ ¹ÙÀÎµù
-			// Ä³¸¯ÅÍ°¡ Àç»ıÇÑ ¸ùÅ¸ÁÖ¸¦ Ã£¾Æ¼­ ¿¬°áÇÕ´Ï´Ù.
-			UAnimMontage* CurrentMontage = ParentBodyCharacter->GetCurrentMontage();
-			if (CurrentMontage)
-			{
-				AnimInst->Montage_SetEndDelegate(EndDelegate, CurrentMontage);
-			}
-			else
-			{
-				// ¸¸¾à ¸ùÅ¸ÁÖ Àç»ı¿¡ ½ÇÆĞÇß´Ù¸é Áï½Ã »óÅÂ º¹±¸
-				bIsAttacking = false;
-			}
+			ParentBodyCharacter->AttackComponent->SetAttackDetection(true); // ì„œë²„ ë¬¼ë¦¬ íŒì • ON
 		}
 	}
 }
 
 void AUpperBodyPawn::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	// °ø°İ »óÅÂ ÇØÁ¦ -> ÀÌÁ¦ ´Ù½Ã °ø°İ ÀÔ·ÂÀÌ °¡´ÉÇØÁı´Ï´Ù.
-	bIsAttacking = false;
+	bIsAttacking = false; // ì• ë‹ˆë©”ì´ì…˜ ì¢…ë£Œ ì‹œ ë³€ìˆ˜ í•´ì œ
 
-	// ·Î±×·Î È®ÀÎ
-	UE_LOG(LogTemp, Display, TEXT("Attack Montage Ended. Ready for next attack."));
+	if (HasAuthority()) // ì„œë²„ì—ì„œë§Œ íŒì •ì„ ì¢…ë£Œí•©ë‹ˆë‹¤.
+	{
+		if (ParentBodyCharacter && ParentBodyCharacter->AttackComponent)
+		{
+			ParentBodyCharacter->AttackComponent->SetAttackDetection(false);
+		}
+	}
 }
 
 void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 {
-	// =================================================================
-	// [Å×½ºÆ® 1] ÀÔ·Â È®ÀÎ¿ë ¸Ş½ÃÁö Ãâ·Â
-	// =================================================================
-	if (GEngine)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("E Key Pressed!"));
-	}
-
-	// 1. ºÎ¸ğ(¸öÅë) Ä³¸¯ÅÍ È®ÀÎ
+	// 1. ë¶€ëª¨(ëª¸í†µ) ìºë¦­í„° í™•ì¸
 	if (!ParentBodyCharacter)
 	{
 		ParentBodyCharacter = Cast<APlayerCharacter>(GetAttachParentActor());
@@ -246,23 +288,23 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 	}
 
 	// =================================================================
-	// [¼öÁ¤µÊ] ·¹ÀÌÄ³½ºÆ® ½ÃÀÛÁ¡: Ä«¸Ş¶ó -> ¸Ó¸® ¸Ş½¬ÀÇ 'head' ¼ÒÄÏ À§Ä¡
+	// [ìˆ˜ì •ë¨] ë ˆì´ìºìŠ¤íŠ¸ ì‹œì‘ì : ì¹´ë©”ë¼ -> ë¨¸ë¦¬ ë©”ì‰¬ì˜ 'head' ì†Œì¼“ ìœ„ì¹˜
 	// =================================================================
 	FVector Start;
 
-	// 'head'¶ó´Â »À(¼ÒÄÏ)°¡ Á¸ÀçÇÏ¸é ±× À§Ä¡¸¦ »ç¿ë
+	// 'head'ë¼ëŠ” ë¼ˆ(ì†Œì¼“)ê°€ ì¡´ì¬í•˜ë©´ ê·¸ ìœ„ì¹˜ë¥¼ ì‚¬ìš©
 	if (ParentBodyCharacter->GetMesh() && ParentBodyCharacter->GetMesh()->DoesSocketExist(TEXT("head")))
 	{
 		Start = ParentBodyCharacter->HeadMountPoint->GetComponentLocation();
 	}
 	else
 	{
-		// ¸¸¾à ¼ÒÄÏÀ» ¸ø Ã£À¸¸é ¾ÈÀüÇÏ°Ô Ä«¸Ş¶ó À§Ä¡ »ç¿ë (È¤Àº ·Î±× Ãâ·Â)
+		// ë§Œì•½ ì†Œì¼“ì„ ëª» ì°¾ìœ¼ë©´ ì•ˆì „í•˜ê²Œ ì¹´ë©”ë¼ ìœ„ì¹˜ ì‚¬ìš© (í˜¹ì€ ë¡œê·¸ ì¶œë ¥)
 		Start = FrontCamera->GetComponentLocation();
 		BODY_LOG(Warning, TEXT("Cannot find 'head' socket on HeadMesh. Using Camera location instead."));
 	}
 
-	// ¹æÇâ: Ä«¸Ş¶ó´Â °è¼Ó Á¤¸éÀ» º¸°í ÀÖÀ¸¹Ç·Î, Ä«¸Ş¶óÀÇ Forward Vector¸¦ »ç¿ëÇÕ´Ï´Ù.
+	// ë°©í–¥: ì¹´ë©”ë¼ëŠ” ê³„ì† ì •ë©´ì„ ë³´ê³  ìˆìœ¼ë¯€ë¡œ, ì¹´ë©”ë¼ì˜ Forward Vectorë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.
 	FVector End = Start + (FrontCamera->GetForwardVector() * InteractionDistance);
 
 	FHitResult HitResult;
@@ -270,7 +312,7 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 	QueryParams.AddIgnoredActor(this);
 	QueryParams.AddIgnoredActor(ParentBodyCharacter);
 
-	// 3. ·¹ÀÌÄ³½ºÆ® ¹ß»ç (¹«±â¿Í ¾ÆÀÌÅÛ ¸ğµÎ Visibility Ã¤³Î Block ¼³Á¤ÀÌ µÇ¾îÀÖ¾î¾ß ÇÔ)
+	// 3. ë ˆì´ìºìŠ¤íŠ¸ ë°œì‚¬ (ë¬´ê¸°ì™€ ì•„ì´í…œ ëª¨ë‘ Visibility ì±„ë„ Block ì„¤ì •ì´ ë˜ì–´ìˆì–´ì•¼ í•¨)
 	bool bHit = GetWorld()->LineTraceSingleByChannel(
 		HitResult,
 		Start,
@@ -280,7 +322,7 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 	);
 
 	// =================================================================
-	// [Å×½ºÆ® 2] ·¹ÀÌÄ³½ºÆ® ½Ã°¢È­
+	// [í…ŒìŠ¤íŠ¸ 2] ë ˆì´ìºìŠ¤íŠ¸ ì‹œê°í™”
 	// =================================================================
 	if (bHit)
 	{
@@ -292,25 +334,37 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 		DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 2.0f, 0, 1.0f);
 	}
 
-	// 4. ¾ÆÀÌÅÛ/¹«±â È®ÀÎ ¹× »óÈ£ÀÛ¿ë
+	// 4. ì•„ì´í…œ/ë¬´ê¸° í™•ì¸ ë° ìƒí˜¸ì‘ìš©
 	if (bHit)
 	{
 		AActor* HitActor = HitResult.GetActor();
 
-		// ÀÌ¸¦ ÅëÇØ ¹«±â(BaseWeapon)¿Í ¾ÆÀÌÅÛ(DropItem) ¸ğµÎ »óÈ£ÀÛ¿ë °¡´ÉÇØÁü
-		if (IInteractableInterface* Interface = Cast<IInteractableInterface>(HitActor))
+		// ì´ë¥¼ í†µí•´ ë¬´ê¸°(BaseWeapon)ì™€ ì•„ì´í…œ(DropItem) ëª¨ë‘ ìƒí˜¸ì‘ìš© ê°€ëŠ¥í•´ì§
+		if (HitActor && HitActor->GetClass()->ImplementsInterface(UInteractableInterface::StaticClass()))
 		{
-			// È­¸é¿¡ °¨ÁöµÈ ´ë»ó ÀÌ¸§ Ãâ·Â
+			// [ìˆ˜ì •ë¨] ì§ì ‘ í˜¸ì¶œ ëŒ€ì‹  ì„œë²„ì— ìƒí˜¸ì‘ìš© ìš”ì²­ (ì†Œìœ ê¶Œ ë¬¸ì œ í•´ê²°)
+			ServerRequestInteract(HitActor);
+
 			if (GEngine)
 			{
-				FString Msg = FString::Printf(TEXT("Interactable Detected: %s"), *HitActor->GetName());
-				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Msg);
+				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan,
+					FString::Printf(TEXT("Requesting Server Interact: %s"), *HitActor->GetName()));
 			}
+			BODY_LOG(Log, TEXT("Server interaction requested for %s"), *HitActor->GetName());
+		}
+	}
+}
 
-			BODY_LOG(Log, TEXT("Interacting with %s"), *HitActor->GetName());
-
-			// ÀÎÅÍÆäÀÌ½º ÇÔ¼ö È£Ãâ (¹«±â ÀåÂø or ¾ÆÀÌÅÛ È¹µæ)
+void AUpperBodyPawn::ServerRequestInteract_Implementation(AActor* TargetActor)
+{
+	if (TargetActor && ParentBodyCharacter)
+	{
+		// 2. ì„œë²„ ì›”ë“œì—ì„œ ì¸í„°í˜ì´ìŠ¤ ì‹¤í–‰
+		// ì„œë²„ëŠ” ëª¨ë“  ê¶Œí•œì„ ê°€ì§€ê³  ìˆìœ¼ë¯€ë¡œ ë¬´ê¸° ì¥ì°©ì´ë“  ì•„ì´í…œ íšë“ì´ë“  ì¦‰ì‹œ ì„±ê³µí•©ë‹ˆë‹¤.
+		if (IInteractableInterface* Interface = Cast<IInteractableInterface>(TargetActor))
+		{
 			Interface->Interact(ParentBodyCharacter);
+			BODY_LOG(Log, TEXT("Server: %sê°€ %sì™€ ìƒí˜¸ì‘ìš© ìˆ˜í–‰ ì™„ë£Œ"), *ParentBodyCharacter->GetName(), *TargetActor->GetName());
 		}
 	}
 }

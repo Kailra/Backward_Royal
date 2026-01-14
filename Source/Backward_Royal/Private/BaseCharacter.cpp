@@ -2,6 +2,10 @@
 #include "BaseCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "BRAttackComponent.h"
+#include "UpperBodyPawn.h"
+#include "Net/UnrealNetwork.h"
 #include "BaseWeapon.h"
 
 DEFINE_LOG_CATEGORY(LogBaseChar);
@@ -31,10 +35,13 @@ ABaseCharacter::ABaseCharacter()
     FootMesh->SetupAttachment(GetMesh());
     FootMesh->SetCollisionProfileName(TEXT("NoCollision"));
 
-    bEnableArmorStats = false;
+    AttackComponent = CreateDefaultSubobject<UBRAttackComponent>(TEXT("AttackComponent"));
+
     DefaultWalkSpeed = 600.0f;
-    CurrentTotalWeight = 0.0f;
     CurrentWeapon = nullptr; // 무기 초기화
+
+    CurrentHP = MaxHP;
+    bReplicates = true;
 }
 
 void ABaseCharacter::BeginPlay()
@@ -57,6 +64,8 @@ void ABaseCharacter::BeginPlay()
 void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
 {
     if (!NewWeapon) return;
+
+    if (!HasAuthority()) return;
 
     // 기존 무기 제거
     if (CurrentWeapon)
@@ -140,27 +149,6 @@ void ABaseCharacter::EquipArmor(EArmorSlot Slot, const FArmorData& NewArmor)
     case EArmorSlot::Feet:  TargetMesh = FootMesh; break;
     default: return;
     }
-
-    if (TargetMesh)
-    {
-        TargetMesh->SetSkeletalMesh(NewArmor.ArmorMesh);
-        if (bEnableArmorStats)
-        {
-            if (EquippedArmorWeights.Contains(Slot)) CurrentTotalWeight -= EquippedArmorWeights[Slot];
-            EquippedArmorWeights.Add(Slot, NewArmor.WeightKg);
-            CurrentTotalWeight += NewArmor.WeightKg;
-            UpdateMovementSpeedBasedOnWeight();
-        }
-    }
-}
-
-void ABaseCharacter::UpdateMovementSpeedBasedOnWeight()
-{
-    if (!GetCharacterMovement()) return;
-    if (!bEnableArmorStats) { GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed; return; }
-
-    float WeightPenalty = CurrentTotalWeight * 5.0f;
-    GetCharacterMovement()->MaxWalkSpeed = FMath::Clamp(DefaultWalkSpeed - WeightPenalty, 150.0f, DefaultWalkSpeed);
 }
 
 void ABaseCharacter::SetArmorColor(EArmorSlot Slot, FLinearColor Color)
@@ -181,5 +169,74 @@ void ABaseCharacter::SetArmorColor(EArmorSlot Slot, FLinearColor Color)
         // 첫 번째 머티리얼 인덱스(0)의 색상을 바꾼다고 가정
         // 실제로는 CreateDynamicMaterialInstance가 필요할 수 있음
         TargetMesh->SetVectorParameterValueOnMaterials(TEXT("Color"), FVector(Color));
+    }
+}
+
+void ABaseCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+    DOREPLIFETIME(ABaseCharacter, CurrentHP);
+    DOREPLIFETIME(ABaseCharacter, CurrentWeapon);
+}
+
+float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    if (bIsDead) return 0.0f;
+
+    float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+    CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
+
+    if (CurrentHP <= 0.0f) Die();
+
+    return ActualDamage;
+}
+
+void ABaseCharacter::Die()
+{
+    if (bIsDead) return;
+    bIsDead = true;
+
+    CHAR_LOG(Warning, TEXT("Character Died."));
+
+    // 충돌 및 물리 설정
+    GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
+    GetMesh()->SetSimulatePhysics(true); // Ragdoll 효과
+    GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+
+    OnDeath.Broadcast();
+}
+
+void ABaseCharacter::OnRep_CurrentHP()
+{
+    // 이 함수는 서버에서 CurrentHP 변수가 변경되어 클라이언트로 복제될 때 실행됩니다.
+    // 보통 여기에서 체력 바(UI)를 업데이트하는 로직을 넣습니다.
+
+    if (CurrentHP <= 0.0f)
+    {
+        // 사망 처리 등 클라이언트 측 가시적 효과가 필요하다면 여기서 호출 가능
+        // Die(); 
+    }
+
+    CHAR_LOG(Log, TEXT("HP가 복제되었습니다. 현재 HP: %.1f"), CurrentHP);
+}
+
+void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
+{
+    if (AttackMontage && GetMesh())
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            AnimInstance->Montage_Play(AttackMontage);
+
+            // 전달받은 Pawn을 UpperBodyPawn으로 캐스팅
+            if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
+            {
+                FOnMontageEnded EndDelegate;
+              
+                EndDelegate.BindUObject(UpperPawn, &AUpperBodyPawn::OnAttackMontageEnded);
+                AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
+            }
+        }
     }
 }

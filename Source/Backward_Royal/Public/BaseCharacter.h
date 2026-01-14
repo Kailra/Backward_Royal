@@ -11,6 +11,9 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBaseChar, Log, All);
 #define CHAR_LOG(Verbosity, Format, ...) UE_LOG(LogBaseChar, Verbosity, TEXT("%s: ") Format, *GetName(), ##__VA_ARGS__)
 
 class ABaseWeapon; // 전방 선언
+class UBRAttackComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeathDelegate);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABaseCharacter : public ACharacter
@@ -22,6 +25,9 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    virtual void Die();
 
 public:
     // --- Modular Armor Components ---
@@ -40,24 +46,45 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Armor")
     USkeletalMeshComponent* FootMesh;
 
-    // --- Stats ---
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GameMode")
-    bool bEnableArmorStats;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+    UBRAttackComponent* AttackComponent;
 
+    // --- Stats ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
     float DefaultWalkSpeed;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")
-    float CurrentTotalWeight;
+    // --- 체력 시스템 ---
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+    float MaxHP = 100.0f;
 
-    TMap<EArmorSlot, float> EquippedArmorWeights;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats", ReplicatedUsing = OnRep_CurrentHP)
+    float CurrentHP;
+
+    UFUNCTION()
+    void OnRep_CurrentHP();
+
+    // 에디터에서 공격 애니메이션을 할당하는 변수
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+    UAnimMontage* AttackMontage;
+
+    // 멀티캐스트 함수에 상체 Pawn 정보를 넘겨서 클라이언트 변수를 풀 수 있게 합니다.
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastPlayAttack(APawn* RequestingPawn);
+
+    // 데미지 처리 오버라이드
+    virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+    UPROPERTY(BlueprintAssignable, Category = "Events")
+    FOnDeathDelegate OnDeath;
+
+    bool bIsDead = false;
 
     // =================================================================
     // [확정] 무기 시스템 (BaseCharacter 소유)
     // =================================================================
 
     // 현재 장착 중인 무기
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", Replicated)
     ABaseWeapon* CurrentWeapon;
 
     // 무기 장착 (무기 액터를 받아 처리)
@@ -71,9 +98,6 @@ public:
     // --- Functions ---
     UFUNCTION(BlueprintCallable, Category = "Equipment")
     void EquipArmor(EArmorSlot Slot, const FArmorData& NewArmor);
-
-    UFUNCTION(BlueprintCallable, Category = "Stats")
-    void UpdateMovementSpeedBasedOnWeight();
 
     UFUNCTION(BlueprintCallable, Category = "Customization")
     void SetArmorColor(EArmorSlot Slot, FLinearColor Color);
