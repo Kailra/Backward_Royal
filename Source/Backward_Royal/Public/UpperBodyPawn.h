@@ -29,8 +29,7 @@ protected:
 	void Attack(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
 
-	UFUNCTION()
-	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+	virtual void OnRep_PlayerState() override;
 
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
@@ -62,10 +61,19 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
 	bool bIsAttacking;
 
-private:
+	// 클라이언트에서 서버로 공격 상태 변경을 요청하는 RPC
+	UFUNCTION(Server, Reliable)
+	void ServerRequestSetAttackDetection(bool bEnabled);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestInteract(AActor* TargetActor);
+
+	UFUNCTION()
+	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
 	UPROPERTY()
 	class APlayerCharacter* ParentBodyCharacter;
-
+private:
 	// [추가] 지난 프레임의 몸통 각도를 저장할 변수
 	float LastBodyYaw;
 };
