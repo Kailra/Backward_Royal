@@ -89,7 +89,7 @@ void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(APlayerCharacter, UpperBodyAimRotation);
+	DOREPLIFETIME_CONDITION(APlayerCharacter, UpperBodyAimRotation, COND_SkipOwner);
 }
 
 void APlayerCharacter::Restart()
