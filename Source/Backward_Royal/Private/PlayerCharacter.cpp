@@ -7,6 +7,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "BRPlayerController.h"
+#include "Net/UnrealNetwork.h"
 #include "DrawDebugHelpers.h"
 
 DEFINE_LOG_CATEGORY(LogPlayerChar);
@@ -82,6 +83,13 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 		MoveComp->SetMovementMode(MOVE_Walking);
 		MoveComp->Activate();
 	}
+}
+
+void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(APlayerCharacter, UpperBodyAimRotation, COND_SkipOwner);
 }
 
 void APlayerCharacter::Restart()
