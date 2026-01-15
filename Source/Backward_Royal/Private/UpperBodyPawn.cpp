@@ -63,27 +63,27 @@ void AUpperBodyPawn::BeginPlay()
 		}
 	}
 
-	if (GEngine)
-	{
-		// 1. 현재 네트워크 상태 확인
-		FString NetRole = TEXT("None");
-		switch (GetLocalRole())
-		{
-		case ROLE_Authority: NetRole = TEXT("Authority (Server)"); break;
-		case ROLE_AutonomousProxy: NetRole = TEXT("AutonomousProxy (Client)"); break;
-		case ROLE_SimulatedProxy: NetRole = TEXT("SimulatedProxy (Other)"); break;
-		}
+	//if (GEngine)
+	//{
+	//	// 1. 현재 네트워크 상태 확인
+	//	FString NetRole = TEXT("None");
+	//	switch (GetLocalRole())
+	//	{
+	//	case ROLE_Authority: NetRole = TEXT("Authority (Server)"); break;
+	//	case ROLE_AutonomousProxy: NetRole = TEXT("AutonomousProxy (Client)"); break;
+	//	case ROLE_SimulatedProxy: NetRole = TEXT("SimulatedProxy (Other)"); break;
+	//	}
 
-		// 2. 소유자 및 컨트롤러 확인 (이제 안전함)
-		FString OwnerName = GetOwner() ? GetOwner()->GetName() : TEXT("No Owner");
-		FString ControllerName = GetController() ? GetController()->GetName() : TEXT("No Controller");
+	//	// 2. 소유자 및 컨트롤러 확인 (이제 안전함)
+	//	FString OwnerName = GetOwner() ? GetOwner()->GetName() : TEXT("No Owner");
+	//	FString ControllerName = GetController() ? GetController()->GetName() : TEXT("No Controller");
 
-		// 3. 화면 출력
-		FString DebugMsg = FString::Printf(TEXT("[%s] Pawn: %s | Owner: %s | Controller: %s"),
-			*NetRole, *GetName(), *OwnerName, *ControllerName);
+	//	// 3. 화면 출력
+	//	FString DebugMsg = FString::Printf(TEXT("[%s] Pawn: %s | Owner: %s | Controller: %s"),
+	//		*NetRole, *GetName(), *OwnerName, *ControllerName);
 
-		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, DebugMsg);
-	}
+	//	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, DebugMsg);
+	//}
 }
 
 void AUpperBodyPawn::Tick(float DeltaTime)
