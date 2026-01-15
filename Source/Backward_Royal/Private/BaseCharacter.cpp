@@ -148,6 +148,16 @@ void ABaseCharacter::RequestAttack()
     // 1. 무기가 있는 경우: 기존 로직(단타) 사용
     if (CurrentWeapon)
     {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance && AttackMontage)
+        {
+            // 이미 공격 몽타주가 재생 중이라면 입력을 무시하고 리턴
+            if (AnimInstance->Montage_IsPlaying(AttackMontage))
+            {
+                return;
+            }
+        }
+
         // 무기 공격은 일단 콤보 없이 즉시 발동 (필요 시 무기 콤보도 유사하게 구현 가능)
         MulticastPlayAttack(nullptr);
         return;
