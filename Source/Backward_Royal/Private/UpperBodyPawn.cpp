@@ -111,6 +111,8 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	if (!ParentBodyCharacter || !Controller) return;
 
 	// 2. 몸통 회전 동기화 (탱크가 회전하면 상체 카메라도 같이 회전)
+	// [수정] 하체가 회전해도 상체 카메라는 고정되어야(상하체 분리) 하므로 동기화 코드를 주석 처리합니다.
+	/*
 	float CurrentBodyYaw = ParentBodyCharacter->GetActorRotation().Yaw;
 	float DeltaYaw = CurrentBodyYaw - LastBodyYaw;
 
@@ -120,7 +122,10 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 		CurrentRot.Yaw += DeltaYaw;
 		Controller->SetControlRotation(CurrentRot);
 	}
+	*/
 
+	// 동기화는 안 해도 변수 업데이트는 해둡니다.
+	float CurrentBodyYaw = ParentBodyCharacter->GetActorRotation().Yaw;
 	LastBodyYaw = CurrentBodyYaw;
 
 	// -----------------------------------------------------------------
@@ -129,7 +134,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	FRotator CurrentControlRot = Controller->GetControlRotation();
 
 	// 3. 좌우(Yaw) 시야각 제한 (등 뒤 기준)
-	// [복구] 기준점도 다시 +180(등 뒤)으로 잡습니다.
+	// 기준점도 +180(등 뒤)으로 잡습니다.
 	float BodyFrontYaw = ParentBodyCharacter->GetActorRotation().Yaw + 180.0f;
 	float RelativeYaw = FRotator::NormalizeAxis(CurrentControlRot.Yaw - BodyFrontYaw);
 	float ClampedYaw = FMath::Clamp(RelativeYaw, -90.0f, 90.0f);
@@ -152,7 +157,7 @@ void AUpperBodyPawn::Tick(float DeltaTime)
 	// =================================================================
 	if (ParentBodyCharacter)
 	{
-		// 해결: 머리(애니메이션)에 전달할 때만 180도를 다시 뒤집어서 "앞"을 보게 만듭니다.
+		// [유지] 머리(애니메이션)에 전달할 때는 180도를 더해서 정면을 보게 만듭니다.
 		FRotator TargetHeadRot = Controller->GetControlRotation();
 		TargetHeadRot.Yaw += 180.0f;
 
