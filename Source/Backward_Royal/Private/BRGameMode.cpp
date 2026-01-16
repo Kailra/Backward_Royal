@@ -333,39 +333,51 @@ void ABRGameMode::StartGame()
 		UE_LOG(LogTemp, Warning, TEXT("[게임 시작] PIE 환경 감지 - 일반 ServerTravel 사용 (Seamless Travel 비활성화)"));
 	}
 	
-	// 클라이언트에게 게임 시작 알림 (맵 이동 전에 알림)
-	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-	{
-		if (APlayerController* PC = It->Get())
-		{
-			if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
-			{
-				// 클라이언트에게 게임 시작 알림 (RPC)
-				BRPC->ClientNotifyGameStarting();
-			}
-		}
-	}
-	
 	// 맵 이동 - PIE 환경에 따라 Travel 방식 선택
 	FString TravelURL = GameMapPath + TEXT("?listen");
 	
 	if (bShouldUseSeamlessTravel)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[게임 시작] SeamlessTravel 호출: %s"), *TravelURL);
+		
+		// 클라이언트에게 게임 시작 알림 (맵 이동 전에 알림)
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			if (APlayerController* PC = It->Get())
+			{
+				if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+				{
+					// 클라이언트에게 게임 시작 알림 (RPC)
+					BRPC->ClientNotifyGameStarting();
+				}
+			}
+		}
+		
 		// SeamlessTravel 사용 - 클라이언트가 부드럽게 따라옵니다
 		World->ServerTravel(TravelURL, true); // 두 번째 파라미터는 bAbsolute (true = 절대 경로)
 	}
-	else
-	{
-		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 일반 ServerTravel 호출: %s (PIE 모드: %s)"), 
-			*TravelURL, bIsPIE ? TEXT("예") : TEXT("아니오"));
-		
-		// PIE나 Seamless Travel 비활성화 시: 일반 ServerTravel 사용
-		// ServerTravel을 사용하면 클라이언트가 자동으로 따라옵니다
-		// PIE 환경에서는 클라이언트가 자동으로 따라오지만, 명시적으로 알림을 보내는 것이 안전합니다
-		
-		// 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동으로 따라옵니다
-		World->ServerTravel(TravelURL, true);
-	}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("[게임 시작] 일반 ServerTravel 호출: %s (PIE 모드: %s)"), 
+				*TravelURL, bIsPIE ? TEXT("예") : TEXT("아니오"));
+			
+			// 클라이언트에게 게임 시작 알림 (맵 이동 전에 알림)
+			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (APlayerController* PC = It->Get())
+				{
+					if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+					{
+						// 클라이언트에게 게임 시작 알림 (RPC)
+						BRPC->ClientNotifyGameStarting();
+					}
+				}
+			}
+			
+			// PIE 환경에서는 ServerTravel이 클라이언트를 자동으로 따라오지 않을 수 있음
+			// 하지만 일반적으로 ServerTravel은 클라이언트가 자동으로 따라옵니다
+			// 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동으로 따라옵니다
+			World->ServerTravel(TravelURL, true);
+		}
 }
 
