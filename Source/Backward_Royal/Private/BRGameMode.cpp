@@ -321,6 +321,18 @@ void ABRGameMode::StartGame()
 		return;
 	}
 	
+	// PIE(Play In Editor) 환경 감지
+	bool bIsPIE = World->IsPlayInEditor();
+	ENetMode NetMode = World->GetNetMode();
+	
+	// PIE에서는 Seamless Travel이 작동하지 않으므로 일반 ServerTravel 사용
+	bool bShouldUseSeamlessTravel = bUseSeamlessTravel && !bIsPIE;
+	
+	if (bIsPIE)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[게임 시작] PIE 환경 감지 - 일반 ServerTravel 사용 (Seamless Travel 비활성화)"));
+	}
+	
 	// 클라이언트에게 게임 시작 알림 (맵 이동 전에 알림)
 	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 	{
@@ -334,21 +346,26 @@ void ABRGameMode::StartGame()
 		}
 	}
 	
-	// 맵 이동 - Seamless Travel 사용 (더 부드러운 전환)
+	// 맵 이동 - PIE 환경에 따라 Travel 방식 선택
 	FString TravelURL = GameMapPath + TEXT("?listen");
-	UE_LOG(LogTemp, Log, TEXT("[게임 시작] SeamlessTravel 호출: %s"), *TravelURL);
 	
-	// SeamlessTravel 사용 - 클라이언트가 부드럽게 따라옵니다
-	// bUseSeamlessTravel = true이므로 SeamlessTravel을 사용할 수 있습니다
-	if (bUseSeamlessTravel)
+	if (bShouldUseSeamlessTravel)
 	{
-		// SeamlessTravel은 GameMode의 함수가 아니라 World의 함수입니다
-		// 하지만 ServerTravel을 사용하되, bUseSeamlessTravel이 true이면 자동으로 Seamless Travel을 사용합니다
+		UE_LOG(LogTemp, Log, TEXT("[게임 시작] SeamlessTravel 호출: %s"), *TravelURL);
+		// SeamlessTravel 사용 - 클라이언트가 부드럽게 따라옵니다
 		World->ServerTravel(TravelURL, true); // 두 번째 파라미터는 bAbsolute (true = 절대 경로)
 	}
 	else
 	{
-		World->ServerTravel(TravelURL);
+		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 일반 ServerTravel 호출: %s (PIE 모드: %s)"), 
+			*TravelURL, bIsPIE ? TEXT("예") : TEXT("아니오"));
+		
+		// PIE나 Seamless Travel 비활성화 시: 일반 ServerTravel 사용
+		// ServerTravel을 사용하면 클라이언트가 자동으로 따라옵니다
+		// PIE 환경에서는 클라이언트가 자동으로 따라오지만, 명시적으로 알림을 보내는 것이 안전합니다
+		
+		// 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동으로 따라옵니다
+		World->ServerTravel(TravelURL, true);
 	}
 }
 
