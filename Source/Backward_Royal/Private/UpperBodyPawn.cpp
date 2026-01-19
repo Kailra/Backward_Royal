@@ -225,26 +225,9 @@ void AUpperBodyPawn::Look(const FInputActionValue& Value)
 
 void AUpperBodyPawn::Attack(const FInputActionValue& Value)
 {
-	// 1. 소유자(Owner) 이름 확인
-	AActor* CurrentOwner = GetOwner();
-	FString OwnerName = CurrentOwner ? CurrentOwner->GetName() : TEXT("No Owner");
-
-	// 2. 컨트롤러 및 권한 확인
-	FString ControllerName = GetController() ? GetController()->GetName() : TEXT("No Controller");
-	FString NetRole = (GetLocalRole() == ROLE_Authority) ? TEXT("Authority (Server)") : TEXT("Simulated/Autonomous (Client)");
-
-	// 화면에 출력
-	//if (GEngine)
-	//{
-	//	FString DebugMsg = FString::Printf(TEXT("Pawn: %s | Owner: %s | Controller: %s | Role: %s"),
-	//		*GetName(), *OwnerName, *ControllerName, *NetRole);
-	//	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, DebugMsg);
-	//}
-
 	// 본인이 로컬에서 컨트롤 중인 Pawn이 아니면 무시
-	if (!IsLocallyControlled() || bIsAttacking || !ParentBodyCharacter) return;
+	if (!IsLocallyControlled() || !ParentBodyCharacter) return;
 
-	bIsAttacking = true;
 	ServerRequestSetAttackDetection(true);
 }
 
@@ -258,21 +241,20 @@ void AUpperBodyPawn::ServerRequestSetAttackDetection_Implementation(bool bEnable
 
 	if (bEnabled)
 	{
-		// 서버가 "하체 캐릭터"에게 멀티캐스트 재생을 명령합니다.
-		// 하체는 모든 플레이어가 공유하므로 서버 월드에서도 무기가 움직입니다.
-		ParentBodyCharacter->MulticastPlayAttack(this);
+		ParentBodyCharacter->RequestAttack();
+		//// 서버가 "하체 캐릭터"에게 멀티캐스트 재생을 명령합니다.
+		//// 하체는 모든 플레이어가 공유하므로 서버 월드에서도 무기가 움직입니다.
+		//ParentBodyCharacter->MulticastPlayAttack(this);
 
-		if (ParentBodyCharacter->AttackComponent)
-		{
-			ParentBodyCharacter->AttackComponent->SetAttackDetection(true); // 서버 물리 판정 ON
-		}
+		//if (ParentBodyCharacter->AttackComponent)
+		//{
+		//	ParentBodyCharacter->AttackComponent->SetAttackDetection(true); // 서버 물리 판정 ON
+		//}
 	}
 }
 
 void AUpperBodyPawn::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
-	bIsAttacking = false; // 애니메이션 종료 시 변수 해제
-
 	if (HasAuthority()) // 서버에서만 판정을 종료합니다.
 	{
 		if (ParentBodyCharacter && ParentBodyCharacter->AttackComponent)

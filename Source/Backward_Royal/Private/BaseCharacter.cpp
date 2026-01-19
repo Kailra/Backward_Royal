@@ -38,6 +38,26 @@ ABaseCharacter::ABaseCharacter()
 
     AttackComponent = CreateDefaultSubobject<UBRAttackComponent>(TEXT("AttackComponent"));
 
+    // PhysicsControlComp = CreateDefaultSubobject<UPhysicsControlComponent>(TEXT("PhysicsControlComp"));
+
+    if (GetMesh())
+    {
+        // 1. 물리(Physics)와 쿼리(Query) 모두 활성화
+        GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+        // 2. 기본 프로필 설정 (CharacterMesh 권장)
+        GetMesh()->SetCollisionProfileName(TEXT("CharacterMesh"));
+
+        // 3. Pawn(다른 플레이어)에 대해 Block 설정 -> 서로 밀리게 됨
+        GetMesh()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+        // 4. 카메라는 무시 (카메라가 몸 뚫을 때 덜컹거림 방지)
+        GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+
+        // 5. 평소에는 Hit Event를 꺼둬서 불필요한 연산 방지 (공격 때만 BRAttackComponent가 켬)
+        GetMesh()->SetNotifyRigidBodyCollision(false);
+    }
+
     DefaultWalkSpeed = 600.0f;
     CurrentWeapon = nullptr; // 무기 초기화
 
@@ -55,6 +75,11 @@ void ABaseCharacter::BeginPlay()
     HandMesh->SetLeaderPoseComponent(GetMesh());
     LegMesh->SetLeaderPoseComponent(GetMesh());
     FootMesh->SetLeaderPoseComponent(GetMesh());
+
+    //if (PhysicsControlComp && GetMesh())
+    //{
+    //    SetupArmPhysicsControls();
+    //}
 
     if (GetCharacterMovement())
     {
@@ -124,7 +149,43 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
     CHAR_LOG(Log, TEXT("Equipped Weapon: %s"), *NewWeapon->GetName());
 }
 
-// [신규] 무기 버리기 구현
+// [신규] 공격 요청 처리 함수
+void ABaseCharacter::RequestAttack()
+{
+    // 1. 무기가 있는 경우: 기존 로직 유지
+    if (CurrentWeapon)
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance && AttackMontage)
+        {
+            if (AnimInstance->Montage_IsPlaying(AttackMontage)) return;
+        }
+        MulticastPlayAttack(nullptr);
+        return;
+    }
+
+    if (bIsCharacterAttacking)
+    {
+        if (bIsComboInputOn)
+        {
+            bIsNextComboReserved = true;
+            // 여기서 인덱스를 미리 올리지 않고, 예약만 합니다.
+            GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, TEXT("Combo Reserved!"));
+        }
+    }
+    else
+    {
+        // 첫 공격 시작 (1번 섹션부터 시작)
+        bIsCharacterAttacking = true;
+        bIsNextComboReserved = false;
+        CurrentComboIndex = 1;
+
+        MulticastPlayUnarmedCombo(CurrentComboIndex);
+        CHAR_LOG(Log, TEXT("Starting First Attack: Combo%d"), CurrentComboIndex);
+    }
+}
+
+// 무기 버리기 구현
 void ABaseCharacter::DropCurrentWeapon()
 {
     if (!CurrentWeapon) return;
@@ -226,9 +287,6 @@ void ABaseCharacter::MulticastDie_Implementation()
         // 1. 메쉬와의 연결을 끊거나
         PhysAnimComp->SetSkeletalMeshComponent(nullptr);
 
-        //// 2. 아예 컴포넌트를 꺼버립니다.
-        //PhysAnimComp->Deactivate();
-
         CHAR_LOG(Log, TEXT("Physical Animation Disabled for Ragdoll."));
     }
 
@@ -277,5 +335,98 @@ void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
                 AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
             }
         }
+    }
+}
+
+void ABaseCharacter::MulticastPlayUnarmedCombo_Implementation(int32 SectionIndex)
+{
+    if (PunchMontage && GetMesh() && GetMesh()->GetAnimInstance())
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+        if (!AnimInstance->Montage_IsPlaying(PunchMontage))
+        {
+            AnimInstance->Montage_Play(PunchMontage);
+
+            // 몽타주가 완전히 끝났을 때를 위한 콜백 설정
+            FOnMontageEnded MontageEndedDelegate;
+            MontageEndedDelegate.BindUObject(this, &ABaseCharacter::OnPunchMontageEnded);
+            AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate, PunchMontage);
+        }
+
+        FName SectionName = FName(*FString::Printf(TEXT("Combo%d"), SectionIndex));
+        AnimInstance->Montage_JumpToSection(SectionName, PunchMontage);
+
+        CHAR_LOG(Log, TEXT("Playing Unarmed Combo Section: %s"), *SectionName.ToString());
+    }
+}
+
+// [신규] 몽타주 종료 시 호출될 함수
+void ABaseCharacter::OnPunchMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    // 재생 중인 몽타주가 끝나면 무조건 상태 초기화 (안전장치)
+    if (Montage == PunchMontage)
+    {
+        ResetAttackState();
+        CHAR_LOG(Log, TEXT("Unarmed Montage Ended. %s"), bInterrupted ? TEXT("Interrupted") : TEXT("Naturally"));
+    }
+}
+
+void ABaseCharacter::SetComboInputWindow(bool bEnable)
+{
+    bIsComboInputOn = bEnable;
+    CHAR_LOG(Verbose, TEXT("Combo Input Window: %s"), bEnable ? TEXT("Open") : TEXT("Closed"));
+}
+
+// [수정] 애니메이션 노티파이: 다음 콤보 진행 여부 체크
+void ABaseCharacter::CheckNextCombo()
+{
+    if (bIsNextComboReserved)
+    {
+        bIsNextComboReserved = false;
+        bIsComboInputOn = false;
+
+        CurrentComboIndex++;
+
+        // MaxComboCount를 초과하면 다시 1타로 순환하거나 종료 (여기서는 1타로 순환하도록 설정)
+        if (CurrentComboIndex > MaxComboCount)
+        {
+            CurrentComboIndex = 1;
+        }
+
+        MulticastPlayUnarmedCombo(CurrentComboIndex);
+
+        FString DebugMsg = FString::Printf(TEXT("Moving to Next Combo: Combo%d"), CurrentComboIndex);
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
+        CHAR_LOG(Log, TEXT("%s"), *DebugMsg);
+    }
+    else
+    {
+        // [중요] 예약 없으면 즉시 모든 상태 초기화
+        ResetAttackState();
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("Combo Reset (No Reservation)"));
+    }
+}
+
+void ABaseCharacter::ResetAttackState()
+{
+    bIsCharacterAttacking = false;
+    bIsComboInputOn = false;
+    bIsNextComboReserved = false;
+    CurrentComboIndex = 0;
+
+    CHAR_LOG(Log, TEXT("Attack State Reset. Ready for next attack."));
+}
+
+// 공격 시작 시 호출 (AnimNotify 등에서 활용)
+void ABaseCharacter::EnhanceFistPhysics(bool bEnable)
+{
+    // 팔 관련 본들의 이름을 배열로 관리하여 적용
+    TArray<FName> RootArmBones = { TEXT("lowerarm_r"), TEXT("lowerarm_l") };
+    for (const FName& BoneName : RootArmBones)
+    {
+        // 세 번째 인자인 bIncludeSelf를 true로 설정하여 upperarm 자체도 포함시킵니다.
+        if(bEnable) GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, false, true);
+        else GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, true, true);
     }
 }
