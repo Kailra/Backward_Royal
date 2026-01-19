@@ -38,6 +38,8 @@ ABaseCharacter::ABaseCharacter()
 
     AttackComponent = CreateDefaultSubobject<UBRAttackComponent>(TEXT("AttackComponent"));
 
+    // PhysicsControlComp = CreateDefaultSubobject<UPhysicsControlComponent>(TEXT("PhysicsControlComp"));
+
     if (GetMesh())
     {
         // 1. 물리(Physics)와 쿼리(Query) 모두 활성화
@@ -73,6 +75,11 @@ void ABaseCharacter::BeginPlay()
     HandMesh->SetLeaderPoseComponent(GetMesh());
     LegMesh->SetLeaderPoseComponent(GetMesh());
     FootMesh->SetLeaderPoseComponent(GetMesh());
+
+    //if (PhysicsControlComp && GetMesh())
+    //{
+    //    SetupArmPhysicsControls();
+    //}
 
     if (GetCharacterMovement())
     {
@@ -145,100 +152,36 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
 // [신규] 공격 요청 처리 함수
 void ABaseCharacter::RequestAttack()
 {
-    // 1. 무기가 있는 경우: 기존 로직(단타) 사용
+    // 1. 무기가 있는 경우: 기존 로직 유지
     if (CurrentWeapon)
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance && AttackMontage)
         {
-            // 이미 공격 몽타주가 재생 중이라면 입력을 무시하고 리턴
-            if (AnimInstance->Montage_IsPlaying(AttackMontage))
-            {
-                return;
-            }
+            if (AnimInstance->Montage_IsPlaying(AttackMontage)) return;
         }
-
-        // 무기 공격은 일단 콤보 없이 즉시 발동 (필요 시 무기 콤보도 유사하게 구현 가능)
         MulticastPlayAttack(nullptr);
         return;
     }
 
-    // 2. 맨손(Unarmed) 콤보 로직
     if (bIsCharacterAttacking)
     {
-        // 이미 공격 중이라면 -> 입력 허용 구간(Window)일 때만 다음 공격 예약
         if (bIsComboInputOn)
         {
             bIsNextComboReserved = true;
-            GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Combo Reserved!"));
+            // 여기서 인덱스를 미리 올리지 않고, 예약만 합니다.
+            GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, TEXT("Combo Reserved!"));
         }
     }
     else
     {
-        // 공격 중이 아니면 -> 1타 시작
-        CurrentComboIndex = 1;
+        // 첫 공격 시작 (1번 섹션부터 시작)
         bIsCharacterAttacking = true;
         bIsNextComboReserved = false;
-        MulticastPlayUnarmedCombo(CurrentComboIndex);
-        // 수정된 부분: FString::Printf를 사용하여 문자열을 먼저 생성해야 합니다.
-        FString DebugMsg = FString::Printf(TEXT("Starting First Combo: Combo%d"), CurrentComboIndex);
-
-        // 화면에 출력
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
-    }
-}
-
-// [신규] 맨손 콤보 몽타주 재생 (멀티캐스트)
-void ABaseCharacter::MulticastPlayUnarmedCombo_Implementation(int32 SectionIndex)
-{
-    if (UnarmedComboMontage && GetMesh() && GetMesh()->GetAnimInstance())
-    {
-        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        if (!AnimInstance->Montage_IsPlaying(UnarmedComboMontage))
-        {
-            AnimInstance->Montage_Play(UnarmedComboMontage);
-        }
-
-        // 섹션 이름 (Combo1, Combo2, Combo3...)
-        FName SectionName = FName(*FString::Printf(TEXT("Combo%d"), SectionIndex));
-        AnimInstance->Montage_JumpToSection(SectionName, UnarmedComboMontage);
-    }
-}
-
-// [신규] 애니메이션 노티파이: 입력 구간 설정
-void ABaseCharacter::SetComboInputWindow(bool bEnable)
-{
-    bIsComboInputOn = bEnable;
-}
-
-// [신규] 애니메이션 노티파이: 다음 콤보 진행 여부 체크
-void ABaseCharacter::CheckNextCombo()
-{
-    if (bIsNextComboReserved)
-    {
-        // 예약된 공격이 있으면 -> 다음 콤보
-        bIsNextComboReserved = false;
-        bIsComboInputOn = false;
-
-        CurrentComboIndex++;
-        if (CurrentComboIndex > MaxComboCount) CurrentComboIndex = 1;
+        CurrentComboIndex = 1;
 
         MulticastPlayUnarmedCombo(CurrentComboIndex);
-        // 수정된 부분: FString::Printf를 사용하여 문자열을 먼저 생성해야 합니다.
-        FString DebugMsg = FString::Printf(TEXT("Moving to Next Combo: Combo%d"), CurrentComboIndex);
-
-        // 화면에 출력
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
-    }
-    else
-    {
-        // 예약 없으면 -> 공격 종료
-        bIsCharacterAttacking = false;
-        bIsComboInputOn = false;
-        CurrentComboIndex = 0;
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("Combo Reset"));
-        // 몽타주는 BlendOut 되도록 둠
+        CHAR_LOG(Log, TEXT("Starting First Attack: Combo%d"), CurrentComboIndex);
     }
 }
 
@@ -344,9 +287,6 @@ void ABaseCharacter::MulticastDie_Implementation()
         // 1. 메쉬와의 연결을 끊거나
         PhysAnimComp->SetSkeletalMeshComponent(nullptr);
 
-        //// 2. 아예 컴포넌트를 꺼버립니다.
-        //PhysAnimComp->Deactivate();
-
         CHAR_LOG(Log, TEXT("Physical Animation Disabled for Ragdoll."));
     }
 
@@ -395,5 +335,98 @@ void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
                 AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
             }
         }
+    }
+}
+
+void ABaseCharacter::MulticastPlayUnarmedCombo_Implementation(int32 SectionIndex)
+{
+    if (PunchMontage && GetMesh() && GetMesh()->GetAnimInstance())
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+        if (!AnimInstance->Montage_IsPlaying(PunchMontage))
+        {
+            AnimInstance->Montage_Play(PunchMontage);
+
+            // 몽타주가 완전히 끝났을 때를 위한 콜백 설정
+            FOnMontageEnded MontageEndedDelegate;
+            MontageEndedDelegate.BindUObject(this, &ABaseCharacter::OnPunchMontageEnded);
+            AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate, PunchMontage);
+        }
+
+        FName SectionName = FName(*FString::Printf(TEXT("Combo%d"), SectionIndex));
+        AnimInstance->Montage_JumpToSection(SectionName, PunchMontage);
+
+        CHAR_LOG(Log, TEXT("Playing Unarmed Combo Section: %s"), *SectionName.ToString());
+    }
+}
+
+// [신규] 몽타주 종료 시 호출될 함수
+void ABaseCharacter::OnPunchMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+    // 재생 중인 몽타주가 끝나면 무조건 상태 초기화 (안전장치)
+    if (Montage == PunchMontage)
+    {
+        ResetAttackState();
+        CHAR_LOG(Log, TEXT("Unarmed Montage Ended. %s"), bInterrupted ? TEXT("Interrupted") : TEXT("Naturally"));
+    }
+}
+
+void ABaseCharacter::SetComboInputWindow(bool bEnable)
+{
+    bIsComboInputOn = bEnable;
+    CHAR_LOG(Verbose, TEXT("Combo Input Window: %s"), bEnable ? TEXT("Open") : TEXT("Closed"));
+}
+
+// [수정] 애니메이션 노티파이: 다음 콤보 진행 여부 체크
+void ABaseCharacter::CheckNextCombo()
+{
+    if (bIsNextComboReserved)
+    {
+        bIsNextComboReserved = false;
+        bIsComboInputOn = false;
+
+        CurrentComboIndex++;
+
+        // MaxComboCount를 초과하면 다시 1타로 순환하거나 종료 (여기서는 1타로 순환하도록 설정)
+        if (CurrentComboIndex > MaxComboCount)
+        {
+            CurrentComboIndex = 1;
+        }
+
+        MulticastPlayUnarmedCombo(CurrentComboIndex);
+
+        FString DebugMsg = FString::Printf(TEXT("Moving to Next Combo: Combo%d"), CurrentComboIndex);
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
+        CHAR_LOG(Log, TEXT("%s"), *DebugMsg);
+    }
+    else
+    {
+        // [중요] 예약 없으면 즉시 모든 상태 초기화
+        ResetAttackState();
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("Combo Reset (No Reservation)"));
+    }
+}
+
+void ABaseCharacter::ResetAttackState()
+{
+    bIsCharacterAttacking = false;
+    bIsComboInputOn = false;
+    bIsNextComboReserved = false;
+    CurrentComboIndex = 0;
+
+    CHAR_LOG(Log, TEXT("Attack State Reset. Ready for next attack."));
+}
+
+// 공격 시작 시 호출 (AnimNotify 등에서 활용)
+void ABaseCharacter::EnhanceFistPhysics(bool bEnable)
+{
+    // 팔 관련 본들의 이름을 배열로 관리하여 적용
+    TArray<FName> RootArmBones = { TEXT("lowerarm_r"), TEXT("lowerarm_l") };
+    for (const FName& BoneName : RootArmBones)
+    {
+        // 세 번째 인자인 bIncludeSelf를 true로 설정하여 upperarm 자체도 포함시킵니다.
+        if(bEnable) GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, false, true);
+        else GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, true, true);
     }
 }

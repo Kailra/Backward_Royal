@@ -30,6 +30,9 @@ protected:
     UFUNCTION(NetMulticast, Reliable)
     void MulticastDie();
 
+    void OnPunchMontageEnded(UAnimMontage* Montage, bool bInterrupted);
+
+
 public:
     // --- Components ---
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Armor")
@@ -49,6 +52,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     UBRAttackComponent* AttackComponent;
+
+    //UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Physics")
+    //UPhysicsControlComponent* PhysicsControlComp;
 
     // --- Stats ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
@@ -71,9 +77,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     UAnimMontage* AttackMontage;
 
-    // [신규] 맨손 콤보 몽타주 (Combo1, Combo2, Combo3 섹션 필요)
+    // 펀치 몽타주
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    UAnimMontage* UnarmedComboMontage;
+    UAnimMontage* PunchMontage;
 
     // [신규] 공격 요청 처리 (서버에서 호출됨)
     void RequestAttack();
@@ -82,16 +88,21 @@ public:
     UFUNCTION(NetMulticast, Reliable)
     void MulticastPlayAttack(APawn* RequestingPawn);
 
-    // [신규] 맨손 콤보 멀티캐스트
+    // 공격 실행 (몽타주 기반)
     UFUNCTION(NetMulticast, Reliable)
     void MulticastPlayUnarmedCombo(int32 SectionIndex);
 
-    // [신규] 애니메이션 노티파이용 함수 (BlueprintCallable 필수)
-    UFUNCTION(BlueprintCallable, Category = "Combat")
-    void SetComboInputWindow(bool bEnable); // 입력 허용 구간 열기/닫기
+    UFUNCTION(BlueprintCallable)
+    void SetComboInputWindow(bool bEnable);
 
-    UFUNCTION(BlueprintCallable, Category = "Combat")
-    void CheckNextCombo(); // 다음 콤보로 넘어갈지 결정
+    UFUNCTION(BlueprintCallable)
+    void CheckNextCombo();
+
+    void ResetAttackState();
+
+    UFUNCTION(BlueprintCallable)
+    void EnhanceFistPhysics(bool bEnable);
+
 
     // 데미지 처리
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
@@ -129,4 +140,5 @@ protected:
     // 입력 버퍼링용 플래그
     bool bIsComboInputOn = false;      // 입력 허용 구간인가?
     bool bIsNextComboReserved = false; // 다음 공격이 예약되었는가?
+    
 };

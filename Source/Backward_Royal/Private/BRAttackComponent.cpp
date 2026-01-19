@@ -93,8 +93,8 @@ void UBRAttackComponent::InternalHandleOwnerHit(UPrimitiveComponent* HitComponen
 	// 1. 기본 조건 체크 (공통)
 	if (!bIsDetectionActive || !OtherActor || OtherActor == GetOwner()) return;
 
-	FString NetMode = GetOwner()->HasAuthority() ? TEXT("Server") : TEXT("Client");
-	GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::White, FString::Printf(TEXT("[%s] Physics Hit: %s"), *NetMode, *OtherActor->GetName()));
+	//FString NetMode = GetOwner()->HasAuthority() ? TEXT("Server") : TEXT("Client");
+	//GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::White, FString::Printf(TEXT("[%s] Physics Hit: %s"), *NetMode, *OtherActor->GetName()));
 
 	// 2. 캐릭터 참조 가져오기
 	ABaseCharacter* OwnerChar = Cast<ABaseCharacter>(GetOwner());
@@ -108,18 +108,13 @@ void UBRAttackComponent::InternalHandleOwnerHit(UPrimitiveComponent* HitComponen
         FString HitBoneStr = HitBone.ToString().ToLower();
 
         // "hand" 또는 "fist" 등이 포함된 뼈인지 확인
-        bool bIsHandHit = HitBoneStr.Contains(TEXT("hand")) || HitBoneStr.Contains(TEXT("fist")) || HitBoneStr.Contains(TEXT("index"));
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::White, FString::Printf(TEXT("Fist ON : %s"), *HitBoneStr));
-
+        bool bIsHandHit = HitBoneStr.Contains(TEXT("hand")) || HitBoneStr.Contains(TEXT("lowerarm"));
         if (!bIsHandHit)
         {
             // 몸싸움 중이라 몸통이나 발이 닿은 경우 -> 데미지 판정 X
             return;
         }
     }
-
-	// 클라이언트와 서버 양쪽에서 즉시 멈춰서 타격감을 극대화합니다.
-	OwnerChar->StopAnimMontage();
 
 	// 3. 권한 체크 (데미지 처리는 서버에서만)
 	if (!GetOwner()->HasAuthority()) return;
@@ -160,5 +155,11 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
 	}
 
 	HitActors.Add(OtherActor);
-	ATK_LOG(Log, TEXT("데미지 적용 -> 대상: %s, 피해량: %.1f"), *OtherActor->GetName(), CalculatedDamage);
+
+    GEngine->AddOnScreenDebugMessage(
+        -1,
+        2.f,
+        FColor::Green,
+        FString::Printf(TEXT("데미지 적용 -> 대상: %s, 피해량: %.1f"), *OtherActor->GetName(), CalculatedDamage)
+    );
 }
