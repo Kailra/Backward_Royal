@@ -109,6 +109,7 @@ void UBRAttackComponent::InternalHandleOwnerHit(UPrimitiveComponent* HitComponen
 
         // "hand" 또는 "fist" 등이 포함된 뼈인지 확인
         bool bIsHandHit = HitBoneStr.Contains(TEXT("hand")) || HitBoneStr.Contains(TEXT("fist")) || HitBoneStr.Contains(TEXT("index"));
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::White, FString::Printf(TEXT("Fist ON : %s"), *HitBoneStr));
 
         if (!bIsHandHit)
         {

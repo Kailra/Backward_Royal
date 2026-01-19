@@ -170,7 +170,7 @@ void ABaseCharacter::RequestAttack()
         if (bIsComboInputOn)
         {
             bIsNextComboReserved = true;
-            // GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Combo Reserved!"));
+            GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Combo Reserved!"));
         }
     }
     else
@@ -180,6 +180,7 @@ void ABaseCharacter::RequestAttack()
         bIsCharacterAttacking = true;
         bIsNextComboReserved = false;
         MulticastPlayUnarmedCombo(CurrentComboIndex);
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Fisrt Combo!"));
     }
 }
 
