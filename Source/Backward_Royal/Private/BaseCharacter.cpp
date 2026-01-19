@@ -180,7 +180,11 @@ void ABaseCharacter::RequestAttack()
         bIsCharacterAttacking = true;
         bIsNextComboReserved = false;
         MulticastPlayUnarmedCombo(CurrentComboIndex);
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Green, TEXT("Fisrt Combo!"));
+        // 수정된 부분: FString::Printf를 사용하여 문자열을 먼저 생성해야 합니다.
+        FString DebugMsg = FString::Printf(TEXT("Starting First Combo: Combo%d"), CurrentComboIndex);
+
+        // 화면에 출력
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
     }
 }
 
@@ -221,6 +225,11 @@ void ABaseCharacter::CheckNextCombo()
         if (CurrentComboIndex > MaxComboCount) CurrentComboIndex = 1;
 
         MulticastPlayUnarmedCombo(CurrentComboIndex);
+        // 수정된 부분: FString::Printf를 사용하여 문자열을 먼저 생성해야 합니다.
+        FString DebugMsg = FString::Printf(TEXT("Moving to Next Combo: Combo%d"), CurrentComboIndex);
+
+        // 화면에 출력
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
     }
     else
     {
@@ -228,6 +237,7 @@ void ABaseCharacter::CheckNextCombo()
         bIsCharacterAttacking = false;
         bIsComboInputOn = false;
         CurrentComboIndex = 0;
+        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("Combo Reset"));
         // 몽타주는 BlendOut 되도록 둠
     }
 }
