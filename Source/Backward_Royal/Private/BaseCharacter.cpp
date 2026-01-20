@@ -324,7 +324,9 @@ void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
-            AnimInstance->Montage_Play(AttackMontage);
+            float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
+
+            AnimInstance->Montage_Play(AttackMontage, AttackSpeed);
 
             // 전달받은 Pawn을 UpperBodyPawn으로 캐스팅
             if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
@@ -344,9 +346,11 @@ void ABaseCharacter::MulticastPlayUnarmedCombo_Implementation(int32 SectionIndex
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
 
+        float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
+
         if (!AnimInstance->Montage_IsPlaying(PunchMontage))
         {
-            AnimInstance->Montage_Play(PunchMontage);
+            AnimInstance->Montage_Play(PunchMontage, AttackSpeed);
 
             // 몽타주가 완전히 끝났을 때를 위한 콜백 설정
             FOnMontageEnded MontageEndedDelegate;

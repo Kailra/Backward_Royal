@@ -1,4 +1,4 @@
-// ArmorTypes.h
+ï»¿// ArmorTypes.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,12 +7,12 @@
 UENUM(BlueprintType)
 enum class EArmorSlot : uint8
 {
-    Head,   // ¸Ó¸®
-    Chest,  // »óÃ¼ (°©¿Ê)
-    Hands,  // Àå°©
-    Legs,   // ÇÏÀÇ
-    Feet,   // ½Å¹ß
-    None    // ¾øÀ½
+    Head,   // ë¨¸ë¦¬
+    Chest,  // ìƒì²´ (ê°‘ì˜·)
+    Hands,  // ì¥ê°‘
+    Legs,   // í•˜ì˜
+    Feet,   // ì‹ ë°œ
+    None    // ì—†ìŒ
 };
 
 USTRUCT(BlueprintType)
@@ -24,7 +24,7 @@ struct FArmorData : public FTableRowBase
     FName DisplayName;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    USkeletalMesh* ArmorMesh; // Àû¿ëÇÒ ¸Ş½¬
+    USkeletalMesh* ArmorMesh; // ì ìš©í•  ë©”ì‰¬
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     EArmorSlot EquipSlot;
