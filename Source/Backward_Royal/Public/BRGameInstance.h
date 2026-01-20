@@ -64,6 +64,9 @@ public:
 
 	/** 데이터 테이블 변경 사항을 .uasset 파일로 영구 저장 (에디터 전용) */
 	void SaveDataTableToAsset(UDataTable* TargetTable);
+
+	// 전역 변수 설정을 위한 함수
+	void ApplyGlobalMultipliers();
 		
 protected:
 	// 실제 JSON 파싱 로직

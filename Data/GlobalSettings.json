@@ -1,0 +1,10 @@
+{
+  "Data": [
+    {
+      "Name": "Default",
+      "Global_Weapon_DamageMultiplier": 1.25,
+      "Global_Weapon_ImpulseMultiplier": 0.7,
+      "Global_Weapon_AttackSpeedMultiplier": 1.0
+    }
+  ]
+}
