@@ -142,22 +142,35 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 {
 	if (!PlayerInputComponent) return;
 
+	// 기존 바인딩 초기화 (안전을 위해 유지)
 	PlayerInputComponent->ClearActionBindings();
 
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
+		// [기존 코드 유지] 이동
 		if (MoveAction)
 			EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Move);
 
+		// [기존 코드 유지] 시선
 		if (LookAction)
 			EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &APlayerCharacter::Look);
 
+		// [기존 코드 유지] 점프
 		if (JumpAction)
 		{
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		}
+
+		// [새로 추가된 코드] 달리기 (Sprint)
+		if (SprintAction)
+		{
+			// 눌렀을 때 -> 빨라짐
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &APlayerCharacter::SprintStart);
+			// 뗐을 때 -> 느려짐
+			EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &APlayerCharacter::SprintEnd);
 		}
 	}
 }
@@ -210,4 +223,16 @@ FRotator APlayerCharacter::GetBaseAimRotation() const
 	// 원래는 컨트롤러(하체 플레이어)의 회전을 가져오지만,
 	// 우리는 상체 플레이어가 정해준 회전값(UpperBodyAimRotation)을 강제로 리턴합니다.
 	return UpperBodyAimRotation;
+}
+
+void APlayerCharacter::SprintStart(const FInputActionValue& Value)
+{
+	// 캐릭터 무브먼트의 최대 속도를 달리기 속도로 변경
+	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+}
+
+void APlayerCharacter::SprintEnd(const FInputActionValue& Value)
+{
+	// 키를 떼면 다시 걷기 속도로 복구
+	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }

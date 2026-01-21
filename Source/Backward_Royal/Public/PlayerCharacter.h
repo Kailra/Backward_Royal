@@ -36,6 +36,7 @@ public:
 	// ★ 핵심: 시선 방향 계산 재정의 (상체 플레이어의 시선을 따르도록 함)
 	virtual FRotator GetBaseAimRotation() const override;
 
+
 protected:
 	// -------------------------------------------------------------------
 	// [내부 로직 / 상속용 함수]
@@ -50,6 +51,9 @@ protected:
 
 	UPROPERTY()
 	class AUpperBodyPawn* CurrentUpperBodyPawn;
+
+	void SprintStart(const FInputActionValue& Value);
+	void SprintEnd(const FInputActionValue& Value);
 
 public:
 	// -------------------------------------------------------------------
@@ -85,4 +89,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	class UInputAction* JumpAction;
+
+	// [추가 1] 에디터에서 IA_Sprint 파일을 넣을 변수
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	class UInputAction* SprintAction;
+
+	// [추가 2] 걷는 속도와 달리는 속도 변수
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float WalkSpeed = 600.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float SprintSpeed = 1000.0f;
 };
