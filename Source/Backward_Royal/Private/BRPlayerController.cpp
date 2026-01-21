@@ -49,18 +49,27 @@ void ABRPlayerController::BeginPlay()
 			UWorld* World = GetWorld();
 			if (!World)
 			{
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] World를 찾을 수 없습니다."));
 				return;
 			}
 
 			ENetMode NetMode = World->GetNetMode();
+			FString NetModeString = 
+				NetMode == NM_Standalone ? TEXT("Standalone") :
+				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") :
+				NetMode == NM_ListenServer ? TEXT("ListenServer") :
+				NetMode == NM_Client ? TEXT("Client") : TEXT("Unknown");
+			
+			UE_LOG(LogTemp, Log, TEXT("[PlayerController] BeginPlay UI 표시 결정 - NetMode: %s (%d)"), *NetModeString, (int32)NetMode);
 			
 			// 클라이언트로 서버에 연결된 경우 → LobbyMenu 표시
 			if (NetMode == NM_Client)
 			{
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - LobbyMenu 표시 시도"));
 				if (LobbyMenuWidgetClass)
 				{
 					ShowLobbyMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 표시 (NetMode: Client)"));
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 표시 완료"));
 				}
 				else
 				{
@@ -71,16 +80,20 @@ void ABRPlayerController::BeginPlay()
 						ShowEntranceMenu();
 						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] LobbyMenuWidgetClass가 없어 EntranceMenu를 표시합니다."));
 					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[PlayerController] LobbyMenuWidgetClass와 EntranceMenuWidgetClass 모두 설정되지 않았습니다!"));
+					}
 				}
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
 			else if (NetMode == NM_Standalone || NetMode == NM_ListenServer)
 			{
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 로컬/서버 모드 감지 - EntranceMenu 표시 시도"));
 				if (EntranceMenuWidgetClass)
 				{
 					ShowEntranceMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 (NetMode: %s)"), 
-						NetMode == NM_Standalone ? TEXT("Standalone") : TEXT("ListenServer"));
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 완료"));
 				}
 				else
 				{
@@ -89,7 +102,7 @@ void ABRPlayerController::BeginPlay()
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 알 수 없는 네트워크 모드: %d"), (int32)NetMode);
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 알 수 없는 네트워크 모드: %d (%s)"), (int32)NetMode, *NetModeString);
 			}
 		}, 0.1f, false);
 	}
