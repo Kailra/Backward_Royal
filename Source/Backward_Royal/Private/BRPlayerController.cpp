@@ -63,29 +63,13 @@ void ABRPlayerController::BeginPlay()
 			
 			UE_LOG(LogTemp, Log, TEXT("[PlayerController] BeginPlay UI 표시 결정 - NetMode: %s (%d)"), *NetModeString, (int32)NetMode);
 			
-			// 클라이언트로 서버에 연결된 경우 → LobbyMenu 표시
+			// 클라이언트로 서버에 연결된 경우 → WBP_MainScreen1의 WidgetSwitcher를 LobbyMenu로 전환
 			if (NetMode == NM_Client)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - LobbyMenu 표시 시도"));
-				if (LobbyMenuWidgetClass)
-				{
-					ShowLobbyMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 표시 완료"));
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] LobbyMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
-					// LobbyMenuWidgetClass가 없으면 EntranceMenu 표시 (폴백)
-					if (EntranceMenuWidgetClass)
-					{
-						ShowEntranceMenu();
-						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] LobbyMenuWidgetClass가 없어 EntranceMenu를 표시합니다."));
-					}
-					else
-					{
-						UE_LOG(LogTemp, Error, TEXT("[PlayerController] LobbyMenuWidgetClass와 EntranceMenuWidgetClass 모두 설정되지 않았습니다!"));
-					}
-				}
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - WBP_MainScreen1의 WidgetSwitcher를 LobbyMenu로 전환"));
+				// WBP_MainScreen1이 HUD에서 관리되고 있으므로, WidgetSwitcher를 통해 전환
+				SetMainScreenToLobbyMenu();
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 전환 완료"));
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
 			// 주의: WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있으므로
@@ -913,10 +897,40 @@ void ABRPlayerController::ShowMainScreen()
 
 void ABRPlayerController::SetMainScreenToEntranceMenu()
 {
-	// 이 함수는 블루프린트에서 구현해야 합니다.
-	// WBP_MainScreen1 블루프린트에서 이 함수를 오버라이드하여
-	// WidgetSwitcher_Main의 ActiveWidgetIndex를 0 (또는 WBP_EntranceMenu1의 인덱스)로 설정
-	UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToEntranceMenu 호출 - 블루프린트에서 WidgetSwitcher 인덱스를 설정하세요."));
+	// WBP_MainScreen1 블루프린트에서 이 함수를 구현해야 합니다.
+	// MainScreenWidget이 유효하면 블루프린트 함수를 호출합니다.
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		// 블루프린트에서 구현된 함수를 호출하기 위해
+		// UFunction을 찾아서 호출합니다.
+		UFunction* Function = MainScreenWidget->FindFunction(FName("SetMainScreenToEntranceMenu"));
+		if (Function)
+		{
+			MainScreenWidget->ProcessEvent(Function, nullptr);
+			UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToEntranceMenu 호출 완료"));
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToEntranceMenu: MainScreenWidget이 없거나 함수를 찾을 수 없습니다."));
+}
+
+void ABRPlayerController::SetMainScreenToLobbyMenu()
+{
+	// WBP_MainScreen1 블루프린트에서 이 함수를 구현해야 합니다.
+	// MainScreenWidget이 유효하면 블루프린트 함수를 호출합니다.
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		// 블루프린트에서 구현된 함수를 호출하기 위해
+		// UFunction을 찾아서 호출합니다.
+		UFunction* Function = MainScreenWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+		if (Function)
+		{
+			MainScreenWidget->ProcessEvent(Function, nullptr);
+			UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 호출 완료"));
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToLobbyMenu: MainScreenWidget이 없거나 함수를 찾을 수 없습니다."));
 }
 
 void ABRPlayerController::HideMainScreen()

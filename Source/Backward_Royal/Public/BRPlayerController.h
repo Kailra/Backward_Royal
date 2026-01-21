@@ -100,6 +100,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void SetMainScreenToEntranceMenu();
 
+	// WBP_MainScreen1의 WidgetSwitcher 인덱스를 LobbyMenu로 설정
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void SetMainScreenToLobbyMenu();
+
 	// 현재 표시 중인 위젯 가져오기
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	class UUserWidget* GetCurrentMenuWidget() const { return CurrentMenuWidget; }
