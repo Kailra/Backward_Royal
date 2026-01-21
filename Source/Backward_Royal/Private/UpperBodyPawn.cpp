@@ -233,9 +233,9 @@ void AUpperBodyPawn::Attack(const FInputActionValue& Value)
 
 void AUpperBodyPawn::ServerRequestSetAttackDetection_Implementation(bool bEnabled)
 {
-	FString NetMode = HasAuthority() ? TEXT("Server") : TEXT("Client");
-	GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan,
-		FString::Printf(TEXT("[%s] Collision Enabled (Pawn: %s)"), *NetMode, *GetName()));
+	//FString NetMode = HasAuthority() ? TEXT("Server") : TEXT("Client");
+	//GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan,
+	//	FString::Printf(TEXT("[%s] Collision Enabled (Pawn: %s)"), *NetMode, *GetName()));
 
 	if (!ParentBodyCharacter) return;
 

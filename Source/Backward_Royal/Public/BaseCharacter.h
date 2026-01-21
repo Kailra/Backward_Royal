@@ -97,7 +97,6 @@ public:
     UFUNCTION(BlueprintCallable)
     void EnhanceFistPhysics(bool bEnable);
 
-
     // 데미지 처리
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
