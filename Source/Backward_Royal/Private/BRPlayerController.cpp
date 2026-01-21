@@ -46,14 +46,39 @@ void ABRPlayerController::BeginPlay()
 		FTimerHandle TimerHandle;
 		GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
 		{
-			if (EntranceMenuWidgetClass)
+			UWorld* World = GetWorld();
+			if (!World)
 			{
-				ShowEntranceMenu();
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시"));
+				return;
 			}
-			else
+
+			ENetMode NetMode = World->GetNetMode();
+			
+			// 클라이언트로 서버에 연결된 경우 → LobbyMenu 표시
+			if (NetMode == NM_Client)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] EntranceMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
+				if (LobbyMenuWidgetClass)
+				{
+					ShowLobbyMenu();
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 표시"));
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] LobbyMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
+				}
+			}
+			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
+			else if (NetMode == NM_Standalone || NetMode == NM_ListenServer)
+			{
+				if (EntranceMenuWidgetClass)
+				{
+					ShowEntranceMenu();
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시"));
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] EntranceMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
+				}
 			}
 		}, 0.1f, false);
 	}
