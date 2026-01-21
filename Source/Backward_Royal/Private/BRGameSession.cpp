@@ -134,6 +134,15 @@ void ABRGameSession::FindSessions()
 	}
 }
 
+int32 ABRGameSession::GetSessionCount() const
+{
+	if (SessionSearch.IsValid())
+	{
+		return SessionSearch->SearchResults.Num();
+	}
+	return 0;
+}
+
 void ABRGameSession::JoinSessionByIndex(int32 SessionIndex)
 {
 	UE_LOG(LogTemp, Log, TEXT("[방 참가] 세션 인덱스: %d"), SessionIndex);
@@ -339,6 +348,7 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 	}
 
 	OnFindSessionsComplete.Broadcast(Results);
+	OnFindSessionsCompleteBP.Broadcast();
 }
 
 void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinSessionCompleteResult::Type Result)
