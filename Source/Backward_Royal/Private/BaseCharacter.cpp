@@ -38,6 +38,26 @@ ABaseCharacter::ABaseCharacter()
 
     AttackComponent = CreateDefaultSubobject<UBRAttackComponent>(TEXT("AttackComponent"));
 
+    // PhysicsControlComp = CreateDefaultSubobject<UPhysicsControlComponent>(TEXT("PhysicsControlComp"));
+
+    if (GetMesh())
+    {
+        // 1. 물리(Physics)와 쿼리(Query) 모두 활성화
+        GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+        // 2. 기본 프로필 설정 (CharacterMesh 권장)
+        GetMesh()->SetCollisionProfileName(TEXT("CharacterMesh"));
+
+        // 3. Pawn(다른 플레이어)에 대해 Block 설정 -> 서로 밀리게 됨
+        GetMesh()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+
+        // 4. 카메라는 무시 (카메라가 몸 뚫을 때 덜컹거림 방지)
+        GetMesh()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+
+        // 5. 평소에는 Hit Event를 꺼둬서 불필요한 연산 방지 (공격 때만 BRAttackComponent가 켬)
+        GetMesh()->SetNotifyRigidBodyCollision(false);
+    }
+
     DefaultWalkSpeed = 600.0f;
     CurrentWeapon = nullptr; // 무기 초기화
 
@@ -55,6 +75,11 @@ void ABaseCharacter::BeginPlay()
     HandMesh->SetLeaderPoseComponent(GetMesh());
     LegMesh->SetLeaderPoseComponent(GetMesh());
     FootMesh->SetLeaderPoseComponent(GetMesh());
+
+    //if (PhysicsControlComp && GetMesh())
+    //{
+    //    SetupArmPhysicsControls();
+    //}
 
     if (GetCharacterMovement())
     {
@@ -124,7 +149,48 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
     CHAR_LOG(Log, TEXT("Equipped Weapon: %s"), *NewWeapon->GetName());
 }
 
-// [신규] 무기 버리기 구현
+// [신규] 공격 요청 처리 함수
+void ABaseCharacter::RequestAttack()
+{
+    // 1. 무기가 있는 경우: 기존 로직 유지
+    if (CurrentWeapon)
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance && AttackMontage)
+        {
+            if (AnimInstance->Montage_IsPlaying(AttackMontage)) return;
+        }
+        MulticastPlayWeaponAttack(nullptr);
+        return;
+    }
+
+    // 2. 맨손 공격 로직 (번갈아 치기)
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance) return;
+
+    // [핵심] 현재 어떤 공격 몽타주라도 재생 중이면 입력을 무시
+    if (AnimInstance->Montage_IsPlaying(PunchMontage_L) ||
+        AnimInstance->Montage_IsPlaying(PunchMontage_R))
+    {
+        return;
+    }
+
+    // 재생할 손 결정
+    UAnimMontage* SelectedMontage = bNextAttackIsLeft ? PunchMontage_L : PunchMontage_R;
+
+    if (SelectedMontage)
+    {
+        MulticastPlayPunch(SelectedMontage);
+
+        // [2025-11-18] 커스텀 디버그 로그 매크로 사용 (규칙 준수)
+        CHAR_LOG(Log, TEXT("Starting Punch: %s"), bNextAttackIsLeft ? TEXT("Left") : TEXT("Right"));
+
+        // 다음 손으로 변경
+        bNextAttackIsLeft = !bNextAttackIsLeft;
+    }
+}
+
+// 무기 버리기 구현
 void ABaseCharacter::DropCurrentWeapon()
 {
     if (!CurrentWeapon) return;
@@ -226,9 +292,6 @@ void ABaseCharacter::MulticastDie_Implementation()
         // 1. 메쉬와의 연결을 끊거나
         PhysAnimComp->SetSkeletalMeshComponent(nullptr);
 
-        //// 2. 아예 컴포넌트를 꺼버립니다.
-        //PhysAnimComp->Deactivate();
-
         CHAR_LOG(Log, TEXT("Physical Animation Disabled for Ragdoll."));
     }
 
@@ -259,14 +322,16 @@ void ABaseCharacter::OnRep_CurrentHP()
     CHAR_LOG(Log, TEXT("HP가 복제되었습니다. 현재 HP: %.1f"), CurrentHP);
 }
 
-void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
+void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(APawn* RequestingPawn)
 {
     if (AttackMontage && GetMesh())
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
-            AnimInstance->Montage_Play(AttackMontage);
+            float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
+
+            AnimInstance->Montage_Play(AttackMontage, AttackSpeed);
 
             // 전달받은 Pawn을 UpperBodyPawn으로 캐스팅
             if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
@@ -277,5 +342,31 @@ void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
                 AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
             }
         }
+    }
+}
+
+void ABaseCharacter::MulticastPlayPunch_Implementation(UAnimMontage* TargetMontage)
+{
+    if (TargetMontage && GetMesh())
+    {
+        UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+        if (AnimInstance)
+        {
+            float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
+            AnimInstance->Montage_Play(TargetMontage, AttackSpeed);
+        }
+    }
+}
+
+// 공격 시작 시 호출 (AnimNotify 등에서 활용)
+void ABaseCharacter::EnhanceFistPhysics(bool bEnable)
+{
+    // 팔 관련 본들의 이름을 배열로 관리하여 적용
+    TArray<FName> RootArmBones = { TEXT("lowerarm_r"), TEXT("lowerarm_l") };
+    for (const FName& BoneName : RootArmBones)
+    {
+        // 세 번째 인자인 bIncludeSelf를 true로 설정하여 upperarm 자체도 포함시킵니다.
+        if(bEnable) GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, false, true);
+        else GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, true, true);
     }
 }

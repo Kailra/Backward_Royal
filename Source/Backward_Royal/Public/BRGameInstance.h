@@ -74,6 +74,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Player")
 	void SetPlayerName(const FString& NewPlayerName) { PlayerName = NewPlayerName; }
+	// 전역 변수 설정을 위한 함수
+	void ApplyGlobalMultipliers();
 		
 protected:
 	// 실제 JSON 파싱 로직

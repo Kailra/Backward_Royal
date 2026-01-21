@@ -7,10 +7,9 @@
 #include "BaseCharacter.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogBaseChar, Log, All);
-
 #define CHAR_LOG(Verbosity, Format, ...) UE_LOG(LogBaseChar, Verbosity, TEXT("%s: ") Format, *GetName(), ##__VA_ARGS__)
 
-class ABaseWeapon; // 전방 선언
+class ABaseWeapon;
 class UBRAttackComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeathDelegate);
@@ -25,7 +24,6 @@ public:
 
 protected:
     virtual void BeginPlay() override;
-
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual void Die();
 
@@ -33,7 +31,7 @@ protected:
     void MulticastDie();
 
 public:
-    // --- Modular Armor Components ---
+    // --- Components ---
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Armor")
     USkeletalMeshComponent* HeadMesh;
 
@@ -52,11 +50,13 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     UBRAttackComponent* AttackComponent;
 
+    //UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Physics")
+    //UPhysicsControlComponent* PhysicsControlComp;
+
     // --- Stats ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
     float DefaultWalkSpeed;
 
-    // --- 체력 시스템 ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
     float MaxHP = 100.0f;
 
@@ -66,15 +66,39 @@ public:
     UFUNCTION()
     void OnRep_CurrentHP();
 
-    // 에디터에서 공격 애니메이션을 할당하는 변수
+    // =================================================================
+    // [전투 시스템]
+    // =================================================================
+
+    // 무기 공격 몽타주
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     UAnimMontage* AttackMontage;
+    // 펀치 몽타주
+    UPROPERTY(EditAnywhere, Category = "Combat")
+    UAnimMontage* PunchMontage_L;
 
-    // 멀티캐스트 함수에 상체 Pawn 정보를 넘겨서 클라이언트 변수를 풀 수 있게 합니다.
+    UPROPERTY(EditAnywhere, Category = "Combat")
+    UAnimMontage* PunchMontage_R;
+
+    // 다음 공격이 왼손인지 확인하는 플래그
+    bool bNextAttackIsLeft = false;
+
+    // [신규] 공격 요청 처리 (서버에서 호출됨)
+    void RequestAttack();
+
+    // 기존 무기 공격 멀티캐스트
     UFUNCTION(NetMulticast, Reliable)
-    void MulticastPlayAttack(APawn* RequestingPawn);
+    void MulticastPlayWeaponAttack(APawn* RequestingPawn);
 
-    // 데미지 처리 오버라이드
+    // 공격 실행 (몽타주 기반)
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastPlayPunch(UAnimMontage* TargetMontage);
+
+    UFUNCTION(BlueprintCallable)
+    void EnhanceFistPhysics(bool bEnable);
+
+
+    // 데미지 처리
     virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
     UPROPERTY(BlueprintAssignable, Category = "Events")
@@ -82,26 +106,25 @@ public:
 
     bool bIsDead = false;
 
-    // =================================================================
-    // [확정] 무기 시스템 (BaseCharacter 소유)
-    // =================================================================
-
-    // 현재 장착 중인 무기
+    // --- Weapon ---
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", Replicated)
     ABaseWeapon* CurrentWeapon;
 
-    // 무기 장착 (무기 액터를 받아 처리)
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void EquipWeapon(ABaseWeapon* NewWeapon);
 
-    // 현재 무기 버리기
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void DropCurrentWeapon();
 
-    // --- Functions ---
+    // --- Customization ---
     UFUNCTION(BlueprintCallable, Category = "Equipment")
     void EquipArmor(EArmorSlot Slot, const FArmorData& NewArmor);
 
     UFUNCTION(BlueprintCallable, Category = "Customization")
     void SetArmorColor(EArmorSlot Slot, FLinearColor Color);
+
+protected:
+    // 캐릭터 자체의 공격 상태 플래그
+    bool bIsCharacterAttacking = false;
+    
 };
