@@ -53,6 +53,7 @@ APlayerCharacter::APlayerCharacter()
 	bReplicates = true;
 	NetUpdateFrequency = 144.0f;
 	MinNetUpdateFrequency = 100.0f;
+	CurrentStamina = MaxStamina;
 
 	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 }
@@ -99,6 +100,7 @@ void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	// 조건 없이 모든 클라이언트(주인 포함)에게 복제되도록 수정
 	DOREPLIFETIME(APlayerCharacter, UpperBodyAimRotation);
+	DOREPLIFETIME(APlayerCharacter, CurrentStamina);
 }
 
 void APlayerCharacter::Restart()
@@ -235,4 +237,23 @@ void APlayerCharacter::SprintEnd(const FInputActionValue& Value)
 {
 	// 키를 떼면 다시 걷기 속도로 복구
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
+}
+
+void APlayerCharacter::UpdateStaminaUI()
+{
+	if (OnStaminaChanged.IsBound())
+	{
+		OnStaminaChanged.Broadcast(CurrentStamina, MaxStamina);
+	}
+}
+
+void APlayerCharacter::OnRep_CurrentStamina()
+{
+	UpdateStaminaUI();
+
+	if (CurrentStamina <= 0.0f)
+	{
+		// 스태미나 소비 행동 잠금
+		return;
+	}
 }
