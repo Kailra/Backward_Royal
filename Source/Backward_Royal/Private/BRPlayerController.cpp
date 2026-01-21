@@ -70,11 +70,11 @@ void ABRPlayerController::BeginPlay()
 				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - MainScreenWidget 설정 대기 중..."));
 				
 				// MainScreenWidget이 설정될 때까지 재시도
-				FTimerHandle CheckTimerHandle;
 				TSharedPtr<int32> CheckRetryCount = MakeShared<int32>(0);
+				TSharedPtr<FTimerHandle> CheckTimerHandlePtr = MakeShared<FTimerHandle>();
 				const int32 MaxCheckRetries = 20; // 최대 2초 대기 (0.1초 * 20)
 				
-				GetWorld()->GetTimerManager().SetTimer(CheckTimerHandle, [this, CheckRetryCount, MaxCheckRetries, CheckTimerHandle]()
+				GetWorld()->GetTimerManager().SetTimer(*CheckTimerHandlePtr, [this, CheckRetryCount, CheckTimerHandlePtr, MaxCheckRetries]()
 				{
 					if (MainScreenWidget && IsValid(MainScreenWidget))
 					{
@@ -94,7 +94,7 @@ void ABRPlayerController::BeginPlay()
 						
 						if (UWorld* World = GetWorld())
 						{
-							World->GetTimerManager().ClearTimer(CheckTimerHandle);
+							World->GetTimerManager().ClearTimer(*CheckTimerHandlePtr);
 						}
 					}
 					else
@@ -105,7 +105,7 @@ void ABRPlayerController::BeginPlay()
 							UE_LOG(LogTemp, Error, TEXT("[PlayerController] MainScreenWidget을 찾을 수 없습니다. BP_HUDMain1이 WBP_MainScreen1을 생성하고 SetMainScreenWidget()을 호출하는지 확인하세요."));
 							if (UWorld* World = GetWorld())
 							{
-								World->GetTimerManager().ClearTimer(CheckTimerHandle);
+								World->GetTimerManager().ClearTimer(*CheckTimerHandlePtr);
 							}
 						}
 						else
