@@ -30,9 +30,6 @@ protected:
     UFUNCTION(NetMulticast, Reliable)
     void MulticastDie();
 
-    void OnPunchMontageEnded(UAnimMontage* Montage, bool bInterrupted);
-
-
 public:
     // --- Components ---
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components|Armor")
@@ -76,29 +73,26 @@ public:
     // 무기 공격 몽타주
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
     UAnimMontage* AttackMontage;
-
     // 펀치 몽타주
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    UAnimMontage* PunchMontage;
+    UPROPERTY(EditAnywhere, Category = "Combat")
+    UAnimMontage* PunchMontage_L;
+
+    UPROPERTY(EditAnywhere, Category = "Combat")
+    UAnimMontage* PunchMontage_R;
+
+    // 다음 공격이 왼손인지 확인하는 플래그
+    bool bNextAttackIsLeft = false;
 
     // [신규] 공격 요청 처리 (서버에서 호출됨)
     void RequestAttack();
 
     // 기존 무기 공격 멀티캐스트
     UFUNCTION(NetMulticast, Reliable)
-    void MulticastPlayAttack(APawn* RequestingPawn);
+    void MulticastPlayWeaponAttack(APawn* RequestingPawn);
 
     // 공격 실행 (몽타주 기반)
     UFUNCTION(NetMulticast, Reliable)
-    void MulticastPlayUnarmedCombo(int32 SectionIndex);
-
-    UFUNCTION(BlueprintCallable)
-    void SetComboInputWindow(bool bEnable);
-
-    UFUNCTION(BlueprintCallable)
-    void CheckNextCombo();
-
-    void ResetAttackState();
+    void MulticastPlayPunch(UAnimMontage* TargetMontage);
 
     UFUNCTION(BlueprintCallable)
     void EnhanceFistPhysics(bool bEnable);
@@ -130,15 +124,7 @@ public:
     void SetArmorColor(EArmorSlot Slot, FLinearColor Color);
 
 protected:
-    // [신규] 콤보 관련 상태 변수
-    int32 CurrentComboIndex = 0;
-    int32 MaxComboCount = 2;
-
     // 캐릭터 자체의 공격 상태 플래그
     bool bIsCharacterAttacking = false;
-
-    // 입력 버퍼링용 플래그
-    bool bIsComboInputOn = false;      // 입력 허용 구간인가?
-    bool bIsNextComboReserved = false; // 다음 공격이 예약되었는가?
     
 };

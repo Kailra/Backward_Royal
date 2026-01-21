@@ -160,28 +160,33 @@ void ABaseCharacter::RequestAttack()
         {
             if (AnimInstance->Montage_IsPlaying(AttackMontage)) return;
         }
-        MulticastPlayAttack(nullptr);
+        MulticastPlayWeaponAttack(nullptr);
         return;
     }
 
-    if (bIsCharacterAttacking)
-    {
-        if (bIsComboInputOn)
-        {
-            bIsNextComboReserved = true;
-            // 여기서 인덱스를 미리 올리지 않고, 예약만 합니다.
-            GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, TEXT("Combo Reserved!"));
-        }
-    }
-    else
-    {
-        // 첫 공격 시작 (1번 섹션부터 시작)
-        bIsCharacterAttacking = true;
-        bIsNextComboReserved = false;
-        CurrentComboIndex = 1;
+    // 2. 맨손 공격 로직 (번갈아 치기)
+    UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+    if (!AnimInstance) return;
 
-        MulticastPlayUnarmedCombo(CurrentComboIndex);
-        CHAR_LOG(Log, TEXT("Starting First Attack: Combo%d"), CurrentComboIndex);
+    // [핵심] 현재 어떤 공격 몽타주라도 재생 중이면 입력을 무시
+    if (AnimInstance->Montage_IsPlaying(PunchMontage_L) ||
+        AnimInstance->Montage_IsPlaying(PunchMontage_R))
+    {
+        return;
+    }
+
+    // 재생할 손 결정
+    UAnimMontage* SelectedMontage = bNextAttackIsLeft ? PunchMontage_L : PunchMontage_R;
+
+    if (SelectedMontage)
+    {
+        MulticastPlayPunch(SelectedMontage);
+
+        // [2025-11-18] 커스텀 디버그 로그 매크로 사용 (규칙 준수)
+        CHAR_LOG(Log, TEXT("Starting Punch: %s"), bNextAttackIsLeft ? TEXT("Left") : TEXT("Right"));
+
+        // 다음 손으로 변경
+        bNextAttackIsLeft = !bNextAttackIsLeft;
     }
 }
 
@@ -317,7 +322,7 @@ void ABaseCharacter::OnRep_CurrentHP()
     CHAR_LOG(Log, TEXT("HP가 복제되었습니다. 현재 HP: %.1f"), CurrentHP);
 }
 
-void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
+void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(APawn* RequestingPawn)
 {
     if (AttackMontage && GetMesh())
     {
@@ -340,86 +345,17 @@ void ABaseCharacter::MulticastPlayAttack_Implementation(APawn* RequestingPawn)
     }
 }
 
-void ABaseCharacter::MulticastPlayUnarmedCombo_Implementation(int32 SectionIndex)
+void ABaseCharacter::MulticastPlayPunch_Implementation(UAnimMontage* TargetMontage)
 {
-    if (PunchMontage && GetMesh() && GetMesh()->GetAnimInstance())
+    if (TargetMontage && GetMesh())
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-        float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
-
-        if (!AnimInstance->Montage_IsPlaying(PunchMontage))
+        if (AnimInstance)
         {
-            AnimInstance->Montage_Play(PunchMontage, AttackSpeed);
-
-            // 몽타주가 완전히 끝났을 때를 위한 콜백 설정
-            FOnMontageEnded MontageEndedDelegate;
-            MontageEndedDelegate.BindUObject(this, &ABaseCharacter::OnPunchMontageEnded);
-            AnimInstance->Montage_SetEndDelegate(MontageEndedDelegate, PunchMontage);
+            float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
+            AnimInstance->Montage_Play(TargetMontage, AttackSpeed);
         }
-
-        FName SectionName = FName(*FString::Printf(TEXT("Combo%d"), SectionIndex));
-        AnimInstance->Montage_JumpToSection(SectionName, PunchMontage);
-
-        CHAR_LOG(Log, TEXT("Playing Unarmed Combo Section: %s"), *SectionName.ToString());
     }
-}
-
-// [신규] 몽타주 종료 시 호출될 함수
-void ABaseCharacter::OnPunchMontageEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-    // 재생 중인 몽타주가 끝나면 무조건 상태 초기화 (안전장치)
-    if (Montage == PunchMontage)
-    {
-        ResetAttackState();
-        CHAR_LOG(Log, TEXT("Unarmed Montage Ended. %s"), bInterrupted ? TEXT("Interrupted") : TEXT("Naturally"));
-    }
-}
-
-void ABaseCharacter::SetComboInputWindow(bool bEnable)
-{
-    bIsComboInputOn = bEnable;
-    CHAR_LOG(Verbose, TEXT("Combo Input Window: %s"), bEnable ? TEXT("Open") : TEXT("Closed"));
-}
-
-// [수정] 애니메이션 노티파이: 다음 콤보 진행 여부 체크
-void ABaseCharacter::CheckNextCombo()
-{
-    if (bIsNextComboReserved)
-    {
-        bIsNextComboReserved = false;
-        bIsComboInputOn = false;
-
-        CurrentComboIndex++;
-
-        // MaxComboCount를 초과하면 다시 1타로 순환하거나 종료 (여기서는 1타로 순환하도록 설정)
-        if (CurrentComboIndex > MaxComboCount)
-        {
-            CurrentComboIndex = 1;
-        }
-
-        MulticastPlayUnarmedCombo(CurrentComboIndex);
-
-        FString DebugMsg = FString::Printf(TEXT("Moving to Next Combo: Combo%d"), CurrentComboIndex);
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Cyan, DebugMsg);
-        CHAR_LOG(Log, TEXT("%s"), *DebugMsg);
-    }
-    else
-    {
-        // [중요] 예약 없으면 즉시 모든 상태 초기화
-        ResetAttackState();
-        GEngine->AddOnScreenDebugMessage(-1, 1.f, FColor::Red, TEXT("Combo Reset (No Reservation)"));
-    }
-}
-
-void ABaseCharacter::ResetAttackState()
-{
-    bIsCharacterAttacking = false;
-    bIsComboInputOn = false;
-    bIsNextComboReserved = false;
-    CurrentComboIndex = 0;
-
-    CHAR_LOG(Log, TEXT("Attack State Reset. Ready for next attack."));
 }
 
 // 공격 시작 시 호출 (AnimNotify 등에서 활용)
