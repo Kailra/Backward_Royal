@@ -60,11 +60,17 @@ void ABRPlayerController::BeginPlay()
 				if (LobbyMenuWidgetClass)
 				{
 					ShowLobbyMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 표시"));
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 표시 (NetMode: Client)"));
 				}
 				else
 				{
 					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] LobbyMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
+					// LobbyMenuWidgetClass가 없으면 EntranceMenu 표시 (폴백)
+					if (EntranceMenuWidgetClass)
+					{
+						ShowEntranceMenu();
+						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] LobbyMenuWidgetClass가 없어 EntranceMenu를 표시합니다."));
+					}
 				}
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
@@ -73,12 +79,17 @@ void ABRPlayerController::BeginPlay()
 				if (EntranceMenuWidgetClass)
 				{
 					ShowEntranceMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시"));
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 (NetMode: %s)"), 
+						NetMode == NM_Standalone ? TEXT("Standalone") : TEXT("ListenServer"));
 				}
 				else
 				{
 					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] EntranceMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
 				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] 알 수 없는 네트워크 모드: %d"), (int32)NetMode);
 			}
 		}, 0.1f, false);
 	}
