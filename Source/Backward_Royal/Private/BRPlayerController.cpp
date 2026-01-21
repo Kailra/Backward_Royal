@@ -63,13 +63,13 @@ void ABRPlayerController::BeginPlay()
 			
 			UE_LOG(LogTemp, Log, TEXT("[PlayerController] BeginPlay UI 표시 결정 - NetMode: %s (%d)"), *NetModeString, (int32)NetMode);
 			
-			// 클라이언트로 서버에 연결된 경우 → WBP_MainScreen1의 WidgetSwitcher를 LobbyMenu로 전환
+			// 클라이언트로 서버에 연결된 경우
+			// 주의: MainScreenWidget은 WBP_MainScreen1의 Event Construct에서 SetMainScreenWidget()을 호출할 때 설정됩니다.
+			// SetMainScreenWidget()에서 클라이언트 모드일 때 자동으로 LobbyMenu로 전환하므로,
+			// BeginPlay에서는 추가 작업이 필요 없습니다.
 			if (NetMode == NM_Client)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - WBP_MainScreen1의 WidgetSwitcher를 LobbyMenu로 전환"));
-				// WBP_MainScreen1이 HUD에서 관리되고 있으므로, WidgetSwitcher를 통해 전환
-				SetMainScreenToLobbyMenu();
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 연결됨 - LobbyMenu 전환 완료"));
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - SetMainScreenWidget()에서 LobbyMenu로 전환됩니다."));
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
 			// 주의: WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있으므로
@@ -873,6 +873,58 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 {
 	MainScreenWidget = Widget;
 	UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreenWidget 설정: %s"), Widget ? *Widget->GetName() : TEXT("None"));
+	
+		// 클라이언트 모드이고 MainScreenWidget이 설정되면 LobbyMenu로 전환
+		if (Widget && IsValid(Widget))
+		{
+			UWorld* World = GetWorld();
+			if (World && World->GetNetMode() == NM_Client)
+			{
+				// 위젯이 완전히 초기화된 후 LobbyMenu로 전환
+				// 여러 번 시도하여 함수가 준비될 때까지 대기
+				FTimerHandle TimerHandle;
+				TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
+				const int32 MaxRetries = 5;
+				
+				TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
+				GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, WeakWidget, RetryCountPtr, MaxRetries, TimerHandle]()
+				{
+					if (!WeakWidget.IsValid())
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
+						return;
+					}
+					
+					// SetMainScreenToLobbyMenu 함수가 있는지 확인
+					UFunction* Function = WeakWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+					if (Function)
+					{
+						SetMainScreenToLobbyMenu();
+						UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 전환 완료"));
+						if (UWorld* World = GetWorld())
+						{
+							World->GetTimerManager().ClearTimer(TimerHandle);
+						}
+					}
+					else
+					{
+						(*RetryCountPtr)++;
+						if (*RetryCountPtr >= MaxRetries)
+						{
+							UE_LOG(LogTemp, Error, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
+							if (UWorld* World = GetWorld())
+							{
+								World->GetTimerManager().ClearTimer(TimerHandle);
+							}
+						}
+						else
+						{
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수 대기 중... (%d/%d)"), *RetryCountPtr, MaxRetries);
+						}
+					}
+				}, 0.1f, true); // 0.1초마다 재시도
+			}
+		}
 }
 
 void ABRPlayerController::ShowMainScreen()
