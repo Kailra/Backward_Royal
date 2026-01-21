@@ -880,49 +880,50 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 			UWorld* World = GetWorld();
 			if (World && World->GetNetMode() == NM_Client)
 			{
-				// 위젯이 완전히 초기화된 후 LobbyMenu로 전환
-				// 여러 번 시도하여 함수가 준비될 때까지 대기
-				FTimerHandle TimerHandle;
-				TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
-				const int32 MaxRetries = 5;
-				
-				TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
-				GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this, WeakWidget, RetryCountPtr, MaxRetries, TimerHandle]()
+			// 위젯이 완전히 초기화된 후 LobbyMenu로 전환
+			// 여러 번 시도하여 함수가 준비될 때까지 대기
+			FTimerHandle TimerHandle;
+			TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
+			TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
+			const int32 MaxRetries = 5;
+			
+			TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
+			GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, RetryCountPtr, TimerHandlePtr, MaxRetries]()
+			{
+				if (!WeakWidget.IsValid())
 				{
-					if (!WeakWidget.IsValid())
+					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
+					return;
+				}
+				
+				// SetMainScreenToLobbyMenu 함수가 있는지 확인
+				UFunction* Function = WeakWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+				if (Function)
+				{
+					SetMainScreenToLobbyMenu();
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 전환 완료"));
+					if (UWorld* World = GetWorld())
 					{
-						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
-						return;
+						World->GetTimerManager().ClearTimer(*TimerHandlePtr);
 					}
-					
-					// SetMainScreenToLobbyMenu 함수가 있는지 확인
-					UFunction* Function = WeakWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
-					if (Function)
+				}
+				else
+				{
+					(*RetryCountPtr)++;
+					if (*RetryCountPtr >= MaxRetries)
 					{
-						SetMainScreenToLobbyMenu();
-						UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 전환 완료"));
+						UE_LOG(LogTemp, Error, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
 						if (UWorld* World = GetWorld())
 						{
-							World->GetTimerManager().ClearTimer(TimerHandle);
+							World->GetTimerManager().ClearTimer(*TimerHandlePtr);
 						}
 					}
 					else
 					{
-						(*RetryCountPtr)++;
-						if (*RetryCountPtr >= MaxRetries)
-						{
-							UE_LOG(LogTemp, Error, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
-							if (UWorld* World = GetWorld())
-							{
-								World->GetTimerManager().ClearTimer(TimerHandle);
-							}
-						}
-						else
-						{
-							UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수 대기 중... (%d/%d)"), *RetryCountPtr, MaxRetries);
-						}
+						UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수 대기 중... (%d/%d)"), *RetryCountPtr, MaxRetries);
 					}
-				}, 0.1f, true); // 0.1초마다 재시도
+				}
+			}, 0.1f, true); // 0.1초마다 재시도
 			}
 		}
 }
