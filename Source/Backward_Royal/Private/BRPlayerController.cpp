@@ -64,12 +64,56 @@ void ABRPlayerController::BeginPlay()
 			UE_LOG(LogTemp, Log, TEXT("[PlayerController] BeginPlay UI 표시 결정 - NetMode: %s (%d)"), *NetModeString, (int32)NetMode);
 			
 			// 클라이언트로 서버에 연결된 경우
-			// 주의: MainScreenWidget은 WBP_MainScreen1의 Event Construct에서 SetMainScreenWidget()을 호출할 때 설정됩니다.
-			// SetMainScreenWidget()에서 클라이언트 모드일 때 자동으로 LobbyMenu로 전환하므로,
-			// BeginPlay에서는 추가 작업이 필요 없습니다.
+			// MainScreenWidget이 설정될 때까지 대기한 후 LobbyMenu로 전환
 			if (NetMode == NM_Client)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - SetMainScreenWidget()에서 LobbyMenu로 전환됩니다."));
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 감지 - MainScreenWidget 설정 대기 중..."));
+				
+				// MainScreenWidget이 설정될 때까지 재시도
+				FTimerHandle CheckTimerHandle;
+				TSharedPtr<int32> CheckRetryCount = MakeShared<int32>(0);
+				const int32 MaxCheckRetries = 20; // 최대 2초 대기 (0.1초 * 20)
+				
+				GetWorld()->GetTimerManager().SetTimer(CheckTimerHandle, [this, CheckRetryCount, MaxCheckRetries, CheckTimerHandle]()
+				{
+					if (MainScreenWidget && IsValid(MainScreenWidget))
+					{
+						UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreenWidget 발견 - LobbyMenu로 전환 시도"));
+						SetMainScreenToLobbyMenu();
+						
+						// SetMainScreenToLobbyMenu 함수가 있는지 확인
+						UFunction* Function = MainScreenWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+						if (Function)
+						{
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 전환 완료"));
+						}
+						else
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
+						}
+						
+						if (UWorld* World = GetWorld())
+						{
+							World->GetTimerManager().ClearTimer(CheckTimerHandle);
+						}
+					}
+					else
+					{
+						(*CheckRetryCount)++;
+						if (*CheckRetryCount >= MaxCheckRetries)
+						{
+							UE_LOG(LogTemp, Error, TEXT("[PlayerController] MainScreenWidget을 찾을 수 없습니다. BP_HUDMain1이 WBP_MainScreen1을 생성하고 SetMainScreenWidget()을 호출하는지 확인하세요."));
+							if (UWorld* World = GetWorld())
+							{
+								World->GetTimerManager().ClearTimer(CheckTimerHandle);
+							}
+						}
+						else
+						{
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreenWidget 대기 중... (%d/%d)"), *CheckRetryCount, MaxCheckRetries);
+						}
+					}
+				}, 0.1f, true); // 0.1초마다 확인
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
 			// 주의: WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있으므로
