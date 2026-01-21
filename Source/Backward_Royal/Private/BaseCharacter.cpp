@@ -253,8 +253,6 @@ float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
     CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
 
-    UpdateHPUI();
-
     if (CurrentHP <= 0.0f) Die();
 
     return ActualDamage;
@@ -310,19 +308,10 @@ void ABaseCharacter::MulticastDie_Implementation()
     OnDeath.Broadcast();
 }
 
-void ABaseCharacter::UpdateHPUI()
-{
-    if (OnHPChanged.IsBound())
-    {
-        OnHPChanged.Broadcast(CurrentHP, MaxHP);
-    }
-}
-
 void ABaseCharacter::OnRep_CurrentHP()
 {
     // 이 함수는 서버에서 CurrentHP 변수가 변경되어 클라이언트로 복제될 때 실행됩니다.
     // 보통 여기에서 체력 바(UI)를 업데이트하는 로직을 넣습니다.
-    UpdateHPUI();
 
     if (CurrentHP <= 0.0f)
     {

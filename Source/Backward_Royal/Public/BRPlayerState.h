@@ -6,8 +6,6 @@
 #include "BRUserInfo.h"
 #include "BRPlayerState.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerRoleChanged, bool, bIsLowerBody);
-
 UCLASS()
 class BACKWARD_ROYAL_API ABRPlayerState : public APlayerState
 {
@@ -85,9 +83,6 @@ public:
 	// 플레이어 역할 변경 시 호출되는 이벤트
 	UFUNCTION()
 	void OnRep_PlayerRole();
-
-	UPROPERTY(BlueprintAssignable, Category = "Events")
-	FOnPlayerRoleChanged OnPlayerRoleChanged;
 
 	void SwapControlWithPartner();
 

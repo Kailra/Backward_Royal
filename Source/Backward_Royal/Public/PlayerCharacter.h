@@ -8,8 +8,6 @@
 // 로그 카테고리 선언
 DECLARE_LOG_CATEGORY_EXTERN(LogPlayerChar, Log, All);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStaminaChanged, float, CurrentStamina, float, MaxStamina);
-
 UCLASS()
 class BACKWARD_ROYAL_API APlayerCharacter : public ABaseCharacter
 {
@@ -102,19 +100,4 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float SprintSpeed = 1000.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
-	float MaxStamina = 100.0f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats", ReplicatedUsing = OnRep_CurrentStamina)
-	float CurrentStamina;
-
-	UFUNCTION()
-	void OnRep_CurrentStamina();
-
-	UPROPERTY(BlueprintAssignable, Category = "Events")
-	FOnStaminaChanged OnStaminaChanged;
-
-	// 스태미나 갱신 헬퍼 (스태미나 소비 함수가 있다면 거기서도 호출하세요)
-	void UpdateStaminaUI();
 };

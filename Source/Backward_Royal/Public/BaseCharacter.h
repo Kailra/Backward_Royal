@@ -13,7 +13,6 @@ class ABaseWeapon;
 class UBRAttackComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeathDelegate);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHPChanged, float, CurrentHP, float, MaxHP);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABaseCharacter : public ACharacter
@@ -57,13 +56,6 @@ public:
     // --- Stats ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
     float DefaultWalkSpeed;
-
-    // 블루프린트 UI에서 바인딩할 변수
-    UPROPERTY(BlueprintAssignable, Category = "Events")
-    FOnHPChanged OnHPChanged;
-
-    // 체력이 변할 때 공통적으로 호출할 헬퍼 함수
-    void UpdateHPUI();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
     float MaxHP = 100.0f;
