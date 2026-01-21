@@ -918,12 +918,20 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 	MainScreenWidget = Widget;
 	UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreenWidget 설정: %s"), Widget ? *Widget->GetName() : TEXT("None"));
 	
-		// 클라이언트 모드이고 MainScreenWidget이 설정되면 LobbyMenu로 전환
-		if (Widget && IsValid(Widget))
+	// MainScreenWidget이 설정되면 네트워크 모드에 따라 적절한 메뉴로 전환
+	if (Widget && IsValid(Widget))
+	{
+		UWorld* World = GetWorld();
+		if (!World)
 		{
-			UWorld* World = GetWorld();
-			if (World && World->GetNetMode() == NM_Client)
-			{
+			return;
+		}
+		
+		ENetMode NetMode = World->GetNetMode();
+		
+		// 클라이언트 모드: LobbyMenu로 전환
+		if (NetMode == NM_Client)
+		{
 			// 위젯이 완전히 초기화된 후 LobbyMenu로 전환
 			// 여러 번 시도하여 함수가 준비될 때까지 대기
 			FTimerHandle TimerHandle;
@@ -968,8 +976,45 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 					}
 				}
 			}, 0.1f, true); // 0.1초마다 재시도
-			}
 		}
+		// 서버 모드(ListenServer) 또는 Standalone: EntranceMenu로 전환
+		else if (NetMode == NM_ListenServer || NetMode == NM_Standalone)
+		{
+			// 위젯이 완전히 초기화된 후 EntranceMenu로 전환
+			FTimerHandle TimerHandle;
+			TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
+			
+			TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
+			GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, TimerHandlePtr]()
+			{
+				if (!WeakWidget.IsValid())
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
+					return;
+				}
+				
+				// SetMainScreenToEntranceMenu 함수가 있는지 확인
+				UFunction* Function = WeakWidget->FindFunction(FName("SetMainScreenToEntranceMenu"));
+				if (Function)
+				{
+					SetMainScreenToEntranceMenu();
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버/로컬 모드 - EntranceMenu로 전환 완료"));
+					if (UWorld* World = GetWorld())
+					{
+						World->GetTimerManager().ClearTimer(*TimerHandlePtr);
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToEntranceMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
+					if (UWorld* World = GetWorld())
+					{
+						World->GetTimerManager().ClearTimer(*TimerHandlePtr);
+					}
+				}
+			}, 0.2f, false); // 0.2초 후 한 번만 실행
+		}
+	}
 }
 
 void ABRPlayerController::ShowMainScreen()
