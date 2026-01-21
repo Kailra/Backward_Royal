@@ -4,6 +4,7 @@
 #include "BRPlayerState.h"
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
+#include "BRGameInstance.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "UpperBodyPawn.h"
@@ -50,6 +51,27 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 		if (PlayerName.IsEmpty())
 		{
 			PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
+		}
+
+		// GameInstance에서 플레이어 이름 가져오기
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+		{
+			FString SavedPlayerName = GI->GetPlayerName();
+			if (!SavedPlayerName.IsEmpty())
+			{
+				PlayerName = SavedPlayerName;
+				BRPS->SetPlayerName(PlayerName);
+			}
+		}
+
+		// UserUID 설정 (GameInstance에서 가져오거나 생성)
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+		{
+			// UserUID가 비어있으면 자동 생성 (예: Steam ID, 계정 ID 등)
+			FString UserUID = FString::Printf(TEXT("Player_%d_%s"), 
+				BRGameState->PlayerArray.Num() - 1, 
+				*FDateTime::Now().ToString());
+			BRPS->SetUserUID(UserUID);
 		}
 
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] %s가 게임에 입장했습니다. (현재 인원: %d/%d)"),
