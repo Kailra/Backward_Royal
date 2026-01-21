@@ -14,6 +14,7 @@
 
 ABRPlayerController::ABRPlayerController()
 	: CurrentMenuWidget(nullptr)
+	, MainScreenWidget(nullptr)
 {
 	// CheatManager 클래스 설정
 	CheatClass = UBRCheatManager::StaticClass();
@@ -87,18 +88,17 @@ void ABRPlayerController::BeginPlay()
 				}
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
+			// 주의: WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있으므로
+			// BeginPlay에서 ShowEntranceMenu()를 호출하지 않아야 중복 표시를 방지할 수 있습니다.
 			else if (NetMode == NM_Standalone || NetMode == NM_ListenServer)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 로컬/서버 모드 감지 - EntranceMenu 표시 시도"));
-				if (EntranceMenuWidgetClass)
-				{
-					ShowEntranceMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 완료"));
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] EntranceMenuWidgetClass가 설정되지 않았습니다. 블루프린트에서 설정해주세요."));
-				}
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 로컬/서버 모드 감지 - WBP_MainScreen1이 UI를 관리하므로 BeginPlay에서 UI 표시를 건너뜁니다."));
+				// WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있다면 주석 처리:
+				// if (EntranceMenuWidgetClass)
+				// {
+				// 	ShowEntranceMenu();
+				// 	UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 완료"));
+				// }
 			}
 			else
 			{
@@ -885,12 +885,66 @@ void ABRPlayerController::HideCurrentMenu()
 	}
 }
 
+void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
+{
+	MainScreenWidget = Widget;
+	UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreenWidget 설정: %s"), Widget ? *Widget->GetName() : TEXT("None"));
+}
+
+void ABRPlayerController::ShowMainScreen()
+{
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->SetVisibility(ESlateVisibility::Visible);
+		
+		// 현재 메뉴 위젯 제거
+		if (CurrentMenuWidget)
+		{
+			CurrentMenuWidget->RemoveFromParent();
+			CurrentMenuWidget = nullptr;
+		}
+		
+		// WidgetSwitcher 인덱스를 EntranceMenu로 설정
+		SetMainScreenToEntranceMenu();
+		
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen1 표시"));
+	}
+}
+
+void ABRPlayerController::SetMainScreenToEntranceMenu()
+{
+	// 이 함수는 블루프린트에서 구현해야 합니다.
+	// WBP_MainScreen1 블루프린트에서 이 함수를 오버라이드하여
+	// WidgetSwitcher_Main의 ActiveWidgetIndex를 0 (또는 WBP_EntranceMenu1의 인덱스)로 설정
+	UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToEntranceMenu 호출 - 블루프린트에서 WidgetSwitcher 인덱스를 설정하세요."));
+}
+
+void ABRPlayerController::HideMainScreen()
+{
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen1 숨김"));
+	}
+}
+
 void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)
 {
 	// 클라이언트에서만 실행
 	if (!IsLocalController())
 	{
 		return;
+	}
+
+	// 주의: WBP_MainScreen1이 HUD에서 관리되고 있다면
+	// HUD에서 위젯을 숨기거나 WidgetSwitcher를 사용하여 전환해야 합니다.
+	// 현재는 PlayerController에서 별도로 위젯을 생성하고 있습니다.
+	
+	// WBP_MainScreen1 숨기기 (HUD에서 관리되는 경우)
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen1 숨김 (HUD에서 관리)"));
 	}
 
 	// 현재 위젯이 있으면 제거

@@ -85,6 +85,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void HideCurrentMenu();
 
+	// WBP_MainScreen1 설정 (블루프린트에서 호출)
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void SetMainScreenWidget(class UUserWidget* Widget);
+
+	// WBP_MainScreen1 표시/숨김
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowMainScreen();
+	
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void HideMainScreen();
+
+	// WBP_MainScreen1의 WidgetSwitcher 인덱스를 EntranceMenu로 설정
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void SetMainScreenToEntranceMenu();
+
 	// 현재 표시 중인 위젯 가져오기
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	class UUserWidget* GetCurrentMenuWidget() const { return CurrentMenuWidget; }
@@ -130,5 +145,9 @@ private:
 	// 현재 표시 중인 위젯
 	UPROPERTY()
 	class UUserWidget* CurrentMenuWidget;
+
+	// WBP_MainScreen1 추적 (블루프린트에서 설정 가능)
+	UPROPERTY()
+	class UUserWidget* MainScreenWidget;
 };
 
