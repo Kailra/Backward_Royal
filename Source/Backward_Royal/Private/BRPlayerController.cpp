@@ -14,6 +14,7 @@
 
 ABRPlayerController::ABRPlayerController()
 	: CurrentMenuWidget(nullptr)
+	, MainScreenWidget(nullptr)
 {
 	// CheatManager 클래스 설정
 	CheatClass = UBRCheatManager::StaticClass();
@@ -848,6 +849,131 @@ void ABRPlayerController::ShowLobbyMenu()
 	}
 }
 
+void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
+{
+	MainScreenWidget = Widget;
+	UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreenWidget 설정: %s"), Widget ? *Widget->GetName() : TEXT("None"));
+	
+	// MainScreenWidget이 설정되면 네트워크 모드에 따라 적절한 메뉴로 전환
+	if (Widget && IsValid(Widget))
+	{
+		UWorld* World = GetWorld();
+		if (!World)
+		{
+			return;
+		}
+		
+		ENetMode NetMode = World->GetNetMode();
+		
+		// 클라이언트 모드: LobbyMenu로 전환
+		if (NetMode == NM_Client)
+		{
+			SetMainScreenToLobbyMenu();
+		}
+		// 서버 모드(ListenServer) 또는 Standalone
+		else if (NetMode == NM_ListenServer || NetMode == NM_Standalone)
+		{
+			// NetMode가 ListenServer인 경우에만 세션이 있다고 판단
+			bool bHasActiveSession = (NetMode == NM_ListenServer);
+			
+			if (bHasActiveSession)
+			{
+				SetMainScreenToLobbyMenu();
+			}
+			else
+			{
+				SetMainScreenToEntranceMenu();
+			}
+		}
+	}
+}
+
+void ABRPlayerController::ShowMainScreen()
+{
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->SetVisibility(ESlateVisibility::Visible);
+		
+		// 현재 메뉴 위젯 제거
+		if (CurrentMenuWidget)
+		{
+			CurrentMenuWidget->RemoveFromParent();
+			CurrentMenuWidget = nullptr;
+		}
+		
+		// 네트워크 모드에 따라 적절한 메뉴로 전환
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			ENetMode NetMode = World->GetNetMode();
+			if (NetMode == NM_Client)
+			{
+				SetMainScreenToLobbyMenu();
+			}
+			else if (NetMode == NM_ListenServer)
+			{
+				SetMainScreenToEntranceMenu();
+			}
+			else
+			{
+				SetMainScreenToEntranceMenu();
+			}
+		}
+		
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 표시"));
+	}
+	else if (MainScreenWidgetClass)
+	{
+		ShowMenuWidget(MainScreenWidgetClass);
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] MainScreen 표시"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidgetClass가 설정되지 않았습니다."));
+	}
+}
+
+void ABRPlayerController::HideMainScreen()
+{
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 숨김"));
+	}
+}
+
+void ABRPlayerController::SetMainScreenToEntranceMenu()
+{
+	// WBP_MainScreen 블루프린트에서 이 함수를 구현해야 합니다.
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		UFunction* Function = MainScreenWidget->FindFunction(FName("SetMainScreenToEntranceMenu"));
+		if (Function)
+		{
+			MainScreenWidget->ProcessEvent(Function, nullptr);
+			UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToEntranceMenu 호출 완료"));
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToEntranceMenu: MainScreenWidget이 없거나 함수를 찾을 수 없습니다."));
+}
+
+void ABRPlayerController::SetMainScreenToLobbyMenu()
+{
+	// WBP_MainScreen 블루프린트에서 이 함수를 구현해야 합니다.
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		UFunction* Function = MainScreenWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+		if (Function)
+		{
+			MainScreenWidget->ProcessEvent(Function, nullptr);
+			UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 호출 완료"));
+			return;
+		}
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToLobbyMenu: MainScreenWidget이 없거나 함수를 찾을 수 없습니다."));
+}
+
 void ABRPlayerController::HideCurrentMenu()
 {
 	if (CurrentMenuWidget)
@@ -864,6 +990,13 @@ void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)
 	if (!IsLocalController())
 	{
 		return;
+	}
+
+	// WBP_MainScreen 숨기기 (HUD에서 관리되는 경우)
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->SetVisibility(ESlateVisibility::Collapsed);
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 숨김 (HUD에서 관리)"));
 	}
 
 	// 현재 위젯이 있으면 제거
