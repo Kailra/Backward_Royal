@@ -5,6 +5,7 @@
 #include "BRGameState.h"
 #include "BRPlayerState.h"
 #include "BRGameMode.h"
+#include "BRWidgetFunctionLibrary.h"
 #include "GameFramework/GameModeBase.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -947,7 +948,7 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 				FTimerHandle TimerHandle;
 				TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
 				TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
-				const int32 MaxRetries = 5;
+				const int32 MaxRetries = 20; // 재시도 횟수 증가 (2초)
 				
 				TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
 				GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, RetryCountPtr, TimerHandlePtr, MaxRetries]()
@@ -1029,7 +1030,7 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 				FTimerHandle TimerHandle;
 				TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
 				TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
-				const int32 MaxRetries = 5;
+				const int32 MaxRetries = 20; // 재시도 횟수 증가 (2초)
 				
 				TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
 				GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, TimerHandlePtr, RetryCountPtr, MaxRetries, bHasActiveSession]()
@@ -1102,8 +1103,34 @@ void ABRPlayerController::ShowMainScreen()
 			CurrentMenuWidget = nullptr;
 		}
 		
-		// WidgetSwitcher 인덱스를 EntranceMenu로 설정
-		SetMainScreenToEntranceMenu();
+		// 네트워크 모드에 따라 적절한 메뉴로 전환
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			ENetMode NetMode = World->GetNetMode();
+			if (NetMode == NM_Client)
+			{
+				// 클라이언트 모드: LobbyMenu로 전환
+				SetMainScreenToLobbyMenu();
+			}
+			else if (NetMode == NM_ListenServer)
+			{
+				// 리슨 서버 모드: 세션이 있으면 LobbyMenu, 없으면 EntranceMenu
+				// 세션 확인은 SetMainScreenWidget()에서 이미 처리됨
+				// 여기서는 기본적으로 EntranceMenu로 설정 (SetMainScreenWidget에서 이미 처리했을 수 있음)
+				SetMainScreenToEntranceMenu();
+			}
+			else
+			{
+				// Standalone 모드: EntranceMenu로 설정
+				SetMainScreenToEntranceMenu();
+			}
+		}
+		else
+		{
+			// World가 없으면 기본값으로 EntranceMenu
+			SetMainScreenToEntranceMenu();
+		}
 		
 		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 표시"));
 	}
