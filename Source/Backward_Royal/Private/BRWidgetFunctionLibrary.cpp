@@ -7,6 +7,9 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameModeBase.h"
+#include "Components/VerticalBox.h"
+#include "Components/ScrollBox.h"
+#include "Components/Widget.h"
 
 ABRPlayerController* UBRWidgetFunctionLibrary::GetBRPlayerController(const UObject* WorldContextObject)
 {
@@ -254,4 +257,66 @@ void UBRWidgetFunctionLibrary::HideCurrentMenu(const UObject* WorldContextObject
 	{
 		UE_LOG(LogTemp, Error, TEXT("[WidgetFunctionLibrary] PlayerController를 찾을 수 없습니다."));
 	}
+}
+
+bool UBRWidgetFunctionLibrary::AddChildToContainer(const UObject* WorldContextObject, UVerticalBox* VerticalBox, UScrollBox* ScrollBox, UWidget* Content)
+{
+	if (!Content)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] AddChildToContainer: Content가 유효하지 않습니다."));
+		return false;
+	}
+
+	// VerticalBox에 추가 (우선순위)
+	if (VerticalBox && IsValid(VerticalBox))
+	{
+		VerticalBox->AddChildToVerticalBox(Content);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] VerticalBox에 자식 위젯 추가 완료"));
+		return true;
+	}
+
+	// ScrollBox에 추가
+	if (ScrollBox && IsValid(ScrollBox))
+	{
+		ScrollBox->AddChild(Content);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] ScrollBox에 자식 위젯 추가 완료"));
+		return true;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] AddChildToContainer: VerticalBox 또는 ScrollBox가 유효하지 않습니다."));
+	return false;
+}
+
+bool UBRWidgetFunctionLibrary::AddChildToContainerAuto(const UObject* WorldContextObject, UWidget* Container, UWidget* Content)
+{
+	if (!Content)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] AddChildToContainerAuto: Content가 유효하지 않습니다."));
+		return false;
+	}
+
+	if (!Container || !IsValid(Container))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] AddChildToContainerAuto: Container가 유효하지 않습니다."));
+		return false;
+	}
+
+	// VerticalBox인지 확인
+	if (UVerticalBox* VerticalBox = Cast<UVerticalBox>(Container))
+	{
+		VerticalBox->AddChildToVerticalBox(Content);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] VerticalBox에 자식 위젯 추가 완료 (자동 감지)"));
+		return true;
+	}
+
+	// ScrollBox인지 확인
+	if (UScrollBox* ScrollBox = Cast<UScrollBox>(Container))
+	{
+		ScrollBox->AddChild(Content);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] ScrollBox에 자식 위젯 추가 완료 (자동 감지)"));
+		return true;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] AddChildToContainerAuto: Container가 VerticalBox 또는 ScrollBox가 아닙니다."));
+	return false;
 }
