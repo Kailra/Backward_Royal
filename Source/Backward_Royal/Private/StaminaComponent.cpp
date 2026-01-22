@@ -6,6 +6,9 @@ UStaminaComponent::UStaminaComponent()
 {
     PrimaryComponentTick.bCanEverTick = true;
     SetIsReplicated(true);
+
+    MaxStamina = 100.0f;
+    CurrentStamina = MaxStamina;
 }
 
 void UStaminaComponent::BeginPlay()
@@ -15,6 +18,7 @@ void UStaminaComponent::BeginPlay()
     {
         CurrentStamina = MaxStamina;
     }
+    OnRep_CurrentStamina();
 }
 
 void UStaminaComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -42,26 +46,30 @@ void UStaminaComponent::OnRep_IsSprinting()
     OnSprintStateChanged.Broadcast(bIsSprinting);
 }
 
+// StaminaComponent.cpp
+
 void UStaminaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    // 서버에서만 연산
     if (GetOwner() && GetOwner()->HasAuthority())
     {
+        // 변경 전 값 저장
+        float OldStamina = CurrentStamina;
         bool bActuallyMoving = GetOwner()->GetVelocity().SizeSquared() > 10.0f;
 
+        // --- 스태미나 계산 로직 (이전 코드 유지) ---
         if (bIsSprinting && bActuallyMoving)
         {
             CurrentStamina -= StaminaDrainRate * DeltaTime;
-
             if (CurrentStamina <= 0.0f)
             {
                 CurrentStamina = 0.0f;
-                bIsSprinting = false;
-
-                // 캐릭터에게 "너 이제 못 달려"라고 알림
-                OnSprintStateChanged.Broadcast(false);
+                if (bIsSprinting)
+                {
+                    bIsSprinting = false;
+                    OnRep_IsSprinting(); // [참고] 스프린트 상태 변경도 서버는 수동 호출 필요
+                }
             }
         }
         else
@@ -69,15 +77,16 @@ void UStaminaComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAct
             if (CurrentStamina < MaxStamina)
             {
                 CurrentStamina += StaminaRegenRate * DeltaTime;
-
-                // 완전히 회복되었을 때 알림 등 추가 가능
                 if (CurrentStamina > MaxStamina) CurrentStamina = MaxStamina;
             }
         }
+        // ----------------------------------------
 
-        // 값 변경 시 UI 업데이트 (서버도 UI 갱신 필요 시)
-        // OnRep_CurrentStamina()는 클라에서만 자동 호출되므로 서버는 수동 호출하거나
-        // 값이 크게 변했을 때만 Broadcast
+        // [중요] 값이 조금이라도 변했다면 UI 업데이트 (서버 전용)
+        if (!FMath::IsNearlyEqual(OldStamina, CurrentStamina))
+        {
+            OnRep_CurrentStamina();
+        }
     }
 }
 

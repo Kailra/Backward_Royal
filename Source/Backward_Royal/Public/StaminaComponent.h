@@ -34,7 +34,7 @@ public:
 
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stamina")
-    float MaxStamina = 100.0f;
+    float MaxStamina;
 
     UPROPERTY(ReplicatedUsing = OnRep_CurrentStamina, VisibleAnywhere, BlueprintReadOnly, Category = "Stamina")
     float CurrentStamina;

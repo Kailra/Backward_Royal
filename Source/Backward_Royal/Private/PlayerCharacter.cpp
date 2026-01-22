@@ -43,10 +43,6 @@ APlayerCharacter::APlayerCharacter()
 
 	// 3. [신규] 스태미나 컴포넌트 생성
 	StaminaComp = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComp"));
-	// 필요시 컴포넌트 기본값 설정 (여기서 하거나 블루프린트에서 설정 가능)
-	StaminaComp->MaxStamina = 100.0f;
-	StaminaComp->StaminaDrainRate = 20.0f;
-	StaminaComp->StaminaRegenRate = 10.0f;
 
 	// [네트워크]
 	bReplicates = true;
@@ -58,23 +54,17 @@ APlayerCharacter::APlayerCharacter()
 
 void APlayerCharacter::BeginPlay()
 {
+	if (StaminaComp)
+	{
+		StaminaComp->OnStaminaChanged.AddDynamic(this, &APlayerCharacter::HandleStaminaChanged);
+		StaminaComp->OnSprintStateChanged.AddDynamic(this, &APlayerCharacter::HandleSprintStateChanged);
+	}
+
 	Super::BeginPlay();
 
 	if (HasAuthority())
 	{
 		UpperBodyAimRotation = GetActorRotation();
-	}
-
-	// [신규] 컴포넌트 이벤트 연결 (서버/클라이언트 모두 필요할 수 있음)
-	// UI 갱신(OnStaminaChanged)은 클라이언트에서 중요하고,
-	// 속도 제어(OnSprintStateChanged)는 서버(이동권한)에서 중요합니다.
-	if (StaminaComp)
-	{
-		// 1. 스태미나 변화 -> UI로 전달 (Relay)
-		StaminaComp->OnStaminaChanged.AddDynamic(this, &APlayerCharacter::HandleStaminaChanged);
-
-		// 2. 달리기 상태 변화 -> 이동 속도 조절
-		StaminaComp->OnSprintStateChanged.AddDynamic(this, &APlayerCharacter::HandleSprintStateChanged);
 	}
 
 	// [기존 코드] 입력 시스템 등록
