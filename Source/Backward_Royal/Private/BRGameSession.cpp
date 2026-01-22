@@ -339,6 +339,9 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 	}
 
 	OnFindSessionsComplete.Broadcast(Results);
+	
+	// 블루프린트용 이벤트도 브로드캐스트 (세션 개수 전달)
+	OnFindSessionsCompleteBP.Broadcast(Results.Num());
 }
 
 void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinSessionCompleteResult::Type Result)
@@ -438,3 +441,46 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	OnJoinSessionComplete.Broadcast(bWasSuccessful);
 }
 
+int32 ABRGameSession::GetSessionCount() const
+{
+	if (SessionSearch.IsValid())
+	{
+		return SessionSearch->SearchResults.Num();
+	}
+	return 0;
+}
+
+FString ABRGameSession::GetSessionName(int32 SessionIndex) const
+{
+	if (!SessionSearch.IsValid())
+	{
+		return FString();
+	}
+
+	if (SessionIndex < 0 || SessionIndex >= SessionSearch->SearchResults.Num())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GetSessionName] 잘못된 세션 인덱스: %d (범위: 0~%d)"), 
+			SessionIndex, SessionSearch->SearchResults.Num() - 1);
+		return FString();
+	}
+
+	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
+	FString FoundSessionName;
+	
+	if (Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName))
+	{
+		return FoundSessionName;
+	}
+
+	return FString();
+}
+
+bool ABRGameSession::HasActiveSession() const
+{
+	if (SessionInterface.IsValid())
+	{
+		auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
+		return Session != nullptr;
+	}
+	return false;
+}

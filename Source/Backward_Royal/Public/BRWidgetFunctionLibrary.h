@@ -88,4 +88,28 @@ public:
 	// 준비 상태 확인
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|PlayerState", meta = (WorldContext = "WorldContextObject"))
 	static bool IsReady(const UObject* WorldContextObject);
+
+	// ============================================
+	// UI 관련 함수들
+	// ============================================
+	
+	// 메인 스크린 표시
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|UI", meta = (WorldContext = "WorldContextObject"))
+	static void ShowMainScreen(const UObject* WorldContextObject);
+
+	// 입장 메뉴 표시
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|UI", meta = (WorldContext = "WorldContextObject"))
+	static void ShowEntranceMenu(const UObject* WorldContextObject);
+
+	// 참가 메뉴 표시
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|UI", meta = (WorldContext = "WorldContextObject"))
+	static void ShowJoinMenu(const UObject* WorldContextObject);
+
+	// 로비 메뉴 표시
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|UI", meta = (WorldContext = "WorldContextObject"))
+	static void ShowLobbyMenu(const UObject* WorldContextObject);
+
+	// 현재 메뉴 숨기기
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|UI", meta = (WorldContext = "WorldContextObject"))
+	static void HideCurrentMenu(const UObject* WorldContextObject);
 };
