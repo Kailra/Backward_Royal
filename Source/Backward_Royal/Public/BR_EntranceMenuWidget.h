@@ -9,7 +9,7 @@ class ABRPlayerController;
 
 /**
  * 입장 메뉴 위젯 베이스 클래스
- * 블루프린트 WBP_EntranceMenu1에서 상속받아 사용
+ * 블루프린트 WBP_EntranceMenu에서 상속받아 사용
  */
 UCLASS()
 class BACKWARD_ROYAL_API UBR_EntranceMenuWidget : public UUserWidget

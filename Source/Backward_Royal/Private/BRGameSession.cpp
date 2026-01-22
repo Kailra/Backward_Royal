@@ -143,6 +143,16 @@ int32 ABRGameSession::GetSessionCount() const
 	return 0;
 }
 
+bool ABRGameSession::HasActiveSession() const
+{
+	if (SessionInterface.IsValid())
+	{
+		auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
+		return Session != nullptr;
+	}
+	return false;
+}
+
 void ABRGameSession::JoinSessionByIndex(int32 SessionIndex)
 {
 	UE_LOG(LogTemp, Log, TEXT("[방 참가] 세션 인덱스: %d"), SessionIndex);

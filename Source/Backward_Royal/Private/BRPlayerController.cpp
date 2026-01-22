@@ -97,7 +97,7 @@ void ABRPlayerController::BeginPlay()
 							(*CheckRetryCount)++;
 							if (*CheckRetryCount >= MaxCheckRetries)
 							{
-								UE_LOG(LogTemp, Error, TEXT("[PlayerController] MainScreenWidget을 찾을 수 없습니다. BP_HUDMain1이 WBP_MainScreen1을 생성하고 SetMainScreenWidget()을 호출하는지 확인하세요."));
+								UE_LOG(LogTemp, Error, TEXT("[PlayerController] MainScreenWidget을 찾을 수 없습니다. BP_HUDMain이 WBP_MainScreen을 생성하고 SetMainScreenWidget()을 호출하는지 확인하세요."));
 								if (UWorld* World = GetWorld())
 								{
 									World->GetTimerManager().ClearTimer(*CheckTimerHandlePtr);
@@ -116,12 +116,12 @@ void ABRPlayerController::BeginPlay()
 				}
 			}
 			// 로컬 게임(Standalone) 또는 리슨 서버 → EntranceMenu 표시
-			// 주의: WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있으므로
+			// 주의: WBP_MainScreen이 이미 WBP_EntranceMenu를 포함하고 있으므로
 			// BeginPlay에서 ShowEntranceMenu()를 호출하지 않아야 중복 표시를 방지할 수 있습니다.
 			else if (NetMode == NM_Standalone || NetMode == NM_ListenServer)
 			{
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 로컬/서버 모드 감지 - WBP_MainScreen1이 UI를 관리하므로 BeginPlay에서 UI 표시를 건너뜁니다."));
-				// WBP_MainScreen1이 이미 WBP_EntranceMenu1을 포함하고 있다면 주석 처리:
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 로컬/서버 모드 감지 - WBP_MainScreen이 UI를 관리하므로 BeginPlay에서 UI 표시를 건너뜁니다."));
+				// WBP_MainScreen이 이미 WBP_EntranceMenu를 포함하고 있다면 주석 처리:
 				// if (EntranceMenuWidgetClass)
 				// {
 				// 	ShowEntranceMenu();
@@ -932,39 +932,38 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 		// 클라이언트 모드: LobbyMenu로 전환
 		if (NetMode == NM_Client)
 		{
-			// 위젯이 완전히 초기화된 후 LobbyMenu로 전환
-			// 여러 번 시도하여 함수가 준비될 때까지 대기
-			FTimerHandle TimerHandle;
-			TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
-			TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
-			const int32 MaxRetries = 5;
-			
-			TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
-			GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, RetryCountPtr, TimerHandlePtr, MaxRetries]()
+			// 즉시 전환 시도 (위젯이 준비되어 있을 수 있음)
+			UFunction* Function = Widget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+			if (Function)
 			{
-				if (!WeakWidget.IsValid())
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
-					return;
-				}
+				// 함수가 준비되어 있으면 즉시 전환
+				SetMainScreenToLobbyMenu();
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 즉시 전환 완료"));
+			}
+			else
+			{
+				// 함수가 아직 준비되지 않았으면 타이머로 재시도
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 함수가 아직 준비되지 않음. 재시도 중..."));
+				FTimerHandle TimerHandle;
+				TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
+				TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
+				const int32 MaxRetries = 5;
 				
-				// SetMainScreenToLobbyMenu 함수가 있는지 확인
-				UFunction* Function = WeakWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
-				if (Function)
+				TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
+				GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, RetryCountPtr, TimerHandlePtr, MaxRetries]()
 				{
-					SetMainScreenToLobbyMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 전환 완료"));
-					if (UWorld* World = GetWorld())
+					if (!WeakWidget.IsValid())
 					{
-						World->GetTimerManager().ClearTimer(*TimerHandlePtr);
+						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
+						return;
 					}
-				}
-				else
-				{
-					(*RetryCountPtr)++;
-					if (*RetryCountPtr >= MaxRetries)
+					
+					// SetMainScreenToLobbyMenu 함수가 있는지 확인
+					UFunction* RetryFunction = WeakWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+					if (RetryFunction)
 					{
-						UE_LOG(LogTemp, Error, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
+						SetMainScreenToLobbyMenu();
+						UE_LOG(LogTemp, Log, TEXT("[PlayerController] 클라이언트 모드 - LobbyMenu로 전환 완료"));
 						if (UWorld* World = GetWorld())
 						{
 							World->GetTimerManager().ClearTimer(*TimerHandlePtr);
@@ -972,47 +971,120 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 					}
 					else
 					{
-						UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수 대기 중... (%d/%d)"), *RetryCountPtr, MaxRetries);
+						(*RetryCountPtr)++;
+						if (*RetryCountPtr >= MaxRetries)
+						{
+							UE_LOG(LogTemp, Error, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수를 찾을 수 없습니다. WBP_MainScreen에 함수가 있는지 확인하세요."));
+							if (UWorld* World = GetWorld())
+							{
+								World->GetTimerManager().ClearTimer(*TimerHandlePtr);
+							}
+						}
+						else
+						{
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 함수 대기 중... (%d/%d)"), *RetryCountPtr, MaxRetries);
+						}
 					}
-				}
-			}, 0.1f, true); // 0.1초마다 재시도
+				}, 0.1f, true); // 0.1초마다 재시도
+			}
 		}
-		// 서버 모드(ListenServer) 또는 Standalone: EntranceMenu로 전환
+		// 서버 모드(ListenServer) 또는 Standalone
 		else if (NetMode == NM_ListenServer || NetMode == NM_Standalone)
 		{
-			// 위젯이 완전히 초기화된 후 EntranceMenu로 전환
-			FTimerHandle TimerHandle;
-			TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
+			// NetMode가 ListenServer인 경우에만 세션이 있다고 판단
+			// Standalone 모드라면 세션이 없는 것이므로 EntranceMenu로 전환
+			bool bHasActiveSession = (NetMode == NM_ListenServer);
 			
-			TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
-			GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, TimerHandlePtr]()
+			// 즉시 전환 시도 (위젯이 준비되어 있을 수 있음)
+			UFunction* Function = nullptr;
+			if (bHasActiveSession)
 			{
-				if (!WeakWidget.IsValid())
+				Function = Widget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 모드 - 세션이 이미 생성되어 있음. LobbyMenu로 전환 시도"));
+			}
+			else
+			{
+				Function = Widget->FindFunction(FName("SetMainScreenToEntranceMenu"));
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버/로컬 모드 - 세션이 없음. EntranceMenu로 전환 시도"));
+			}
+			
+			if (Function)
+			{
+				// 함수가 준비되어 있으면 즉시 전환
+				if (bHasActiveSession)
 				{
-					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
-					return;
-				}
-				
-				// SetMainScreenToEntranceMenu 함수가 있는지 확인
-				UFunction* Function = WeakWidget->FindFunction(FName("SetMainScreenToEntranceMenu"));
-				if (Function)
-				{
-					SetMainScreenToEntranceMenu();
-					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버/로컬 모드 - EntranceMenu로 전환 완료"));
-					if (UWorld* World = GetWorld())
-					{
-						World->GetTimerManager().ClearTimer(*TimerHandlePtr);
-					}
+					SetMainScreenToLobbyMenu();
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 모드 - LobbyMenu로 즉시 전환 완료"));
 				}
 				else
 				{
-					UE_LOG(LogTemp, Warning, TEXT("[PlayerController] SetMainScreenToEntranceMenu 함수를 찾을 수 없습니다. WBP_MainScreen1에 함수가 있는지 확인하세요."));
-					if (UWorld* World = GetWorld())
-					{
-						World->GetTimerManager().ClearTimer(*TimerHandlePtr);
-					}
+					SetMainScreenToEntranceMenu();
+					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버/로컬 모드 - EntranceMenu로 즉시 전환 완료"));
 				}
-			}, 0.2f, false); // 0.2초 후 한 번만 실행
+			}
+			else
+			{
+				// 함수가 아직 준비되지 않았으면 타이머로 재시도
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] 함수가 아직 준비되지 않음. 재시도 중..."));
+				FTimerHandle TimerHandle;
+				TSharedPtr<FTimerHandle> TimerHandlePtr = MakeShared<FTimerHandle>();
+				TSharedPtr<int32> RetryCountPtr = MakeShared<int32>(0);
+				const int32 MaxRetries = 5;
+				
+				TWeakObjectPtr<UUserWidget> WeakWidget = Widget;
+				GetWorld()->GetTimerManager().SetTimer(*TimerHandlePtr, [this, WeakWidget, TimerHandlePtr, RetryCountPtr, MaxRetries, bHasActiveSession]()
+				{
+					if (!WeakWidget.IsValid())
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[PlayerController] MainScreenWidget이 유효하지 않습니다."));
+						return;
+					}
+					
+					UFunction* RetryFunction = nullptr;
+					if (bHasActiveSession)
+					{
+						RetryFunction = WeakWidget->FindFunction(FName("SetMainScreenToLobbyMenu"));
+					}
+					else
+					{
+						RetryFunction = WeakWidget->FindFunction(FName("SetMainScreenToEntranceMenu"));
+					}
+					
+					if (RetryFunction)
+					{
+						if (bHasActiveSession)
+						{
+							SetMainScreenToLobbyMenu();
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버 모드 - LobbyMenu로 전환 완료"));
+						}
+						else
+						{
+							SetMainScreenToEntranceMenu();
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] 서버/로컬 모드 - EntranceMenu로 전환 완료"));
+						}
+						if (UWorld* World = GetWorld())
+						{
+							World->GetTimerManager().ClearTimer(*TimerHandlePtr);
+						}
+					}
+					else
+					{
+						(*RetryCountPtr)++;
+						if (*RetryCountPtr >= MaxRetries)
+						{
+							UE_LOG(LogTemp, Error, TEXT("[PlayerController] 함수를 찾을 수 없습니다. WBP_MainScreen에 함수가 있는지 확인하세요."));
+							if (UWorld* World = GetWorld())
+							{
+								World->GetTimerManager().ClearTimer(*TimerHandlePtr);
+							}
+						}
+						else
+						{
+							UE_LOG(LogTemp, Log, TEXT("[PlayerController] 함수 대기 중... (%d/%d)"), *RetryCountPtr, MaxRetries);
+						}
+					}
+				}, 0.1f, true); // 0.1초마다 재시도
+			}
 		}
 	}
 }
@@ -1033,13 +1105,13 @@ void ABRPlayerController::ShowMainScreen()
 		// WidgetSwitcher 인덱스를 EntranceMenu로 설정
 		SetMainScreenToEntranceMenu();
 		
-		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen1 표시"));
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 표시"));
 	}
 }
 
 void ABRPlayerController::SetMainScreenToEntranceMenu()
 {
-	// WBP_MainScreen1 블루프린트에서 이 함수를 구현해야 합니다.
+	// WBP_MainScreen 블루프린트에서 이 함수를 구현해야 합니다.
 	// MainScreenWidget이 유효하면 블루프린트 함수를 호출합니다.
 	if (MainScreenWidget && IsValid(MainScreenWidget))
 	{
@@ -1058,7 +1130,7 @@ void ABRPlayerController::SetMainScreenToEntranceMenu()
 
 void ABRPlayerController::SetMainScreenToLobbyMenu()
 {
-	// WBP_MainScreen1 블루프린트에서 이 함수를 구현해야 합니다.
+	// WBP_MainScreen 블루프린트에서 이 함수를 구현해야 합니다.
 	// MainScreenWidget이 유효하면 블루프린트 함수를 호출합니다.
 	if (MainScreenWidget && IsValid(MainScreenWidget))
 	{
@@ -1080,7 +1152,7 @@ void ABRPlayerController::HideMainScreen()
 	if (MainScreenWidget && IsValid(MainScreenWidget))
 	{
 		MainScreenWidget->SetVisibility(ESlateVisibility::Collapsed);
-		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen1 숨김"));
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 숨김"));
 	}
 }
 
@@ -1092,15 +1164,15 @@ void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)
 		return;
 	}
 
-	// 주의: WBP_MainScreen1이 HUD에서 관리되고 있다면
+	// 주의: WBP_MainScreen이 HUD에서 관리되고 있다면
 	// HUD에서 위젯을 숨기거나 WidgetSwitcher를 사용하여 전환해야 합니다.
 	// 현재는 PlayerController에서 별도로 위젯을 생성하고 있습니다.
 	
-	// WBP_MainScreen1 숨기기 (HUD에서 관리되는 경우)
+	// WBP_MainScreen 숨기기 (HUD에서 관리되는 경우)
 	if (MainScreenWidget && IsValid(MainScreenWidget))
 	{
 		MainScreenWidget->SetVisibility(ESlateVisibility::Collapsed);
-		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen1 숨김 (HUD에서 관리)"));
+		UE_LOG(LogTemp, Log, TEXT("[PlayerController] WBP_MainScreen 숨김 (HUD에서 관리)"));
 	}
 
 	// 현재 위젯이 있으면 제거

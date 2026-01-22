@@ -163,6 +163,16 @@ bool UBR_LobbyMenuWidget::IsReady() const
 	return false;
 }
 
+TArray<FBRUserInfo> UBR_LobbyMenuWidget::GetAllPlayerUserInfo() const
+{
+	if (ABRGameState* BRGameState = GetBRGameState())
+	{
+		return BRGameState->GetAllPlayerUserInfo();
+	}
+	
+	return TArray<FBRUserInfo>();
+}
+
 void UBR_LobbyMenuWidget::HandlePlayerListChanged()
 {
 	// 블루프린트 이벤트 호출

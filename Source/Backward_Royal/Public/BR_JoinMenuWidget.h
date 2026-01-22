@@ -10,7 +10,7 @@ class ABRGameSession;
 
 /**
  * 참가 메뉴 위젯 베이스 클래스
- * 블루프린트 WBP_JoinMenu1에서 상속받아 사용
+ * 블루프린트 WBP_JoinMenu에서 상속받아 사용
  */
 UCLASS()
 class BACKWARD_ROYAL_API UBR_JoinMenuWidget : public UUserWidget

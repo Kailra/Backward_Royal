@@ -85,22 +85,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void HideCurrentMenu();
 
-	// WBP_MainScreen1 설정 (블루프린트에서 호출)
+	// WBP_MainScreen 설정 (블루프린트에서 호출)
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void SetMainScreenWidget(class UUserWidget* Widget);
 
-	// WBP_MainScreen1 표시/숨김
+	// WBP_MainScreen 표시/숨김
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowMainScreen();
 	
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void HideMainScreen();
 
-	// WBP_MainScreen1의 WidgetSwitcher 인덱스를 EntranceMenu로 설정
+	// WBP_MainScreen의 WidgetSwitcher 인덱스를 EntranceMenu로 설정
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void SetMainScreenToEntranceMenu();
 
-	// WBP_MainScreen1의 WidgetSwitcher 인덱스를 LobbyMenu로 설정
+	// WBP_MainScreen의 WidgetSwitcher 인덱스를 LobbyMenu로 설정
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void SetMainScreenToLobbyMenu();
 
@@ -150,7 +150,7 @@ private:
 	UPROPERTY()
 	class UUserWidget* CurrentMenuWidget;
 
-	// WBP_MainScreen1 추적 (블루프린트에서 설정 가능)
+	// WBP_MainScreen 추적 (블루프린트에서 설정 가능)
 	UPROPERTY()
 	class UUserWidget* MainScreenWidget;
 };

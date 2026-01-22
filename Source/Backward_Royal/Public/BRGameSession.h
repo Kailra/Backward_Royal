@@ -42,6 +42,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	int32 GetSessionCount() const;
 
+	// 세션이 생성되어 있는지 확인 (블루프린트에서 사용 가능)
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	bool HasActiveSession() const;
+
 	// 방 생성 완료 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnBRCreateSessionComplete OnCreateSessionComplete;

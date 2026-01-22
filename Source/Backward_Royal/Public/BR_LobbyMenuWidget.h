@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "BRUserInfo.h"
 #include "BR_LobbyMenuWidget.generated.h"
 
 class ABRPlayerController;
@@ -11,7 +12,7 @@ class ABRPlayerState;
 
 /**
  * 로비 메뉴 위젯 베이스 클래스
- * 블루프린트 WBP_LobbyMenu1에서 상속받아 사용
+ * 블루프린트 WBP_LobbyMenu에서 상속받아 사용
  */
 UCLASS()
 class BACKWARD_ROYAL_API UBR_LobbyMenuWidget : public UUserWidget
@@ -62,6 +63,10 @@ public:
 	// 준비 상태 확인
 	UFUNCTION(BlueprintCallable, Category = "Room")
 	bool IsReady() const;
+
+	// 모든 플레이어의 UserInfo 배열 가져오기 (블루프린트에서 사용)
+	UFUNCTION(BlueprintCallable, Category = "Room")
+	TArray<struct FBRUserInfo> GetAllPlayerUserInfo() const;
 
 	// 플레이어 목록 변경 이벤트 (블루프린트에서 바인딩 가능)
 	UFUNCTION(BlueprintImplementableEvent, Category = "Events")
