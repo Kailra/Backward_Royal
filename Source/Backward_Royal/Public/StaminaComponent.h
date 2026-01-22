@@ -32,9 +32,9 @@ public:
     UFUNCTION(BlueprintCallable, Server, Reliable)
     void ServerSetSprinting(bool bNewSprinting);
 
-    // [신규] 점프 시 스태미나 소모 요청 (서버에서 실행)
-    UFUNCTION(BlueprintCallable, Server, Reliable)
-    void ServerConsumeJumpStamina();
+    // 점프 시 스태미나 소모
+    UFUNCTION(BlueprintCallable)
+    void ConsumeJumpStamina();
 
     // 현재 스태미나가 충분한지 확인
     UFUNCTION(BlueprintCallable)

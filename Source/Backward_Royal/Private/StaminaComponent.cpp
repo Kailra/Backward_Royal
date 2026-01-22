@@ -52,12 +52,16 @@ void UStaminaComponent::ServerSetSprinting_Implementation(bool bNewSprinting)
     }
 }
 
-void UStaminaComponent::ServerConsumeJumpStamina_Implementation()
+void UStaminaComponent::ConsumeJumpStamina()
 {
-    if (CanJump())
+    // 권한(서버) 확인은 호출하는 쪽(Character)에서 하거나 여기서 한 번 더 체크
+    if (GetOwner() && GetOwner()->HasAuthority())
     {
-        CurrentStamina = FMath::Clamp(CurrentStamina - JumpCost, 0.0f, MaxStamina);
-        OnRep_CurrentStamina();
+        if (CurrentStamina >= JumpCost)
+        {
+            CurrentStamina = FMath::Clamp(CurrentStamina - JumpCost, 0.0f, MaxStamina);
+            OnRep_CurrentStamina();
+        }
     }
 }
 

@@ -186,22 +186,40 @@ void APlayerCharacter::Look(const FInputActionValue& Value)
 
 void APlayerCharacter::Jump()
 {
-	// 1. 기존 스태미나 체크 + 2. 공중 여부 체크 (IsFalling)
-	// GetCharacterMovement()->IsFalling()이 false일 때만(바닥일 때만) 점프 허용
-	if (StaminaComp && StaminaComp->CanJump() && !GetCharacterMovement()->IsFalling())
+	// 스태미나가 충분할 때만 점프 시도 (불필요한 입력 방지)
+	if (StaminaComp && StaminaComp->CanJump())
 	{
 		Super::Jump();
+		// [중요] 여기서 ServerConsumeJumpStamina RPC를 호출하지 않습니다!
+		// 중복 소모의 원인이 되므로 삭제.
+	}
+}
 
-		// 서버에 스태미나 소모 요청
-		StaminaComp->ServerConsumeJumpStamina();
-	}
-	else if (GetCharacterMovement()->IsFalling())
+// 2. 엔진 내부에서 점프 가능 여부를 판단할 때 (서버/클라이언트 모두 호출됨)
+bool APlayerCharacter::CanJumpInternal_Implementation() const
+{
+	// 기존 조건(바닥에 있는지 등) 체크
+	bool bCanJump = Super::CanJumpInternal_Implementation();
+
+	// 스태미나 조건 추가
+	if (StaminaComp)
 	{
-		// 공중에서 점프를 시도한 경우 아무것도 하지 않음
+		bCanJump = bCanJump && StaminaComp->CanJump();
 	}
-	else
+
+	return bCanJump;
+}
+
+// 3. 실제로 점프가 이루어졌을 때 (MovementComponent가 호출)
+void APlayerCharacter::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+
+	// 서버인 경우에만 스태미나 소모
+	// (클라이언트의 점프 움직임이 서버에 도달하여 처리될 때 호출됨)
+	if (HasAuthority() && StaminaComp)
 	{
-		// 스태미나가 부족한 경우
+		StaminaComp->ConsumeJumpStamina();
 	}
 }
 
