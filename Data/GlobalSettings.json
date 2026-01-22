@@ -4,7 +4,10 @@
       "Name": "Default",
       "Global_Weapon_DamageMultiplier": 1.25,
       "Global_Weapon_ImpulseMultiplier": 0.7,
-      "Global_Weapon_AttackSpeedMultiplier": 1.0
+      "Global_Weapon_AttackSpeedMultiplier": 1.0,
+      "Global_Stamina_SprintDrainRate": 20.0,
+      "Global_Stamina_JumpCost": 30.0,
+      "Global_Stamina_RegenRate": 10.0
     }
   ]
 }

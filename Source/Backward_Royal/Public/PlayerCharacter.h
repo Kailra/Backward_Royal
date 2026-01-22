@@ -30,6 +30,7 @@ protected:
 	// --- Input Functions ---
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
+	virtual void Jump() override;
 
 	// [수정] 입력 함수가 컴포넌트를 호출하도록 변경
 	void SprintStart(const FInputActionValue& Value);

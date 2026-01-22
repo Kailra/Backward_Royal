@@ -96,7 +96,7 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
 		if (JumpAction)
 		{
-			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &APlayerCharacter::Jump);
 			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 		}
 
@@ -181,6 +181,27 @@ void APlayerCharacter::Look(const FInputActionValue& Value)
 	{
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
+	}
+}
+
+void APlayerCharacter::Jump()
+{
+	// 1. 기존 스태미나 체크 + 2. 공중 여부 체크 (IsFalling)
+	// GetCharacterMovement()->IsFalling()이 false일 때만(바닥일 때만) 점프 허용
+	if (StaminaComp && StaminaComp->CanJump() && !GetCharacterMovement()->IsFalling())
+	{
+		Super::Jump();
+
+		// 서버에 스태미나 소모 요청
+		StaminaComp->ServerConsumeJumpStamina();
+	}
+	else if (GetCharacterMovement()->IsFalling())
+	{
+		// 공중에서 점프를 시도한 경우 아무것도 하지 않음
+	}
+	else
+	{
+		// 스태미나가 부족한 경우
 	}
 }
 
