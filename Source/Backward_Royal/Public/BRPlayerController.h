@@ -5,6 +5,10 @@
 #include "GameFramework/PlayerController.h"
 #include "BRPlayerController.generated.h"
 
+// 전방 선언
+class UNetDriver;
+class UNetConnection;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPawnChanged, APawn*, NewPawn);
 
 UCLASS()
@@ -19,6 +23,10 @@ public:
 	UFUNCTION(BlueprintCallable, Exec, Category = "Session")
 	void CreateRoom(const FString& RoomName = TEXT("TestRoom"));
 
+	// 방 생성 및 플레이어 이름 설정
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	void CreateRoomWithPlayerName(const FString& RoomName, const FString& PlayerName);
+
 	// 방 찾기
 	UFUNCTION(BlueprintCallable, Exec, Category = "Session")
 	void FindRooms();
@@ -26,6 +34,10 @@ public:
 	// 방 참가
 	UFUNCTION(BlueprintCallable, Exec, Category = "Session")
 	void JoinRoom(int32 SessionIndex);
+
+	// 방 참가 및 플레이어 이름 설정
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	void JoinRoomWithPlayerName(int32 SessionIndex, const FString& PlayerName);
 
 	// 준비 상태 토글
 	UFUNCTION(BlueprintCallable, Exec, Category = "Room")
@@ -42,6 +54,18 @@ public:
 	// 게임 시작 요청 (방장만)
 	UFUNCTION(BlueprintCallable, Exec, Category = "Game")
 	void StartGame();
+
+	// 플레이어 이름 설정
+	UFUNCTION(BlueprintCallable, Category = "User Info")
+	void SetPlayerName(const FString& NewPlayerName);
+
+	// 팀 번호 설정 (자신의 팀 번호)
+	UFUNCTION(BlueprintCallable, Category = "Team")
+	void SetMyTeamNumber(int32 NewTeamNumber);
+
+	// 플레이어 역할 설정 (하체/상체)
+	UFUNCTION(BlueprintCallable, Category = "Player Role")
+	void SetMyPlayerRole(bool bLowerBody);
 
 	// 현재 상태 확인: ShowRoomInfo
 	UFUNCTION(Exec, Category = "Room")
@@ -128,6 +152,10 @@ protected:
 	// 네트워크 연결 실패 감지
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 
+	// 방 생성 완료 핸들러
+	UFUNCTION()
+	void HandleCreateRoomComplete(bool bWasSuccessful);
+
 	// 서버 RPC 함수들
 	UFUNCTION(Server, Reliable)
 	void ServerCreateRoom(const FString& RoomName);
@@ -149,6 +177,15 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestStartGame();
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetPlayerName(const FString& NewPlayerName);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetTeamNumber(int32 NewTeamNumber);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetPlayerRole(bool bLowerBody);
 
 private:
 	// 내부 헬퍼 함수들

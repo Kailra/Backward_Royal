@@ -11,12 +11,56 @@
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
 {
+	// 생성자에서는 초기화하지 않음 (BeginPlay에서 초기화)
+	// Standalone 모드에서는 생성자 시점에 World가 준비되지 않을 수 있음
+}
+
+void ABRGameSession::InitializeOnlineSubsystem()
+{
 	// Online Subsystem 초기화
-	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	// 여러 방법으로 시도
+	IOnlineSubsystem* OnlineSubsystem = nullptr;
+	
+	// 방법 1: 명시적으로 "NULL" 지정
+	OnlineSubsystem = IOnlineSubsystem::Get(FName("NULL"));
+	if (OnlineSubsystem)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(NULL) 성공"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(NULL) 실패"));
+		
+		// 방법 2: "Null" (대문자 N) 시도
+		OnlineSubsystem = IOnlineSubsystem::Get(FName("Null"));
+		if (OnlineSubsystem)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(Null) 성공"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(Null) 실패"));
+			
+			// 방법 3: 기본값으로 시도
+			OnlineSubsystem = IOnlineSubsystem::Get();
+			if (OnlineSubsystem)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get() (기본값) 성공"));
+			}
+		}
+	}
+	
 	if (OnlineSubsystem)
 	{
 		FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
 		UE_LOG(LogTemp, Log, TEXT("[GameSession] Online Subsystem 초기화: %s"), *SubsystemName);
+		
+		// 화면에 메시지 표시
+		if (GEngine)
+		{
+			FString Message = FString::Printf(TEXT("[GameSession] Online Subsystem: %s"), *SubsystemName);
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Message);
+		}
 		
 		SessionInterface = OnlineSubsystem->GetSessionInterface();
 		if (SessionInterface.IsValid())
@@ -30,17 +74,53 @@ ABRGameSession::ABRGameSession()
 		else
 		{
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] SessionInterface 초기화 실패"));
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[GameSession] SessionInterface 초기화 실패!"));
+			}
 		}
 	}
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("[GameSession] Online Subsystem 초기화 실패 - NULL"));
+		if (GEngine)
+		{
+			UWorld* World = GetWorld();
+			if (World)
+			{
+				ENetMode NetMode = World->GetNetMode();
+				if (NetMode == NM_Standalone)
+				{
+					FString WarningMsg = TEXT("[GameSession] Standalone 모드: Online Subsystem이 NULL입니다.\n");
+					WarningMsg += TEXT("세션 기능을 사용하려면 Listen Server 모드를 사용하세요.\n");
+					WarningMsg += TEXT("(Play 버튼 옆 드롭다운 -> Number of Players: 2+)");
+					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, WarningMsg);
+					UE_LOG(LogTemp, Warning, TEXT("%s"), *WarningMsg);
+				}
+				else
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[GameSession] Online Subsystem 초기화 실패!"));
+				}
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[GameSession] Online Subsystem 초기화 실패!"));
+			}
+		}
 	}
 }
 
 void ABRGameSession::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// BeginPlay에서 Online Subsystem 초기화 (Standalone 모드에서도 작동하도록)
+	// 약간의 지연 후 초기화 (모든 시스템이 준비된 후)
+	FTimerHandle TimerHandle;
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+	{
+		InitializeOnlineSubsystem();
+	}, 0.1f, false);
 }
 
 void ABRGameSession::CreateRoomSession(const FString& RoomName)
@@ -49,8 +129,23 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	if (!SessionInterface.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: SessionInterface가 유효하지 않습니다."));
-		OnCreateSessionComplete.Broadcast(false);
-		return;
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 생성] 실패: SessionInterface가 유효하지 않습니다!"));
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("Online Subsystem이 초기화되지 않았을 수 있습니다."));
+		}
+		
+		// SessionInterface가 없으면 다시 초기화 시도
+		InitializeOnlineSubsystem();
+		
+		// 초기화 후에도 유효하지 않으면 실패
+		if (!SessionInterface.IsValid())
+		{
+			OnCreateSessionComplete.Broadcast(false);
+			return;
+		}
 	}
 
 	// 기존 세션이 있으면 제거
@@ -88,9 +183,23 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 void ABRGameSession::FindSessions()
 {
 	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 검색 시작"));
+	
+	// 화면에 디버그 메시지 표시
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("[방 찾기] 세션 검색 시작..."));
+	}
+	
 	if (!SessionInterface.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패: SessionInterface가 유효하지 않습니다."));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] 실패: SessionInterface가 유효하지 않습니다!"));
+		}
+		
 		OnFindSessionsComplete.Broadcast(TArray<FOnlineSessionSearchResult>());
 		return;
 	}
@@ -99,6 +208,13 @@ void ABRGameSession::FindSessions()
 	if (bIsSearchingSessions)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 이미 검색이 진행 중입니다. 기다려주세요."));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("[방 찾기] 이미 검색이 진행 중입니다. 기다려주세요."));
+		}
+		
 		return;
 	}
 
@@ -129,6 +245,13 @@ void ABRGameSession::FindSessions()
 	if (!bFindSessionsResult)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 찾기] FindSessions 호출 실패"));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] FindSessions 호출 실패!"));
+		}
+		
 		bIsSearchingSessions = false;
 		OnFindSessionsComplete.Broadcast(TArray<FOnlineSessionSearchResult>());
 	}
@@ -141,6 +264,13 @@ void ABRGameSession::JoinSessionByIndex(int32 SessionIndex)
 	if (!SessionSearch.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 검색 결과가 없습니다. 먼저 FindRooms를 실행하세요."));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: 검색 결과가 없습니다! 먼저 방 찾기를 실행하세요."));
+		}
+		
 		OnJoinSessionComplete.Broadcast(false);
 		return;
 	}
@@ -149,6 +279,15 @@ void ABRGameSession::JoinSessionByIndex(int32 SessionIndex)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 잘못된 세션 인덱스 (%d). 사용 가능한 범위: 0-%d"), 
 			SessionIndex, SessionSearch->SearchResults.Num() - 1);
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			FString ErrorMsg = FString::Printf(TEXT("[방 참가] 실패: 잘못된 세션 인덱스 (%d). 범위: 0-%d"), 
+				SessionIndex, SessionSearch->SearchResults.Num() - 1);
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, ErrorMsg);
+		}
+		
 		OnJoinSessionComplete.Broadcast(false);
 		return;
 	}
@@ -162,6 +301,13 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 	if (!SessionInterface.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: SessionInterface가 유효하지 않습니다."));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: SessionInterface가 유효하지 않습니다!"));
+		}
+		
 		OnJoinSessionComplete.Broadcast(false);
 		return;
 	}
@@ -171,6 +317,13 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 	if (ExistingSession != nullptr)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 참가] 기존 세션 제거 중... (다른 세션에 참가하기 위해)"));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("[방 참가] 기존 세션 제거 중..."));
+		}
+		
 		SessionInterface->DestroySession(NAME_GameSession);
 		// DestroySession은 비동기이므로 잠시 대기 후 참가 시도
 		// 실제로는 DestroySession 완료 콜백을 기다려야 하지만, 간단한 테스트를 위해 바로 시도
@@ -180,10 +333,23 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 	if (SessionResult.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 참가] 세션 참가 시도: %s"), *FoundSessionName);
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			FString Message = FString::Printf(TEXT("[방 참가] 세션 참가 시도: %s"), *FoundSessionName);
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Message);
+		}
 	}
 	else
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 참가] 세션 참가 시도 중..."));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("[방 참가] 세션 참가 시도 중..."));
+		}
 	}
 
 	// 세션 참가
@@ -196,6 +362,13 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 생성] 성공: 세션이 생성되었습니다 - %s"), *InSessionName.ToString());
 		UE_LOG(LogTemp, Log, TEXT("[방 생성] 방이 생성되었으며 다른 플레이어가 참가할 수 있습니다."));
+		
+		// 화면에 디버그 메시지 표시 (Standalone 모드에서도 확인 가능)
+		if (GEngine)
+		{
+			FString Message = FString::Printf(TEXT("[GameSession] 방 생성 성공! 세션: %s"), *InSessionName.ToString());
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
+		}
 		
 		// 생성된 세션 정보 확인
 		if (SessionInterface.IsValid())
@@ -258,6 +431,12 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: 세션 생성에 실패했습니다."));
+		
+		// 화면에 디버그 메시지 표시 (Standalone 모드에서도 확인 가능)
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[GameSession] 방 생성 실패!"));
+		}
 	}
 
 	OnCreateSessionComplete.Broadcast(bWasSuccessful);
@@ -288,6 +467,15 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 		{
 			Results = SessionSearch->SearchResults;
 			UE_LOG(LogTemp, Log, TEXT("[방 찾기] 성공: 찾은 세션 수 = %d"), Results.Num());
+			
+			// 화면에 디버그 메시지 표시
+			if (GEngine)
+			{
+				FString Message = FString::Printf(TEXT("[방 찾기] 완료: %d개의 방을 찾았습니다."), Results.Num());
+				FColor MessageColor = Results.Num() > 0 ? FColor::Green : FColor::Yellow;
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, MessageColor, Message);
+			}
+			
 			if (Results.Num() > 0)
 			{
 				UE_LOG(LogTemp, Log, TEXT("[방 찾기] 참가하려면 'JoinRoom [인덱스]' 명령어를 사용하세요."));
@@ -303,10 +491,32 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 					if (Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName))
 					{
 						UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 이름=%s, Ping=%dms"), i, *FoundSessionName, Result.PingInMs);
+						
+						// 화면에 세션 정보 표시
+						if (GEngine)
+						{
+							CurrentPlayerCount = Result.Session.NumOpenPublicConnections + Result.Session.NumOpenPrivateConnections;
+							MaxPlayerCount = Result.Session.SessionSettings.NumPublicConnections + Result.Session.SessionSettings.NumPrivateConnections;
+							int32 ActualPlayerCount = MaxPlayerCount - CurrentPlayerCount;
+							FString SessionInfo = FString::Printf(TEXT("  [%d] %s - 플레이어: %d/%d, Ping: %dms"), 
+								i, *FoundSessionName, ActualPlayerCount, MaxPlayerCount, Result.PingInMs);
+							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, SessionInfo);
+						}
 					}
 					else
 					{
 						UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 이름=(없음), Ping=%dms"), i, Result.PingInMs);
+						
+						// 화면에 세션 정보 표시 (이름 없음)
+						if (GEngine)
+						{
+							CurrentPlayerCount = Result.Session.NumOpenPublicConnections + Result.Session.NumOpenPrivateConnections;
+							MaxPlayerCount = Result.Session.SessionSettings.NumPublicConnections + Result.Session.SessionSettings.NumPrivateConnections;
+							int32 ActualPlayerCount = MaxPlayerCount - CurrentPlayerCount;
+							FString SessionInfo = FString::Printf(TEXT("  [%d] (이름 없음) - 플레이어: %d/%d, Ping: %dms"), 
+								i, ActualPlayerCount, MaxPlayerCount, Result.PingInMs);
+							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, SessionInfo);
+						}
 					}
 					
 					if (Result.Session.SessionSettings.Get(FName(TEXT("MAPNAME")), FoundMapName))
@@ -325,17 +535,36 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 사용 가능한 세션이 없습니다."));
 				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 참고: 같은 프로세스에서 생성한 세션은 검색되지 않을 수 있습니다."));
 				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 참고: 다른 게임 인스턴스를 실행하여 테스트해보세요."));
+				
+				// 화면에 디버그 메시지 표시
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 찾기] 사용 가능한 세션이 없습니다."));
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("다른 게임 인스턴스를 실행하여 테스트해보세요."));
+				}
 			}
 		}
 		else
 		{
 			UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패: SessionSearch가 유효하지 않습니다. (bWasSuccessful=true이지만)"));
 			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 참고: 이는 비동기 타이밍 문제일 수 있습니다."));
+			
+			// 화면에 디버그 메시지 표시
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] 실패: SessionSearch가 유효하지 않습니다!"));
+			}
 		}
 	}
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패: 세션 찾기에 실패했습니다. (bWasSuccessful=false)"));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] 실패: 세션 찾기에 실패했습니다!"));
+		}
 	}
 
 	OnFindSessionsComplete.Broadcast(Results);
@@ -351,6 +580,13 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	if (bWasSuccessful)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 참가] 성공: 세션 참가 완료 - %s"), *InSessionName.ToString());
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			FString Message = FString::Printf(TEXT("[방 참가] 성공! 세션: %s"), *InSessionName.ToString());
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
+		}
 		
 		// 서버로 여행 (클라이언트만)
 		if (SessionInterface.IsValid())
@@ -385,6 +621,13 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 							NetMode == NM_Client ? TEXT("Client") : 
 							NetMode == NM_Standalone ? TEXT("Standalone") : TEXT("Unknown"));
 						
+						// 화면에 디버그 메시지 표시
+						if (GEngine)
+						{
+							FString TravelMsg = FString::Printf(TEXT("[방 참가] 서버로 이동 중: %s"), *TravelURL);
+							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TravelMsg);
+						}
+						
 						// 첫 번째 플레이어 컨트롤러에게만 여행 명령 전송
 						if (APlayerController* PC = World->GetFirstPlayerController())
 						{
@@ -395,12 +638,24 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 					{
 						UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미 서버이므로 다른 방에 참가할 수 없습니다."));
 						UE_LOG(LogTemp, Warning, TEXT("[방 참가] 클라이언트만 다른 방에 참가할 수 있습니다."));
+						
+						// 화면에 디버그 메시지 표시
+						if (GEngine)
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
+						}
 					}
 				}
 			}
 			else
 			{
 				UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 연결 문자열을 가져올 수 없습니다."));
+				
+				// 화면에 디버그 메시지 표시
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: 연결 문자열을 가져올 수 없습니다!"));
+				}
 			}
 		}
 	}
@@ -431,10 +686,23 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 		}
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 세션 참가에 실패했습니다. (결과 코드: %d, %s)"), (int32)Result, *ErrorMessage);
 		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			FString ErrorMsg = FString::Printf(TEXT("[방 참가] 실패: %s"), *ErrorMessage);
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, ErrorMsg);
+		}
+		
 		if (Result == EOnJoinSessionCompleteResult::AlreadyInSession)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 참고: 같은 프로세스에서 생성한 방에 참가할 수 없습니다."));
 			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 참고: 다른 게임 인스턴스를 실행하여 테스트해보세요."));
+			
+			// 화면에 디버그 메시지 표시
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("다른 게임 인스턴스를 실행하여 테스트해보세요."));
+			}
 		}
 	}
 
