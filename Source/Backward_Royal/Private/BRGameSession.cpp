@@ -18,24 +18,32 @@ ABRGameSession::ABRGameSession()
 void ABRGameSession::InitializeOnlineSubsystem()
 {
 	// Online Subsystem 초기화
-	// 여러 방법으로 시도
+	// Steam을 우선적으로 시도, 실패하면 Null로 폴백
 	IOnlineSubsystem* OnlineSubsystem = nullptr;
 	
-	// 방법 1: 명시적으로 "NULL" 지정
-	OnlineSubsystem = IOnlineSubsystem::Get(FName("NULL"));
+	// 방법 1: Steam 시도 (우선순위)
+	OnlineSubsystem = IOnlineSubsystem::Get(FName("Steam"));
 	if (OnlineSubsystem)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(NULL) 성공"));
+		UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(Steam) 성공"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("[GameSession] Steam Online Subsystem 초기화 성공!"));
+		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(NULL) 실패"));
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(Steam) 실패 - Steam이 실행되지 않았거나 초기화되지 않았습니다."));
 		
-		// 방법 2: "Null" (대문자 N) 시도
+		// 방법 2: Null로 폴백
 		OnlineSubsystem = IOnlineSubsystem::Get(FName("Null"));
 		if (OnlineSubsystem)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(Null) 성공"));
+			UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(Null) 성공 (Steam 폴백)"));
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[GameSession] Steam 실패, Null Online Subsystem 사용 중"));
+			}
 		}
 		else
 		{
@@ -259,7 +267,27 @@ void ABRGameSession::FindSessions()
 
 void ABRGameSession::JoinSessionByIndex(int32 SessionIndex)
 {
-	UE_LOG(LogTemp, Log, TEXT("[방 참가] 세션 인덱스: %d"), SessionIndex);
+	UE_LOG(LogTemp, Warning, TEXT("========================================"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] JoinSessionByIndex 호출됨: 세션 인덱스=%d"), SessionIndex);
+	UE_LOG(LogTemp, Warning, TEXT("========================================"));
+	
+	// SessionInterface 유효성 확인 (Standalone 모드에서 NULL일 수 있음)
+	if (!SessionInterface.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: SessionInterface가 NULL입니다. Online Subsystem이 초기화되지 않았습니다."));
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
+		{
+			FString ErrorMsg = TEXT("[방 참가] 실패: Online Subsystem이 NULL입니다!\n");
+			ErrorMsg += TEXT("Standalone 모드에서는 세션 기능을 사용할 수 없습니다.\n");
+			ErrorMsg += TEXT("Listen Server 모드를 사용하세요 (Number of Players: 2+)");
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, ErrorMsg);
+		}
+		
+		OnJoinSessionComplete.Broadcast(false);
+		return;
+	}
 	
 	if (!SessionSearch.IsValid())
 	{
@@ -353,7 +381,15 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 	}
 
 	// 세션 참가
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] SessionInterface->JoinSession() 호출 중..."));
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, TEXT("[방 참가] SessionInterface->JoinSession() 호출 중..."));
+	}
+	
 	SessionInterface->JoinSession(0, NAME_GameSession, SessionResult);
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] SessionInterface->JoinSession() 호출 완료 (비동기 처리 중)"));
 }
 
 void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful)
