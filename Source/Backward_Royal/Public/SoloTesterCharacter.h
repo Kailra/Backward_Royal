@@ -1,13 +1,15 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "PlayerCharacter.h" // 부모 클래스 (이미 공격 기능 보유)
-#include "Misc/Optional.h"
+#include "PlayerCharacter.h" // 부모 클래스
+#include "Misc/Optional.h"   // 에러 방지용 필수 헤더
 #include "SoloTesterCharacter.generated.h"
 
+// 전방 선언
 class AUpperBodyPawn;
 class UInputMappingContext;
 class UInputAction;
+class UAnimMontage;
 
 UCLASS()
 class BACKWARD_ROYAL_API ASoloTesterCharacter : public APlayerCharacter
@@ -23,11 +25,7 @@ protected:
 	virtual void Tick(float DeltaTime) override;
 
 public:
-	// -------------------------------------------------------------------------
-	// [설정] 에디터에서 할당
-	// -------------------------------------------------------------------------
-
-	// 상체 카메라용 Pawn (BP_UpperBodyPawn)
+	// 상체 블루프린트 (카메라 역할)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Test Setup")
 	TSubclassOf<AUpperBodyPawn> UpperBodyClass;
 
@@ -39,17 +37,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
 	UInputAction* TestInteractAction;
 
-	// -------------------------------------------------------------------------
-	// [내부 변수]
-	// -------------------------------------------------------------------------
+	// 실제 스폰된 상체
 	UPROPERTY(VisibleInstanceOnly, Category = "Test Setup")
 	AUpperBodyPawn* UpperBodyInstance;
 
 protected:
-	// 공격 실행 (메인 캐릭터 로직 호출)
+	// 공격 실행 함수
+	UFUNCTION(BlueprintCallable)
 	void RelayAttack(const FInputActionValue& Value);
 
+	// 상호작용 실행 함수
 	void RelayInteract(const FInputActionValue& Value);
+
+	// 물리 충돌 감지 (★ 이 부분이 없어서 에러가 났던 것입니다)
+	UFUNCTION()
+	void OnAttackHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	// 블루프린트 강제 호출용
 	UFUNCTION(BlueprintCallable)
