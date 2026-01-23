@@ -1,11 +1,9 @@
 ﻿#include "SoloTesterCharacter.h"
 #include "UpperBodyPawn.h" 
 #include "Components/SkeletalMeshComponent.h"
-#include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h" 
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
-#include "Animation/AnimInstance.h"
 
 ASoloTesterCharacter::ASoloTesterCharacter()
 {
@@ -31,10 +29,10 @@ void ASoloTesterCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 내 몸(하체+상체)이 보이도록 설정
+	// 내 몸(Mesh) 보이게 설정
 	if (GetMesh()) GetMesh()->SetOwnerNoSee(false);
 
-	// 상체(카메라) 스폰 및 부착
+	// 상체(카메라) 스폰
 	if (UpperBodyClass)
 	{
 		FActorSpawnParameters SpawnParams;
@@ -65,6 +63,10 @@ void ASoloTesterCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 		{
 			EnhancedInputComponent->BindAction(TestAttackAction, ETriggerEvent::Started, this, &ASoloTesterCharacter::RelayAttack);
 		}
+		if (TestInteractAction)
+		{
+			EnhancedInputComponent->BindAction(TestInteractAction, ETriggerEvent::Started, this, &ASoloTesterCharacter::RelayInteract);
+		}
 	}
 }
 
@@ -82,57 +84,19 @@ void ASoloTesterCharacter::Tick(float DeltaTime)
 
 void ASoloTesterCharacter::RelayAttack(const FInputActionValue& Value)
 {
-	// [핵심 변경] 상체 Pawn이 아니라 '나 자신(Body)'의 메쉬를 가져옵니다.
-	// PlayerCharacter가 이미 메쉬를 가지고 있기 때문입니다.
-	USkeletalMeshComponent* MyMesh = GetMesh();
+	// [핵심] 메인 캐릭터(부모)가 가진 공격 로직을 그대로 사용합니다.
+	// 왼손/오른손 펀치, 무기 공격 여부를 알아서 판단합니다.
+	RequestAttack();
 
-	if (!MyMesh)
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[오류] 캐릭터에 메쉬가 없습니다!"));
-		return;
-	}
-
-	UAnimMontage* MontageToPlay = TestAttackMontage;
-
-	// 설정된 몽타주가 없으면 상체 데이터에서 가져오기 시도
-	if (!MontageToPlay && UpperBodyInstance)
-	{
-		MontageToPlay = UpperBodyInstance->AttackMontage;
-	}
-
-	if (MontageToPlay)
-	{
-		UAnimInstance* AnimInstance = MyMesh->GetAnimInstance();
-
-		if (!AnimInstance)
-		{
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[오류] 애니메이션 블루프린트(ABP)가 설정되지 않았습니다."));
-			return;
-		}
-
-		if (!AnimInstance->Montage_IsPlaying(MontageToPlay))
-		{
-			AnimInstance->Montage_Play(MontageToPlay);
-
-			// 성공 로그
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT(">> 공격 발동! (내 몸 사용) <<"));
-
-			// 물리 충돌 켜기 (공격 판정)
-			MyMesh->SetNotifyRigidBodyCollision(true);
-			if (!MyMesh->OnComponentHit.IsAlreadyBound(this, &ASoloTesterCharacter::OnAttackHit))
-			{
-				MyMesh->OnComponentHit.AddDynamic(this, &ASoloTesterCharacter::OnAttackHit);
-			}
-		}
-	}
-	else
-	{
-		if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[오류] 공격 몽타주가 비어있습니다!"));
-	}
+	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("메인 캐릭터 공격 요청 (RequestAttack)"));
 }
 
-void ASoloTesterCharacter::OnAttackHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+void ASoloTesterCharacter::ForceAttack()
 {
-	if (OtherActor == this || OtherActor == UpperBodyInstance) return;
-	if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, FString::Printf(TEXT("👊 타격 성공! 대상: %s"), *OtherActor->GetName()));
+	RequestAttack();
+}
+
+void ASoloTesterCharacter::RelayInteract(const FInputActionValue& Value)
+{
+	// 상호작용 로직 (필요 시 구현)
 }
