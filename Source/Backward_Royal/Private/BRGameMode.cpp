@@ -88,6 +88,18 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 		UE_LOG(LogTemp, Warning, TEXT("[서버] 현재 인원: %d/%d"), BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
 		UE_LOG(LogTemp, Warning, TEXT("[서버] 네트워크 모드: %s"), *NetModeString);
 		
+		// 리슨 서버 모드 확인
+		if (NetMode == NM_ListenServer)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[서버] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트 연결을 받을 수 있는 상태입니다."));
+		}
+		else if (NetMode == NM_Standalone)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[서버] ⚠️ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트가 접속할 수 없습니다. 리슨 서버로 전환하세요."));
+		}
+		
 		// 화면에 입장 메시지 표시
 		if (GEngine)
 		{

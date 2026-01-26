@@ -15,6 +15,7 @@
 #include "Engine/NetDriver.h"
 #include "OnlineSubsystemUtils.h"
 #include "Containers/Set.h"
+#include "Misc/Paths.h"
 
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
@@ -26,6 +27,13 @@ ABRGameSession::ABRGameSession()
 
 void ABRGameSession::InitializeOnlineSubsystem()
 {
+	// 맵 전환(open ?listen) 중 등으로 this/World 무효 시 스킵 — 타이머 콜백 크래시 방지
+	if (!IsValid(this) || !GetWorld())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] InitializeOnlineSubsystem 스킵: this 또는 World 무효"));
+		return;
+	}
+
 	// Online Subsystem 초기화
 	// Steam을 우선적으로 시도, 실패하면 Null로 폴백
 	IOnlineSubsystem* OnlineSubsystem = nullptr;
@@ -97,9 +105,10 @@ void ABRGameSession::InitializeOnlineSubsystem()
 			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Message);
 		}
 		
-		SessionInterface = OnlineSubsystem->GetSessionInterface();
-		if (SessionInterface.IsValid())
+		IOnlineSessionPtr NewInterface = OnlineSubsystem->GetSessionInterface();
+		if (NewInterface.IsValid())
 		{
+			SessionInterface = NewInterface;
 			UE_LOG(LogTemp, Log, TEXT("[GameSession] SessionInterface 초기화 완료"));
 			// 콜백 바인딩
 			SessionInterface->OnCreateSessionCompleteDelegates.AddUObject(this, &ABRGameSession::OnCreateSessionCompleteDelegate);
@@ -208,24 +217,91 @@ void ABRGameSession::BeginPlay()
 			}
 		}
 		
-		if (bHasActiveSession && NetMode == NM_ListenServer)
+		// 리슨 서버 모드 확인 (open ?listen 명령어로 전환된 경우)
+		if (NetMode == NM_ListenServer)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: 리슨 서버 전환 완료 확인! NetMode=ListenServer, HasActiveSession=Yes"));
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetMode: ListenServer"));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			
+			// 리슨 서버 모드인데 세션이 없으면 자동으로 재생성 시도
+			if (!bHasActiveSession)
+			{
+				// GameInstance에서 대기 중인 방 이름 확인
+				FString PendingRoomName;
+				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+				{
+					PendingRoomName = BRGI->GetPendingRoomName();
+				}
+				
+				if (!PendingRoomName.IsEmpty())
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[GameSession] 리슨 서버 모드이지만 세션이 없습니다. 자동으로 세션 재생성 시도: %s"), *PendingRoomName);
+					
+					// Online Subsystem 초기화 후 세션 재생성
+					FTimerHandle RecreateSessionTimerHandle;
+					GetWorld()->GetTimerManager().SetTimer(RecreateSessionTimerHandle, [this, PendingRoomName]()
+					{
+						// Online Subsystem이 초기화된 후 세션 재생성
+						if (SessionInterface.IsValid())
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[GameSession] 세션 자동 재생성 시작: %s"), *PendingRoomName);
+							CreateRoomSession(PendingRoomName);
+							
+							// 방 이름 클리어
+							if (UWorld* W = GetWorld())
+							{
+								if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
+								{
+									BRGI->ClearPendingRoomName();
+								}
+							}
+						}
+						else
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface가 아직 초기화되지 않았습니다. 세션 재생성을 건너뜁니다."));
+						}
+					}, 1.0f, false); // InitializeOnlineSubsystem 완료 대기
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[GameSession] 리슨 서버 모드이지만 세션이 없고, 대기 중인 방 이름도 없습니다."));
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, 
+							TEXT("[GameSession] ⚠️ 리슨 서버 모드이지만 세션이 없습니다.\n방을 다시 만들어주세요."));
+					}
+				}
+			}
+			else
+			{
+				if (GEngine)
+				{
+					FString SuccessMsg = FString::Printf(TEXT("[GameSession] ✅ 리슨 서버 모드로 정상 실행 중!\n세션: 활성"));
+					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Green, SuccessMsg);
+				}
+			}
+		}
+		else if (NetMode == NM_Standalone)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] ⚠️ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetMode: Standalone"));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			
 			if (GEngine)
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
-					TEXT("[GameSession] 리슨 서버 전환 완료! 클라이언트 연결 대기 중..."));
+				GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Orange, 
+					TEXT("[GameSession] ⚠️ Standalone 모드입니다.\n클라이언트가 접속할 수 없습니다."));
 			}
 		}
 	}
 	
-	// BeginPlay에서 Online Subsystem 초기화 (Standalone 모드에서도 작동하도록)
-	// 약간의 지연 후 초기화 (모든 시스템이 준비된 후)
-	FTimerHandle TimerHandle;
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
-	{
-		InitializeOnlineSubsystem();
-	}, 0.1f, false);
+	// Online Subsystem 즉시 초기화 (타이머 사용 시 open ?listen 맵 전환 중 크래시 가능)
+	InitializeOnlineSubsystem();
 }
 
 void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -243,6 +319,14 @@ void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		NetMode == NM_Standalone ? TEXT("Standalone") :
 		NetMode == NM_ListenServer ? TEXT("ListenServer") :
 		NetMode == NM_Client ? TEXT("Client") : TEXT("Other"));
+	
+	// 콜백 해제 (맵 전환 시 파괴된 this 참조로 인한 크래시 방지)
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface->OnCreateSessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
+	}
 	
 	// 게임 종료 시 활성 세션이 있으면 제거 (Standalone, PIE 모드 모두)
 	if (SessionInterface.IsValid())
@@ -285,6 +369,19 @@ void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ABRGameSession::CreateRoomSession(const FString& RoomName)
 {
 	UE_LOG(LogTemp, Log, TEXT("[방 생성] 세션 생성 시작: %s"), *RoomName);
+	
+	// 현재 네트워크 모드 확인 (리슨 서버 모드 진단용)
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		ENetMode NetMode = World->GetNetMode();
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 현재 네트워크 모드: %s"), 
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer") :
+			NetMode == NM_Client ? TEXT("Client") :
+			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+	}
+	
 	if (!SessionInterface.IsValid())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: SessionInterface가 유효하지 않습니다."));
@@ -838,6 +935,7 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				
 				if (TravelMapPath.IsEmpty())
 				{
+					// 현재 맵의 전체 경로 가져오기
 					TravelMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
 					if (TravelMapPath.IsEmpty())
 					{
@@ -851,30 +949,188 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 					UE_LOG(LogTemp, Log, TEXT("[방 생성] 로비 맵으로 이동: %s"), *TravelMapPath);
 				}
 				
-				FString ListenURL = FString::Printf(TEXT("%s?listen"), *TravelMapPath);
+				// Standalone 모드에서는 ServerTravel(?listen)이 작동하지 않으므로
+				// ConsoleCommand("open 맵이름?listen")을 사용해야 함
+				// 맵 경로를 /Game/.../MapName 형식으로 변환
+				FString OriginalMapPath = TravelMapPath;
+				if (!TravelMapPath.Contains(TEXT("/")))
+				{
+					// 짧은 이름만 있는 경우 전체 경로로 변환
+					FString MapName = TravelMapPath;
+					TravelMapPath = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *MapName, *MapName);
+					UE_LOG(LogTemp, Log, TEXT("[방 생성] 맵 경로 변환: %s -> %s"), *MapName, *TravelMapPath);
+				}
+				else if (!TravelMapPath.Contains(TEXT(".")))
+				{
+					// /Game/.../MapName 형식이지만 .MapName이 없는 경우 추가
+					FString MapName = FPaths::GetBaseFilename(TravelMapPath);
+					TravelMapPath = FString::Printf(TEXT("%s.%s"), *TravelMapPath, *MapName);
+					UE_LOG(LogTemp, Log, TEXT("[방 생성] 맵 경로에 맵 이름 추가: %s -> %s"), *OriginalMapPath, *TravelMapPath);
+				}
 				
+				FString ListenURL = FString::Printf(TEXT("%s?listen"), *TravelMapPath);
+				FString OpenCommand = FString::Printf(TEXT("open %s"), *ListenURL);
+				
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드: ConsoleCommand를 사용하여 리슨 서버로 전환"));
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 명령어: %s"), *OpenCommand);
 				UE_LOG(LogTemp, Log, TEXT("[방 생성] 리슨 서버로 전환 중: %s"), *ListenURL);
 				UE_LOG(LogTemp, Log, TEXT("[방 생성] 클라이언트 연결 대기 중..."));
 				
 				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
 				{
 					BRGI->SetDidCreateRoomThenTravel(true);
+					// 방 이름 저장 (맵 재로드 후 세션 재생성용)
+					// 세션 설정에서 방 이름 가져오기
+					FString SavedRoomName;
+					if (SessionInterface.IsValid())
+					{
+						auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
+						if (Session)
+						{
+							Session->SessionSettings.Get(FName(TEXT("SESSION_NAME")), SavedRoomName);
+						}
+					}
+					if (SavedRoomName.IsEmpty())
+					{
+						SavedRoomName = TEXT("이름 없는 방");
+					}
+					BRGI->SetPendingRoomName(SavedRoomName);
 				}
-				World->ServerTravel(ListenURL);
 				
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 완료. 맵 재로드 후 BeginPlay에서 리슨 서버 전환 확인 예정."));
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 참고: Standalone 모드에서 ServerTravel(?listen)이 제대로 작동하지 않을 수 있습니다."));
+				// Standalone 모드에서는 ServerTravel 대신 ConsoleCommand 또는 GEngine->Exec 사용
+				// 참고: ConsoleCommand는 패키징된 exe에서도 작동합니다 (콘솔이 없어도 내부적으로 실행됨)
+				bool bCommandExecuted = false;
+				
+				// 방법 1: GEngine->Exec 사용 (가장 확실함)
 				if (GEngine)
 				{
-					GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor::Orange,
-						TEXT("클라이언트 접속 안 될 때: 호스트를 Listen Server로 실행하세요.\n")
-						TEXT("1) 콘솔(~) 열고 OpenListenServer 입력 후 방 만들기\n")
-						TEXT("2) 또는 게임을 '맵이름?listen'으로 실행한 뒤 방 만들기"));
+					FString ExecCommand = FString::Printf(TEXT("open %s"), *ListenURL);
+					UE_LOG(LogTemp, Warning, TEXT("========================================"));
+					UE_LOG(LogTemp, Warning, TEXT("[방 생성] GEngine->Exec 호출 시도"));
+					UE_LOG(LogTemp, Warning, TEXT("[방 생성] 명령어: %s"), *ExecCommand);
+					UE_LOG(LogTemp, Warning, TEXT("========================================"));
+					
+					// Exec는 bool을 반환하지만, open 명령어는 게임을 재시작하므로 항상 true를 반환할 수 있습니다
+					bool bExecResult = GEngine->Exec(World, *ExecCommand);
+					UE_LOG(LogTemp, Warning, TEXT("[방 생성] GEngine->Exec 결과: %s"), bExecResult ? TEXT("true") : TEXT("false"));
+					
+					if (bExecResult)
+					{
+						bCommandExecuted = true;
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ GEngine->Exec 호출 성공!"));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 게임이 재시작되며 리슨 서버 모드로 전환됩니다."));
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GEngine->Exec 호출 실패!"));
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] 명령어를 확인하세요: %s"), *ExecCommand);
+					}
+				}
+				
+				// 방법 2: PlayerController의 ConsoleCommand 사용 (대안)
+				if (!bCommandExecuted)
+				{
+					if (APlayerController* PC = World->GetFirstPlayerController())
+					{
+						// 화면에 큰 메시지로 표시
+						if (GEngine)
+						{
+							FString DebugMsg = FString::Printf(TEXT("========================================\n[방 생성] ConsoleCommand 호출 시도\n명령어: %s\n========================================"), *OpenCommand);
+							GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, DebugMsg);
+						}
+						
+						UE_LOG(LogTemp, Warning, TEXT("========================================"));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] ConsoleCommand 호출 시도"));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 명령어: %s"), *OpenCommand);
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] ListenURL: %s"), *ListenURL);
+						UE_LOG(LogTemp, Warning, TEXT("========================================"));
+						
+						// ConsoleCommand는 패키징된 exe에서도 작동합니다
+						// 콘솔이 보이지 않아도 내부적으로 명령어가 실행됩니다
+						PC->ConsoleCommand(OpenCommand, /*bExecInEditor=*/false);
+						bCommandExecuted = true;
+						
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ ConsoleCommand 호출 완료!"));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 게임이 재시작되며 리슨 서버 모드로 전환됩니다."));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 참고: 패키징된 exe에서도 ConsoleCommand는 정상 작동합니다."));
+						
+						if (GEngine)
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Green,
+								TEXT("[방 생성] ✅ ConsoleCommand 호출 완료!\n게임이 재시작되며 리슨 서버 모드로 전환됩니다."));
+						}
+					}
+				}
+				
+				// 방법 3: GameInstance를 통한 방법 (최후의 수단)
+				if (!bCommandExecuted)
+				{
+					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] GameInstance를 통한 방법 시도"));
+						// GameInstance는 직접 open 명령어를 실행할 수 없으므로, 
+						// 여기서는 로그만 남기고 사용자에게 수동으로 실행하도록 안내
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ 자동 전환 실패!"));
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] 수동으로 리슨 서버 모드로 전환해야 합니다."));
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] 콘솔(~)을 열고 다음 명령어를 입력하세요:"));
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] %s"), *OpenCommand);
+					}
+				}
+				
+				if (bCommandExecuted)
+				{
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Green,
+							TEXT("[방 생성] 리슨 서버로 전환 중... 맵이 재로드됩니다."));
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] 리슨 서버로 전환할 수 없습니다! PlayerController와 GEngine 모두 사용 불가능합니다."));
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red,
+							TEXT("[방 생성] 오류: 리슨 서버로 전환할 수 없습니다."));
+					}
 				}
 			}
 			else if (NetMode == NM_ListenServer)
 			{
 				UE_LOG(LogTemp, Log, TEXT("[방 생성] 이미 리슨 서버 모드입니다. 클라이언트 연결 대기 중..."));
+				
+				// 리슨 서버 모드에서 세션이 제대로 등록되었는지 확인
+				if (SessionInterface.IsValid())
+				{
+					auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
+					if (Session)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 리슨 서버 모드: 세션 등록 확인"));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 정보: 최대 인원=%d, 현재 인원=%d, LAN=%s, Advertise=%s"), 
+							Session->SessionSettings.NumPublicConnections,
+							Session->NumOpenPublicConnections,
+							Session->SessionSettings.bIsLANMatch ? TEXT("예") : TEXT("아니오"),
+							Session->SessionSettings.bShouldAdvertise ? TEXT("예") : TEXT("아니오"));
+						
+						// 세션이 제대로 등록되었는지 확인하고, 필요시 업데이트
+						// 리슨 서버 모드에서 세션 업데이트를 통해 클라이언트가 찾을 수 있도록 함
+						if (GEngine)
+						{
+							FString SuccessMsg = FString::Printf(TEXT("[방 생성] 리슨 서버 모드: 방 생성 완료!\n세션: %s\n클라이언트 연결 대기 중..."), 
+								*InSessionName.ToString());
+							GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Green, SuccessMsg);
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] 리슨 서버 모드: 세션이 등록되지 않았습니다!"));
+						if (GEngine)
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, 
+								TEXT("[방 생성] 리슨 서버 모드에서 세션 등록 실패!\n다시 시도해보세요."));
+						}
+					}
+				}
 			}
 			else
 			{

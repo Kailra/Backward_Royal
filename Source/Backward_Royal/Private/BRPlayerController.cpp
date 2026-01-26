@@ -16,6 +16,7 @@
 #include "TimerManager.h"
 #include "Net/UnrealNetwork.h"
 #include "Blueprint/UserWidget.h"
+#include "EngineUtils.h"
 
 ABRPlayerController::ABRPlayerController()
 	: CurrentMenuWidget(nullptr)
@@ -59,21 +60,27 @@ void ABRPlayerController::BeginPlay()
 	}
 
 	// 클라이언트에서만 초기 UI 표시
+	// PostLogin 완료 후 로비 판단하려면 짧은 지연 필요. EndPlay에서 타이머 해제 + 람다 내 IsValid 검사로 open ?listen 크래시 방지.
 	if (IsLocalController())
 	{
-		// 약간의 지연 후 UI 표시 (모든 시스템이 초기화된 후)
-		// ServerTravel 후 맵이 재로드될 때를 대비해 더 긴 지연 시간 사용
-		FTimerHandle TimerHandle;
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle, [this]()
+		UWorld* World = GetWorld();
+		if (!World) return;
+		World->GetTimerManager().SetTimer(BeginPlayUITimerHandle, [this]()
 		{
-			UWorld* World = GetWorld();
-			if (!World)
+			// 맵 전환(open ?listen 등)으로 파괴된 뒤 콜백 방지
+			if (!IsValid(this))
+			{
+				return;
+			}
+			UWorld* W = GetWorld();
+			if (!W)
 			{
 				return;
 			}
 
-			ENetMode NetMode = World->GetNetMode();
-			
+			W->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+
+			ENetMode NetMode = W->GetNetMode();
 			// 클라이언트 입장 확인 (Standalone 모드에서도 확인)
 			if (NetMode == NM_Client)
 			{
@@ -82,7 +89,7 @@ void ABRPlayerController::BeginPlay()
 				UE_LOG(LogTemp, Warning, TEXT("========================================"));
 				
 				// 네트워크 연결 상태 확인
-				if (UNetDriver* NetDriver = World->GetNetDriver())
+				if (UNetDriver* NetDriver = W->GetNetDriver())
 				{
 					if (UNetConnection* ServerConnection = NetDriver->ServerConnection)
 					{
@@ -111,7 +118,7 @@ void ABRPlayerController::BeginPlay()
 				}
 				
 				// GameState 확인 (서버 데이터 복제 확인)
-				if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
+				if (ABRGameState* BRGameState = W->GetGameState<ABRGameState>())
 				{
 					UE_LOG(LogTemp, Warning, TEXT("[클라이언트] GameState 확인: 현재 인원 %d"), BRGameState->PlayerArray.Num());
 				}
@@ -123,7 +130,7 @@ void ABRPlayerController::BeginPlay()
 			
 			// 세션이 활성화되어 있는지 확인 (ServerTravel 후 맵 재로드 시 세션이 있을 수 있음)
 			bool bHasActiveSession = false;
-			if (AGameModeBase* GameMode = World->GetAuthGameMode())
+			if (AGameModeBase* GameMode = W->GetAuthGameMode())
 			{
 				if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
 				{
@@ -135,7 +142,7 @@ void ABRPlayerController::BeginPlay()
 			// ServerTravel 후 세션이 일시적으로 사라질 수 있지만, 플레이어 입장은 유지됨
 			bool bHasPlayers = false;
 			int32 PlayerCount = 0;
-			if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
+			if (ABRGameState* BRGameState = W->GetGameState<ABRGameState>())
 			{
 				PlayerCount = BRGameState->PlayerArray.Num();
 				bHasPlayers = PlayerCount > 0;
@@ -143,7 +150,7 @@ void ABRPlayerController::BeginPlay()
 			
 			// 방 생성 후 ServerTravel 직전에 설정된 플래그 (GameInstance 유지)
 			bool bDidCreateRoomThenTravel = false;
-			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 			{
 				bDidCreateRoomThenTravel = BRGI->GetDidCreateRoomThenTravel();
 			}
@@ -189,7 +196,7 @@ void ABRPlayerController::BeginPlay()
 			// 로비 표시 시 플래그 클리어 (다음 메인 복귀 시 엔트런스 표시용)
 			if ((NetMode == NM_Client || NetMode == NM_ListenServer) && (MainScreenWidget || LobbyMenuWidgetClass))
 			{
-				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 				{
 					BRGI->SetDidCreateRoomThenTravel(false);
 				}
@@ -210,7 +217,7 @@ void ABRPlayerController::BeginPlay()
 				}
 				else
 				{
-					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 					{
 						BRGI->SetDidCreateRoomThenTravel(false);
 					}
@@ -250,7 +257,7 @@ void ABRPlayerController::BeginPlay()
 				// Standalone 모드이면 EntranceMenu 표시
 				else
 				{
-					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 					{
 						BRGI->SetDidCreateRoomThenTravel(false);
 					}
@@ -265,7 +272,7 @@ void ABRPlayerController::BeginPlay()
 					}
 				}
 			}
-		}, 0.5f, false); // 지연 시간을 0.1초에서 0.5초로 증가 (ServerTravel 완료 대기)
+		}, 0.45f, false);
 	}
 }
 
@@ -293,6 +300,12 @@ void ABRPlayerController::OnRep_Pawn()
 
 void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// BeginPlay UI 타이머 해제 (open ?listen 맵 전환 시 파괴 후 콜백 크래시 방지)
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+	}
+
 	// 네트워크 연결 실패 델리게이트 언바인딩
 	if (UEngine* Engine = GEngine)
 	{
@@ -504,13 +517,6 @@ void ABRPlayerController::JoinRoom(int32 SessionIndex)
 	if (!World)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: World를 찾을 수 없습니다."));
-		
-		// 화면에 디버그 메시지 표시
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: World를 찾을 수 없습니다!"));
-		}
-		
 		return;
 	}
 
@@ -518,70 +524,57 @@ void ABRPlayerController::JoinRoom(int32 SessionIndex)
 	ENetMode NetMode = World->GetNetMode();
 	
 	// ListenServer나 DedicatedServer는 JoinRoom을 실행할 수 없음
-	// (Standalone 모드는 허용 - 다른 세션에 참가 가능)
 	if (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미 서버이므로 다른 방에 참가할 수 없습니다."));
-		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 클라이언트만 다른 방에 참가할 수 있습니다."));
-		
-		// 화면에 디버그 메시지 표시
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
 		}
-		
 		return;
 	}
 
-	// 클라이언트만 실행
-	if (HasAuthority())
+	// [수정] 클라이언트에서 직접 로컬 GameSession을 통해 참가 시도
+	// 기존에는 서버 RPC를 호출했으나, 세션 참가는 클라이언트 시스템에서 이루어져야 함
+	if (IsLocalController())
 	{
-		// Standalone 모드에서 실행 (로컬 게임)
-		UE_LOG(LogTemp, Warning, TEXT("[JoinRoom] HasAuthority() = true, Standalone 모드"));
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, TEXT("[JoinRoom] Standalone 모드에서 실행 중..."));
-		}
+		UE_LOG(LogTemp, Log, TEXT("[방 참가] 로컬 컨트롤러: 직접 세션 참가 시도..."));
 		
+		ABRGameSession* BRGameSession = nullptr;
+		
+		// 1. GameMode에서 GameSession 가져오기 (Standalone 모드용)
 		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{
-			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			BRGameSession = Cast<ABRGameSession>(GameMode->GameSession);
+		}
+		
+		// 2. GameMode에 없으면 (NM_Client 모드 등), 직접 GameSession 찾기
+		if (!BRGameSession)
+		{
+			for (TActorIterator<ABRGameSession> It(World); It; ++It)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[JoinRoom] GameSession 찾음, JoinSessionByIndex 호출 중..."));
-				if (GEngine)
-				{
-					FString Msg = FString::Printf(TEXT("[JoinRoom] GameSession->JoinSessionByIndex(%d) 호출"), SessionIndex);
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, Msg);
-				}
-				GameSession->JoinSessionByIndex(SessionIndex);
+				BRGameSession = *It;
+				break;
 			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: GameSession을 찾을 수 없습니다."));
-				
-				// 화면에 디버그 메시지 표시
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: GameSession을 찾을 수 없습니다!"));
-				}
-			}
+		}
+
+		if (BRGameSession)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[방 참가] BRGameSession 발견, JoinSessionByIndex(%d) 호출"), SessionIndex);
+			BRGameSession->JoinSessionByIndex(SessionIndex);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: GameMode를 찾을 수 없습니다."));
-			
-			// 화면에 디버그 메시지 표시
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: ABRGameSession을 찾을 수 없습니다."));
 			if (GEngine)
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: GameMode를 찾을 수 없습니다!"));
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: 세션 관리자를 찾을 수 없습니다!"));
 			}
 		}
 	}
 	else
 	{
-		// 클라이언트에서는 서버로 RPC 전송
-		UE_LOG(LogTemp, Log, TEXT("[방 참가] 클라이언트에서 서버로 요청 전송..."));
-		ServerJoinRoom(SessionIndex);
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 로컬 컨트롤러가 아닙니다."));
 	}
 }
 

@@ -96,6 +96,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session|Match")
 	bool GetDidCreateRoomThenTravel() const { return bDidCreateRoomThenTravel; }
 
+	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void SetPendingRoomName(const FString& RoomName) { PendingRoomName = RoomName; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	FString GetPendingRoomName() const { return PendingRoomName; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void ClearPendingRoomName() { PendingRoomName.Empty(); }
+
 	// 전역 변수 설정을 위한 함수
 	void ApplyGlobalMultipliers();
 		
@@ -107,5 +117,8 @@ protected:
 
 	/** 방 생성 후 ServerTravel 호출 직전에 true 설정. BeginPlay에서 로비 표시 여부 판단에 사용. */
 	bool bDidCreateRoomThenTravel = false;
+
+	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
+	FString PendingRoomName;
 };
 
