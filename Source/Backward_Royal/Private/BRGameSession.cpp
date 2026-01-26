@@ -583,6 +583,17 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 		}
 	}
 
+	// Ping 9999(또는 -9999)는 호스트 연결 불가를 의미 → 참가 실패 가능성 큼
+	if (SessionResult.PingInMs >= 9999 || SessionResult.PingInMs <= -9999)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 경고: Ping=%d → 호스트에 연결되지 않을 수 있습니다. (방화벽/포트 7777, 같은 LAN 확인)"), SessionResult.PingInMs);
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Orange, 
+				TEXT("[방 참가] 이 방은 Ping 비정상입니다.\n방화벽·같은 LAN 확인 후 다시 시도하세요."));
+		}
+	}
+
 	// 세션 참가
 	UE_LOG(LogTemp, Warning, TEXT("[방 참가] SessionInterface->JoinSession() 호출 중..."));
 	if (GEngine)
@@ -1006,16 +1017,33 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			break;
 		case EOnJoinSessionCompleteResult::UnknownError:
 		default:
-			ErrorMessage = TEXT("알 수 없는 오류");
+			ErrorMessage = TEXT("알 수 없는 오류 (방화벽/네트워크 가능성)");
 			break;
 		}
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 세션 참가에 실패했습니다. (결과 코드: %d, %s)"), (int32)Result, *ErrorMessage);
+		
+		if (Result == EOnJoinSessionCompleteResult::UnknownError ||
+			Result == EOnJoinSessionCompleteResult::CouldNotRetrieveAddress)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 해결 안내: 호스트·클라이언트 방화벽에서 게임·Steam 허용"));
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 해결 안내: 호스트에서 포트 7777 인바운드 허용"));
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 해결 안내: 같은 LAN 연결 확인, 방 찾기 후 재시도"));
+		}
 		
 		// 화면에 디버그 메시지 표시
 		if (GEngine)
 		{
 			FString ErrorMsg = FString::Printf(TEXT("[방 참가] 실패: %s"), *ErrorMessage);
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, ErrorMsg);
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, ErrorMsg);
+			
+			if (Result == EOnJoinSessionCompleteResult::UnknownError ||
+				Result == EOnJoinSessionCompleteResult::CouldNotRetrieveAddress)
+			{
+				FString Hint = TEXT("확인: 1) 호스트·클라이언트 방화벽에서 게임·Steam 허용\n");
+				Hint += TEXT("2) 호스트에서 포트 7777 인바운드 허용\n");
+				Hint += TEXT("3) 같은 LAN 연결, 4) 방 찾기 후 재시도");
+				GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor::Yellow, Hint);
+			}
 		}
 		
 		if (Result == EOnJoinSessionCompleteResult::AlreadyInSession)
