@@ -22,18 +22,36 @@ void ABRGameSession::InitializeOnlineSubsystem()
 	IOnlineSubsystem* OnlineSubsystem = nullptr;
 	
 	// 방법 1: Steam 시도 (우선순위)
+	UE_LOG(LogTemp, Warning, TEXT("[GameSession] Steam Online Subsystem 초기화 시도 중..."));
 	OnlineSubsystem = IOnlineSubsystem::Get(FName("Steam"));
 	if (OnlineSubsystem)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get(Steam) 성공"));
+		FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(Steam) 성공! SubsystemName: %s"), *SubsystemName);
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("[GameSession] Steam Online Subsystem 초기화 성공!"));
+			FString SuccessMsg = FString::Printf(TEXT("[GameSession] Steam Online Subsystem 초기화 성공! (%s)"), *SubsystemName);
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, SuccessMsg);
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(Steam) 실패 - Steam이 실행되지 않았거나 초기화되지 않았습니다."));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] IOnlineSubsystem::Get(Steam) 실패 - NULL 반환"));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] 가능한 원인:"));
+		UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  2. Steam SDK가 설치되지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  3. Steam App ID가 설정되지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  4. Standalone 모드에서 Steam 플러그인이 로드되지 않음"));
+		
+		if (GEngine)
+		{
+			FString ErrorMsg = TEXT("[GameSession] Steam 초기화 실패!\n");
+			ErrorMsg += TEXT("확인 사항:\n");
+			ErrorMsg += TEXT("1. Steam 클라이언트 실행 중인지 확인\n");
+			ErrorMsg += TEXT("2. Steam에 로그인되어 있는지 확인\n");
+			ErrorMsg += TEXT("3. Steam SDK 설치 여부 확인");
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, ErrorMsg);
+		}
 		
 		// 방법 2: Null로 폴백
 		OnlineSubsystem = IOnlineSubsystem::Get(FName("Null"));
