@@ -19,6 +19,7 @@ public:
 	
 	virtual void Init() override;
 	virtual void OnStart() override;
+	virtual void Shutdown() override;
 
 	// 방 생성
 	UFUNCTION(Exec)

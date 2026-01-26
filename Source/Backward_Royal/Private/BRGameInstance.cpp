@@ -3,6 +3,8 @@
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
 #include "BRGameMode.h"
+#include "GameFramework/GameModeBase.h"
+#include "TimerManager.h"
 #include "HAL/PlatformFileManager.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
@@ -19,6 +21,8 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "GameFramework/GameModeBase.h"
 #include "Kismet/GameplayStatics.h"
+#include "NavigationSystem.h"
+#include "Subsystems/WorldSubsystem.h"
 
 #if WITH_EDITOR
 #include "UObject/SavePackage.h"
@@ -118,11 +122,39 @@ void UBRGameInstance::OnStart()
 			else if (NetMode == NM_ListenServer)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ✅ 이미 ListenServer 모드입니다!"));
+				UE_LOG(LogTemp, Warning, TEXT("[GameInstance] PendingRoomName으로 세션을 다시 생성합니다: %s"), *PendingRoomName);
+				
 				if (GEngine)
 				{
 					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
-						TEXT("[GameInstance] ✅ 이미 ListenServer 모드입니다!"));
+						TEXT("[GameInstance] ✅ 이미 ListenServer 모드입니다! 세션을 다시 생성합니다."));
 				}
+				
+				// ListenServer 모드가 되었으므로 세션을 다시 생성
+				// 짧은 지연 후 세션 생성 (GameSession이 초기화될 시간 필요)
+				FTimerHandle SessionRecreateTimer;
+				World->GetTimerManager().SetTimer(SessionRecreateTimer, [this, World]()
+				{
+					if (AGameModeBase* GameMode = World->GetAuthGameMode())
+					{
+						if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ListenServer 모드에서 세션 재생성: %s"), *PendingRoomName);
+							GameSession->CreateRoomSession(PendingRoomName);
+							
+							// PendingRoomName 클리어 (재생성 완료)
+							PendingRoomName.Empty();
+						}
+						else
+						{
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameSession을 찾을 수 없습니다."));
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameMode를 찾을 수 없습니다."));
+					}
+				}, 1.0f, false); // 1초 후 세션 재생성
 			}
 		}
 		else
@@ -605,4 +637,46 @@ void UBRGameInstance::ApplyGlobalMultipliers()
 			}
 		}
 	}
+}
+
+void UBRGameInstance::Shutdown()
+{
+	// PIE 종료 시 World가 제대로 정리되도록 시도
+	// UnrealEdEngine이 World를 참조하여 GC가 되지 않는 문제는 Unreal Engine의 알려진 버그입니다.
+	// NavigationSystemV1이 World를 참조하여 GC가 되지 않는 문제를 해결하기 위해
+	// World의 서브시스템을 명시적으로 정리합니다.
+	
+	UWorld* World = GetWorld();
+	if (World && World->IsPlayInEditor())
+	{
+		GI_LOG(Warning, TEXT("PIE 종료 시 Shutdown 호출 - World 및 서브시스템 정리 시도"));
+		
+		// World의 모든 타이머 정리 (이 GameInstance와 관련된 타이머만)
+		World->GetTimerManager().ClearAllTimersForObject(this);
+		
+		// NavigationSystem 정리 시도 (PIE 종료 시 GC 문제 해결)
+		// FNavigationSystem::GetCurrent는 World가 유효할 때만 작동
+		if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
+		{
+			GI_LOG(Warning, TEXT("Shutdown: NavigationSystem 정리 시도"));
+			// NavigationSystem의 CleanUp 호출 (PIE 종료 시 참조 해제)
+			// 주의: 이는 World가 파괴되기 전에 호출되어야 합니다
+			NavSys->CleanUp();
+			GI_LOG(Warning, TEXT("Shutdown: NavigationSystem CleanUp 완료"));
+		}
+		
+		// GameSession 정리 (이미 EndPlay에서 처리되었을 수 있지만, 확실히 하기 위해)
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GI_LOG(Warning, TEXT("Shutdown: GameSession 정리 확인"));
+			}
+		}
+		
+		GI_LOG(Warning, TEXT("Shutdown 완료 - World는 엔진이 자동으로 정리합니다"));
+		GI_LOG(Warning, TEXT("참고: PIE 종료 시 NavigationSystem GC 경고는 Unreal Engine의 알려진 버그입니다."));
+	}
+	
+	Super::Shutdown();
 }
