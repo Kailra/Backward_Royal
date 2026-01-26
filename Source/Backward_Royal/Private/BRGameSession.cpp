@@ -1440,7 +1440,8 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 		{
 			FString TravelURL;
 			// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { return; }
-			if (!SessionInterface->GetResolvedConnectString(NAME_GameSession, TravelURL))
+			// 중요: InSessionName을 사용해야 함 (NAME_GameSession이 아님!)
+			if (!SessionInterface->GetResolvedConnectString(InSessionName, TravelURL))
 			{
 				UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 연결 주소를 가져올 수 없습니다."));
 				UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인: 서버가 ListenServer 모드가 아니거나 Steam 연결 문제"));
