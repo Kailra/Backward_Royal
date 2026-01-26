@@ -197,7 +197,9 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	SessionSettings->bAllowJoinInProgress = true;
 	SessionSettings->bShouldAdvertise = true;
 	SessionSettings->bUsesPresence = true;
-	SessionSettings->bUseLobbiesIfAvailable = bIsSteam; // Steam이면 Lobby 사용
+	// Steam에서는 Lobby를 사용하지 않고 일반 세션을 사용하는 것이 더 안정적일 수 있습니다
+	// Lobby를 사용하면 검색 방법이 달라질 수 있음
+	SessionSettings->bUseLobbiesIfAvailable = false; // Lobby 비활성화 (일반 세션 사용)
 	
 	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s, bUseLobbiesIfAvailable=%s"), 
 		*SubsystemName,
@@ -306,15 +308,14 @@ void ABRGameSession::FindSessions()
 	SessionSearch->bIsLanQuery = !bIsSteam; // Steam이면 false, Null이면 true
 	
 	// Steam 세션 검색을 위한 QuerySettings 설정
-	// 참고: Steam에서는 QuerySettings를 비워두거나 최소한만 설정하는 것이 더 나을 수 있습니다
-	// 모든 세션을 검색하려면 QuerySettings를 비워두는 것이 좋습니다
+	// Steam에서는 Presence를 사용하는 세션을 검색해야 합니다 (방 생성 시 bUsesPresence=true와 일치)
 	if (bIsSteam)
 	{
-		// QuerySettings를 비워두면 모든 세션을 검색합니다
-		// 필요시 특정 조건만 추가할 수 있습니다
-		// SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCE")), true, EOnlineComparisonOp::Equals);
+		// Presence를 사용하는 세션 검색 (방 생성 시 bUsesPresence=true와 일치)
+		// 이 설정이 없으면 Steam 세션을 찾지 못할 수 있습니다
+		SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCE")), true, EOnlineComparisonOp::Equals);
 		
-		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam 세션 검색: QuerySettings 비어있음 (모든 세션 검색)"));
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam 세션 검색: PRESENCE=true 설정 완료"));
 	}
 	
 	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s"), 
