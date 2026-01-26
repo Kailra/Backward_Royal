@@ -74,6 +74,21 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Player")
 	void SetPlayerName(const FString& NewPlayerName) { PlayerName = NewPlayerName; }
+
+	// LAN 전용(true) / 인터넷(Steam) 매칭(false). 방 생성·방 찾기 시 사용.
+	UPROPERTY(BlueprintReadWrite, Category = "Session|Match")
+	bool bUseLANOnly = true;
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void SetUseLANOnly(bool bLAN) { bUseLANOnly = bLAN; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	bool GetUseLANOnly() const { return bUseLANOnly; }
+
+	/** 콘솔: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷) */
+	UFUNCTION(Exec, Category = "Session|Match")
+	void SetLANOnly(int32 bEnabled);
+
 	// 전역 변수 설정을 위한 함수
 	void ApplyGlobalMultipliers();
 		

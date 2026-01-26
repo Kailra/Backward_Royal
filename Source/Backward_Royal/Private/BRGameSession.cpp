@@ -1,5 +1,6 @@
 // BRGameSession.cpp
 #include "BRGameSession.h"
+#include "BRGameInstance.h"
 #include "BRPlayerState.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
@@ -239,12 +240,20 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	// 세션 설정 생성
 	SessionSettings = MakeShareable(new FOnlineSessionSettings());
 	
-	// Steam을 사용할 때는 bIsLANMatch를 false로 설정해야 함
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
 	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
 	
-	SessionSettings->bIsLANMatch = !bIsSteam; // Steam이면 false, Null이면 true
+	// LAN 전용(true) / 인터넷(Steam) 매칭(false) — GameInstance에서 읽음
+	bool bUseLAN = true;
+	if (UWorld* W = GetWorld())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
+		{
+			bUseLAN = BRGI->GetUseLANOnly();
+		}
+	}
+	SessionSettings->bIsLANMatch = bUseLAN;
 	SessionSettings->NumPublicConnections = 8; // 최대 8명
 	SessionSettings->NumPrivateConnections = 0;
 	SessionSettings->bAllowInvites = true;
@@ -260,9 +269,10 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	// Lobby를 사용하지 않으면 Steam 세션 생성이 실패할 수 있습니다
 	SessionSettings->bUseLobbiesIfAvailable = bIsSteam; // Steam이면 Lobby 사용
 	
-	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s, bUseLobbiesIfAvailable=%s"), 
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s (%s), bUseLobbiesIfAvailable=%s"), 
 		*SubsystemName,
 		SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"),
+		bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷 매칭"),
 		SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
 	SessionSettings->Set(FName(TEXT("MAPNAME")), FString("Lobby"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
@@ -284,9 +294,10 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	
 	if (GEngine)
 	{
-		FString DebugMsg = FString::Printf(TEXT("[방 생성] 세션 생성 요청 중...\nSubsystem: %s\nLAN: %s"), 
+		FString DebugMsg = FString::Printf(TEXT("[방 생성] 세션 생성 요청 중...\nSubsystem: %s\nLAN: %s (%s)"), 
 			*SubsystemName,
-			SessionSettings->bIsLANMatch ? TEXT("Yes") : TEXT("No"));
+			SessionSettings->bIsLANMatch ? TEXT("Yes") : TEXT("No"),
+			bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷"));
 		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
 	}
 	
@@ -435,20 +446,28 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
 	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
 	
-	// Steam: 동일 LAN에서 방이 LAN 목록에 뜨는 경우가 많음. bIsLanQuery=true로 검색.
-	// Null: LAN 전용.
-	SessionSearch->bIsLanQuery = true;
+	// LAN 전용(true) / 인터넷(Steam) 매칭(false) — GameInstance에서 읽음
+	bool bUseLAN = true;
+	if (UWorld* W = GetWorld())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
+		{
+			bUseLAN = BRGI->GetUseLANOnly();
+		}
+	}
+	SessionSearch->bIsLanQuery = bUseLAN;
 	
 	if (bIsSteam)
 	{
 		// 최소 1개 QuerySettings 필요(검색 미실행 방지). PRESENCESEARCH = bUsesPresence와 쌍.
 		SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")), true, EOnlineComparisonOp::Equals);
-		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam: bIsLanQuery=true, PRESENCESEARCH=true"));
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam: bIsLanQuery=%s, PRESENCESEARCH=true"), bUseLAN ? TEXT("true") : TEXT("false"));
 	}
 	
-	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s"), 
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s (%s)"), 
 		*SubsystemName,
-		SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"));
+		SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"),
+		bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷"));
 
 	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 검색 설정: 최대 결과=%d, LAN 검색=%s"), 
 		SessionSearch->MaxSearchResults,
@@ -463,9 +482,10 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 	
 	if (GEngine)
 	{
-		FString DebugMsg = FString::Printf(TEXT("[방 찾기] 검색 요청 중...\nSubsystem: %s\nLAN: %s"), 
+		FString DebugMsg = FString::Printf(TEXT("[방 찾기] 검색 요청 중...\nSubsystem: %s\nLAN: %s (%s)"), 
 			*SubsystemName,
-			SessionSearch->bIsLanQuery ? TEXT("Yes") : TEXT("No"));
+			SessionSearch->bIsLanQuery ? TEXT("Yes") : TEXT("No"),
+			bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷"));
 		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
 	}
 	

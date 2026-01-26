@@ -74,6 +74,14 @@ void UBRGameInstance::CreateRoom(const FString& RoomName)
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 게임을 시작한 후 다시 시도해주세요."));
 }
 
+void UBRGameInstance::SetLANOnly(int32 bEnabled)
+{
+	bUseLANOnly = (bEnabled != 0);
+	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] SetLANOnly: %s (%s)"), 
+		bUseLANOnly ? TEXT("1") : TEXT("0"),
+		bUseLANOnly ? TEXT("LAN 전용") : TEXT("인터넷 매칭"));
+}
+
 void UBRGameInstance::FindRooms()
 {
 	UE_LOG(LogTemp, Log, TEXT("[GameInstance] FindRooms 명령"));

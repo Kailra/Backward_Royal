@@ -100,6 +100,32 @@ void UBRWidgetFunctionLibrary::JoinRoom(const UObject* WorldContextObject, int32
 	BRPC->JoinRoomWithPlayerName(SessionIndex, PlayerName);
 }
 
+void UBRWidgetFunctionLibrary::SetUseLANOnly(const UObject* WorldContextObject, bool bLAN)
+{
+	if (!WorldContextObject || !GEngine) return;
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	if (!World) return;
+	UGameInstance* GI = World->GetGameInstance();
+	if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(GI))
+	{
+		BRGI->SetUseLANOnly(bLAN);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] SetUseLANOnly: %s"), bLAN ? TEXT("LAN 전용") : TEXT("인터넷 매칭"));
+	}
+}
+
+bool UBRWidgetFunctionLibrary::GetUseLANOnly(const UObject* WorldContextObject)
+{
+	if (!WorldContextObject || !GEngine) return true;
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	if (!World) return true;
+	UGameInstance* GI = World->GetGameInstance();
+	if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(GI))
+	{
+		return BRGI->GetUseLANOnly();
+	}
+	return true;
+}
+
 void UBRWidgetFunctionLibrary::ToggleReady(const UObject* WorldContextObject)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))

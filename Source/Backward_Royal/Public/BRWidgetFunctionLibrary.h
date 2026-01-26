@@ -44,6 +44,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void JoinRoom(const UObject* WorldContextObject, int32 SessionIndex);
 
+	/** LAN 전용(true) / 인터넷 매칭(false). 방 만들기·방 찾기 전에 설정. */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
+	static void SetUseLANOnly(const UObject* WorldContextObject, bool bLAN);
+
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
+	static bool GetUseLANOnly(const UObject* WorldContextObject);
+
 	// 준비 상태 토글
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Room", meta = (WorldContext = "WorldContextObject"))
 	static void ToggleReady(const UObject* WorldContextObject);
