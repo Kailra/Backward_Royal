@@ -583,6 +583,12 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 		}
 	}
 
+	// 세션 정보 상세 로깅
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] 세션 정보: Ping=%dms, NumOpenPublicConnections=%d/%d"), 
+		SessionResult.PingInMs,
+		SessionResult.Session.SessionSettings.NumPublicConnections - SessionResult.Session.NumOpenPublicConnections,
+		SessionResult.Session.SessionSettings.NumPublicConnections);
+	
 	// Ping 9999(또는 -9999)는 호스트 연결 불가를 의미 → 참가 실패 가능성 큼
 	if (SessionResult.PingInMs >= 9999 || SessionResult.PingInMs <= -9999)
 	{
@@ -930,6 +936,20 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			FString TravelURL;
 			bool bGotConnectString = SessionInterface->GetResolvedConnectString(NAME_GameSession, TravelURL);
 			
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] GetResolvedConnectString 결과: bGotConnectString=%s, TravelURL='%s'"), 
+				bGotConnectString ? TEXT("true") : TEXT("false"), 
+				TravelURL.IsEmpty() ? TEXT("(비어있음)") : *TravelURL);
+			
+			if (!bGotConnectString)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 세션이 제대로 등록되지 않았을 수 있습니다."));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, 
+						TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n호스트가 리슨 서버로 전환되었는지 확인하세요."));
+				}
+			}
+			
 			// 포트가 0이면 기본 포트 7777로 변경
 			if (bGotConnectString && TravelURL.Contains(TEXT(":0")))
 			{
@@ -997,6 +1017,22 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	}
 	else
 	{
+		// 세션 상태 확인 (디버깅용)
+		if (SessionInterface.IsValid())
+		{
+			auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
+			if (Session)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 실패 시 세션 상태: NumOpenPublicConnections=%d/%d"), 
+					Session->NumOpenPublicConnections, 
+					Session->SessionSettings.NumPublicConnections);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 실패 시 세션 상태: GetNamedSession(NAME_GameSession) = NULL"));
+			}
+		}
+		
 		FString ErrorMessage;
 		switch (Result)
 		{
