@@ -305,6 +305,18 @@ void ABRGameSession::FindSessions()
 	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
 	SessionSearch->bIsLanQuery = !bIsSteam; // Steam이면 false, Null이면 true
 	
+	// Steam 세션 검색을 위한 QuerySettings 설정
+	// 참고: Steam에서는 QuerySettings를 비워두거나 최소한만 설정하는 것이 더 나을 수 있습니다
+	// 모든 세션을 검색하려면 QuerySettings를 비워두는 것이 좋습니다
+	if (bIsSteam)
+	{
+		// QuerySettings를 비워두면 모든 세션을 검색합니다
+		// 필요시 특정 조건만 추가할 수 있습니다
+		// SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCE")), true, EOnlineComparisonOp::Equals);
+		
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam 세션 검색: QuerySettings 비어있음 (모든 세션 검색)"));
+	}
+	
 	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s"), 
 		*SubsystemName,
 		SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"));
