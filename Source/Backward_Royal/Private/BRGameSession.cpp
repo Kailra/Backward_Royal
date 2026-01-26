@@ -218,14 +218,21 @@ void ABRGameSession::BeginPlay()
 			}
 		}
 		
-		// 리슨 서버 모드 확인 (open ?listen 명령어로 전환된 경우)
+		// 리슨 서버 모드 확인 (ServerTravel(?listen) 후 맵 재로드 시)
+		UE_LOG(LogTemp, Warning, TEXT("========================================"));
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: NetMode 확인"));
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetMode: %s"), 
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer ✅") :
+			NetMode == NM_Client ? TEXT("Client") :
+			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
+		UE_LOG(LogTemp, Warning, TEXT("========================================"));
+		
 		if (NetMode == NM_ListenServer)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("========================================"));
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetMode: ListenServer"));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
-			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 클라이언트 연결을 받을 수 있는 상태입니다."));
 			
 			// 리슨 서버 모드인데 세션이 없으면 자동으로 재생성 시도
 			if (!bHasActiveSession)
@@ -289,6 +296,7 @@ void ABRGameSession::BeginPlay()
 		{
 			UE_LOG(LogTemp, Error, TEXT("========================================"));
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] ❌ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
+			UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ 클라이언트가 접속할 수 없습니다!"));
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] NetMode: Standalone"));
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
 			
@@ -1012,11 +1020,23 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 			
 			// Standalone 모드에서도 ServerTravel(?listen)을 시도
 			// 이전 코드처럼 바로 ServerTravel 호출
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 전 NetMode: %s"), 
+				NetMode == NM_Standalone ? TEXT("Standalone") :
+				NetMode == NM_ListenServer ? TEXT("ListenServer") :
+				NetMode == NM_Client ? TEXT("Client") :
+				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출: %s"), *ListenURL);
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			
 			World->ServerTravel(ListenURL, true);
+			
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ 중요: ServerTravel 후 맵이 재로드되면 BeginPlay에서 NetMode를 확인하세요."));
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ NetMode가 ListenServer가 아니면 클라이언트가 연결할 수 없습니다."));
 			
 			if (GEngine)
 			{
-				FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ 리슨 서버로 전환 완료!\n맵: %s\n클라이언트 연결 대기 중..."), *TravelURL);
+				FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ ServerTravel 호출 완료!\n맵: %s\n맵 재로드 후 NetMode 확인 필요"), *TravelURL);
 				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, SuccessMsg);
 			}
 		}
