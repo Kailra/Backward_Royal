@@ -153,6 +153,44 @@ void ABRGameSession::BeginPlay()
 		ENetMode NetMode = World->GetNetMode();
 		bool bHasActiveSession = HasActiveSession();
 		
+		// Standalone 모드에서 이전 세션이 남아있으면 정리 (게임 재시작 시)
+		// 이전 세션이 남아있으면 재실행 시 로비로 바로 넘어가는 문제 방지
+		if (bHasActiveSession && NetMode == NM_Standalone)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: Standalone 모드에서 이전 세션이 감지되었습니다. 정리 중..."));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 게임 재시작 시 이전 세션이 남아있어 로비로 넘어가는 문제를 방지하기 위해 세션을 정리합니다."));
+			
+			// Online Subsystem 초기화 후 세션 정리
+			// InitializeOnlineSubsystem이 완료된 후 세션을 정리해야 함
+			FTimerHandle CleanupTimerHandle;
+			GetWorld()->GetTimerManager().SetTimer(CleanupTimerHandle, [this]()
+			{
+				// Online Subsystem이 초기화된 후 세션 정리
+				if (SessionInterface.IsValid())
+				{
+					auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
+					if (ExistingSession != nullptr)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] 이전 세션 제거 중... (게임 재시작 시 정리)"));
+						SessionInterface->DestroySession(NAME_GameSession);
+						
+						if (GEngine)
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, 
+								TEXT("[GameSession] 이전 세션 정리 완료"));
+						}
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface가 아직 초기화되지 않았습니다. 세션 정리를 건너뜁니다."));
+				}
+			}, 0.5f, false); // InitializeOnlineSubsystem 완료 대기 (0.1초 + 여유 시간)
+			
+			// Standalone 모드에서 이전 세션을 정리하더라도 초기화는 계속 진행
+			// return을 제거하여 InitializeOnlineSubsystem이 호출되도록 함
+		}
+		
 		if (bHasActiveSession && NetMode == NM_ListenServer)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: 리슨 서버 전환 완료 확인! NetMode=ListenServer, HasActiveSession=Yes"));
@@ -160,19 +198,6 @@ void ABRGameSession::BeginPlay()
 			{
 				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
 					TEXT("[GameSession] 리슨 서버 전환 완료! 클라이언트 연결 대기 중..."));
-			}
-		}
-		else if (bHasActiveSession && NetMode == NM_Standalone)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: 세션은 있지만 아직 Standalone 모드. 리슨 서버 전환 대기 중..."));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] Standalone 모드에서는 ServerTravel(?listen)이 제대로 작동하지 않을 수 있습니다."));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] Steam 세션을 통한 클라이언트 연결은 가능하지만, NetMode는 Standalone으로 유지될 수 있습니다."));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 클라이언트는 Steam을 통해 연결할 수 있으며, GetResolvedConnectString으로 연결 주소를 가져올 수 있습니다."));
-			
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Yellow, 
-					TEXT("[GameSession] Standalone 모드: Steam 세션 활성화됨.\n클라이언트는 Steam을 통해 연결할 수 있습니다."));
 			}
 		}
 	}
@@ -184,6 +209,60 @@ void ABRGameSession::BeginPlay()
 	{
 		InitializeOnlineSubsystem();
 	}, 0.1f, false);
+}
+
+void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+	
+	UWorld* World = GetWorld();
+	bool bIsPIE = World ? World->IsPlayInEditor() : false;
+	ENetMode NetMode = World ? World->GetNetMode() : NM_Standalone;
+	
+	UE_LOG(LogTemp, Warning, TEXT("[GameSession] EndPlay 호출됨 - 세션 정리 중..."));
+	UE_LOG(LogTemp, Warning, TEXT("[GameSession] EndPlayReason: %d, PIE: %s, NetMode: %s"), 
+		(int32)EndPlayReason,
+		bIsPIE ? TEXT("Yes") : TEXT("No"),
+		NetMode == NM_Standalone ? TEXT("Standalone") :
+		NetMode == NM_ListenServer ? TEXT("ListenServer") :
+		NetMode == NM_Client ? TEXT("Client") : TEXT("Other"));
+	
+	// 게임 종료 시 활성 세션이 있으면 제거 (Standalone, PIE 모드 모두)
+	if (SessionInterface.IsValid())
+	{
+		auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
+		if (ExistingSession != nullptr)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 게임 종료 시 활성 세션 제거 중... (PIE: %s)"), 
+				bIsPIE ? TEXT("Yes") : TEXT("No"));
+			SessionInterface->DestroySession(NAME_GameSession);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("[GameSession] 활성 세션이 없습니다. (PIE: %s)"), 
+				bIsPIE ? TEXT("Yes") : TEXT("No"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface가 유효하지 않습니다. 세션 정리를 건너뜁니다."));
+	}
+	
+	// 검색 중이면 취소
+	if (bIsSearchingSessions && SessionInterface.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] 진행 중인 세션 검색 취소 중..."));
+		SessionInterface->CancelFindSessions();
+		bIsSearchingSessions = false;
+	}
+	
+	// 타이머 정리
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(FindSessionsRetryHandle);
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[GameSession] 세션 정리 완료 (PIE: %s)"), bIsPIE ? TEXT("Yes") : TEXT("No"));
 }
 
 void ABRGameSession::CreateRoomSession(const FString& RoomName)
