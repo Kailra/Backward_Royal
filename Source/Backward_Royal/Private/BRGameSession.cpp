@@ -1165,26 +1165,55 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				NetMode == NM_Standalone ? TEXT("Standalone") :
 				NetMode == NM_ListenServer ? TEXT("ListenServer") : TEXT("Other"));
 			
-			// Standalone 모드에서도 ServerTravel(?listen)을 시도
-			// 이전 코드처럼 바로 ServerTravel 호출
 			UE_LOG(LogTemp, Warning, TEXT("========================================"));
 			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 전 NetMode: %s"), 
 				NetMode == NM_Standalone ? TEXT("Standalone") :
 				NetMode == NM_ListenServer ? TEXT("ListenServer") :
 				NetMode == NM_Client ? TEXT("Client") :
 				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출: %s"), *ListenURL);
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] 리슨 서버로 전환 시도: %s"), *ListenURL);
 			UE_LOG(LogTemp, Warning, TEXT("========================================"));
 			
-			World->ServerTravel(ListenURL, true);
-			
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ 중요: ServerTravel 후 맵이 재로드되면 BeginPlay에서 NetMode를 확인하세요."));
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ NetMode가 ListenServer가 아니면 클라이언트가 연결할 수 없습니다."));
-			
-			if (GEngine)
+			// Standalone 모드인 경우 open ?listen 콘솔 명령 사용 (더 확실한 방법)
+			// CheatManager의 OpenListenServer와 동일한 방식
+			if (NetMode == NM_Standalone)
 			{
-				FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ ServerTravel 호출 완료!\n맵: %s\n맵 재로드 후 NetMode 확인 필요"), *TravelURL);
-				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, SuccessMsg);
+				// Standalone 모드에서는 open ?listen 콘솔 명령이 더 확실함
+				FString OpenCmd = FString::Printf(TEXT("open %s?listen"), *TravelURL);
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드 → open ?listen 콘솔 명령 사용: %s"), *OpenCmd);
+				
+				if (APlayerController* PC = World->GetFirstPlayerController())
+				{
+					PC->ConsoleCommand(OpenCmd, false);
+					UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ open ?listen 콘솔 명령 호출 완료!"));
+					
+					if (GEngine)
+					{
+						FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ Listen Server로 전환 중...\n맵: %s\n맵 재로드 후 NetMode 확인 필요"), *TravelURL);
+						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, SuccessMsg);
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] PlayerController를 찾을 수 없어 open 명령을 실행할 수 없습니다!"));
+					// PlayerController가 없으면 ServerTravel로 대체
+					World->ServerTravel(ListenURL, true);
+				}
+			}
+			else
+			{
+				// 이미 ListenServer 모드이거나 다른 모드인 경우 ServerTravel 사용
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출: %s"), *ListenURL);
+				World->ServerTravel(ListenURL, true);
+				
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ 중요: ServerTravel 후 맵이 재로드되면 BeginPlay에서 NetMode를 확인하세요."));
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ NetMode가 ListenServer가 아니면 클라이언트가 연결할 수 없습니다."));
+				
+				if (GEngine)
+				{
+					FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ ServerTravel 호출 완료!\n맵: %s\n맵 재로드 후 NetMode 확인 필요"), *TravelURL);
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, SuccessMsg);
+				}
 			}
 		}
 	}
@@ -1433,13 +1462,43 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 		return;
 	}
 	
+	// 세션 상태 확인 (GetResolvedConnectString 전에)
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] ========================================"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] OnJoinSessionCompleteDelegate 호출됨"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] InSessionName: %s"), *InSessionName.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] Result 코드: %d"), (int32)Result);
+	
+	// 세션이 등록되었는지 확인
+	auto Session = SessionInterface->GetNamedSession(InSessionName);
+	if (Session)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 세션 등록됨: NumOpenPublicConnections=%d/%d"), 
+			Session->NumOpenPublicConnections, 
+			Session->SessionSettings.NumPublicConnections);
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 세션 설정: bIsLANMatch=%s, bUsesPresence=%s"), 
+			Session->SessionSettings.bIsLANMatch ? TEXT("true") : TEXT("false"),
+			Session->SessionSettings.bUsesPresence ? TEXT("true") : TEXT("false"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ⚠️ 세션이 등록되지 않았습니다! GetNamedSession(%s) = NULL"), *InSessionName.ToString());
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ⚠️ 이것이 GetResolvedConnectString 실패의 원인일 수 있습니다!"));
+	}
+	
 	// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { return; }
 	// 성공/실패 여부와 관계없이 연결 문자열 가져오기 시도
 	FString TravelURL;
 	bool bGotConnectString = SessionInterface->GetResolvedConnectString(InSessionName, TravelURL);
 	
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] GetResolvedConnectString 결과: %s"), bGotConnectString ? TEXT("성공") : TEXT("실패"));
+	if (bGotConnectString)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] TravelURL: %s"), *TravelURL);
+	}
+	
 	if (!bGotConnectString)
 	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 연결 주소를 가져올 수 없습니다."));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인: 서버가 ListenServer 모드가 아니거나 Steam 연결 문제"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] Result 코드: %d"), (int32)Result);
@@ -1524,16 +1583,16 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 		
 		if (SessionInterface.IsValid())
 		{
-			auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
-			if (Session)
+			auto FailedSession = SessionInterface->GetNamedSession(NAME_GameSession);
+			if (FailedSession)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 실패 시 세션 상태: NumOpenPublicConnections=%d/%d"), 
-					Session->NumOpenPublicConnections, 
-					Session->SessionSettings.NumPublicConnections);
+					FailedSession->NumOpenPublicConnections, 
+					FailedSession->SessionSettings.NumPublicConnections);
 				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 세션 설정: bIsLANMatch=%s, bUsesPresence=%s, bUseLobbiesIfAvailable=%s"),
-					Session->SessionSettings.bIsLANMatch ? TEXT("true") : TEXT("false"),
-					Session->SessionSettings.bUsesPresence ? TEXT("true") : TEXT("false"),
-					Session->SessionSettings.bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
+					FailedSession->SessionSettings.bIsLANMatch ? TEXT("true") : TEXT("false"),
+					FailedSession->SessionSettings.bUsesPresence ? TEXT("true") : TEXT("false"),
+					FailedSession->SessionSettings.bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
 			}
 			else
 			{
