@@ -7,6 +7,8 @@
 #include "BRPlayerState.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
+#include "Engine/NetDriver.h"
+#include "Engine/NetConnection.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
@@ -243,6 +245,66 @@ bool UBRWidgetFunctionLibrary::IsReady(const UObject* WorldContextObject)
 	}
 
 	return false;
+}
+
+// ============================================
+// 네트워크 연결 상태 확인 함수 구현
+// ============================================
+
+bool UBRWidgetFunctionLibrary::IsConnectedToServer(const UObject* WorldContextObject)
+{
+	if (!WorldContextObject || !GEngine) return false;
+	
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	if (!World) return false;
+	
+	ENetMode NetMode = World->GetNetMode();
+	
+	// 클라이언트 모드인 경우에만 연결 확인
+	if (NetMode == NM_Client)
+	{
+		// PlayerController를 통해 연결 확인 (더 안전한 방법)
+		if (APlayerController* PC = World->GetFirstPlayerController())
+		{
+			// GetNetConnection()을 사용하여 연결 확인
+			if (UNetConnection* Connection = PC->GetNetConnection())
+			{
+				// 연결이 존재하면 연결된 것으로 간주
+				// State는 private이므로 연결 존재 여부만 확인
+				return Connection != nullptr;
+			}
+		}
+		
+		// 대체 방법: NetDriver를 통한 확인
+		if (UNetDriver* NetDriver = World->GetNetDriver())
+		{
+			// ServerConnection이 존재하면 연결된 것으로 간주
+			// State는 private이므로 연결 존재 여부만 확인
+			return NetDriver->ServerConnection != nullptr;
+		}
+		return false;
+	}
+	
+	// 서버 모드(ListenServer/DedicatedServer)는 항상 "연결됨"으로 간주
+	return (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer);
+}
+
+FString UBRWidgetFunctionLibrary::GetNetworkMode(const UObject* WorldContextObject)
+{
+	if (!WorldContextObject || !GEngine) return TEXT("Unknown");
+	
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	if (!World) return TEXT("Unknown");
+	
+	ENetMode NetMode = World->GetNetMode();
+	switch (NetMode)
+	{
+	case NM_Standalone: return TEXT("Standalone");
+	case NM_Client: return TEXT("Client");
+	case NM_ListenServer: return TEXT("ListenServer");
+	case NM_DedicatedServer: return TEXT("DedicatedServer");
+	default: return TEXT("Unknown");
+	}
 }
 
 // ============================================

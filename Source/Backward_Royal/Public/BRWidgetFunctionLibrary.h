@@ -100,6 +100,18 @@ public:
 	static bool IsReady(const UObject* WorldContextObject);
 
 	// ============================================
+	// 네트워크 연결 상태 확인
+	// ============================================
+	
+	/** 클라이언트가 서버에 연결되었는지 확인 (Standalone 모드에서도 사용 가능) */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Network", meta = (WorldContext = "WorldContextObject"))
+	static bool IsConnectedToServer(const UObject* WorldContextObject);
+
+	/** 현재 네트워크 모드 확인 (Standalone/Client/ListenServer 등) */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Network", meta = (WorldContext = "WorldContextObject"))
+	static FString GetNetworkMode(const UObject* WorldContextObject);
+
+	// ============================================
 	// UI 관련 함수들
 	// ============================================
 	

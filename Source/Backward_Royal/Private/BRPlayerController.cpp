@@ -73,6 +73,53 @@ void ABRPlayerController::BeginPlay()
 
 			ENetMode NetMode = World->GetNetMode();
 			
+			// 클라이언트 입장 확인 (Standalone 모드에서도 확인)
+			if (NetMode == NM_Client)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("========================================"));
+				UE_LOG(LogTemp, Warning, TEXT("[클라이언트] 서버 연결 확인!"));
+				UE_LOG(LogTemp, Warning, TEXT("========================================"));
+				
+				// 네트워크 연결 상태 확인
+				if (UNetDriver* NetDriver = World->GetNetDriver())
+				{
+					if (UNetConnection* ServerConnection = NetDriver->ServerConnection)
+					{
+						FString RemoteAddress = ServerConnection->LowLevelGetRemoteAddress(true);
+						UE_LOG(LogTemp, Warning, TEXT("[클라이언트] 서버 주소: %s"), *RemoteAddress);
+						UE_LOG(LogTemp, Warning, TEXT("[클라이언트] 연결 상태: 연결됨"));
+						
+						if (GEngine)
+						{
+							FString ConnectMsg = FString::Printf(TEXT("[클라이언트] 서버 연결 성공!\n주소: %s"), *RemoteAddress);
+							GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, ConnectMsg);
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[클라이언트] ServerConnection이 NULL입니다!"));
+						if (GEngine)
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[클라이언트] 서버 연결 실패!"));
+						}
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[클라이언트] NetDriver가 NULL입니다!"));
+				}
+				
+				// GameState 확인 (서버 데이터 복제 확인)
+				if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[클라이언트] GameState 확인: 현재 인원 %d"), BRGameState->PlayerArray.Num());
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[클라이언트] GameState가 아직 복제되지 않았습니다. 잠시 후 확인하세요."));
+				}
+			}
+			
 			// 세션이 활성화되어 있는지 확인 (ServerTravel 후 맵 재로드 시 세션이 있을 수 있음)
 			bool bHasActiveSession = false;
 			if (AGameModeBase* GameMode = World->GetAuthGameMode())
