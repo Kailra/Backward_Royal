@@ -88,6 +88,9 @@ protected:
 	// 세션 참가 완료 콜백
 	void OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinSessionCompleteResult::Type Result);
 
+	// Online Subsystem 초기화 (BeginPlay에서 호출)
+	void InitializeOnlineSubsystem();
+
 	virtual void BeginPlay() override;
 };
 

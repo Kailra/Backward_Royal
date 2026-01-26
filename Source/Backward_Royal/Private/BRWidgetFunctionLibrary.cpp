@@ -1,12 +1,15 @@
 // BRWidgetFunctionLibrary.cpp
 #include "BRWidgetFunctionLibrary.h"
 #include "BRPlayerController.h"
+#include "BRGameInstance.h"
 #include "BRGameSession.h"
 #include "BRGameState.h"
 #include "BRPlayerState.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/PlayerController.h"
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/Widget.h"
@@ -60,15 +63,41 @@ void UBRWidgetFunctionLibrary::FindRooms(const UObject* WorldContextObject)
 
 void UBRWidgetFunctionLibrary::JoinRoom(const UObject* WorldContextObject, int32 SessionIndex)
 {
-	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
+	UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] JoinRoom 함수 호출됨: 세션 인덱스=%d"), SessionIndex);
+	
+	if (GEngine)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] 방 참가 요청: 세션 인덱스=%d"), SessionIndex);
-		BRPC->JoinRoom(SessionIndex);
+		FString Message = FString::Printf(TEXT("[WidgetFunctionLibrary] 방 참가 요청: 세션 인덱스 %d"), SessionIndex);
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Message);
 	}
-	else
+	
+	ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject);
+	if (!BRPC)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[WidgetFunctionLibrary] PlayerController를 찾을 수 없습니다."));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[WidgetFunctionLibrary] 실패: PlayerController를 찾을 수 없습니다!"));
+		}
+		return;
 	}
+
+	// Game Instance에서 Player Name 조회 (블루프린트 Cast/Get Game Instance 불필요)
+	FString PlayerName;
+	if (UGameInstance* GI = BRPC->GetGameInstance())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(GI))
+		{
+			PlayerName = BRGI->GetPlayerName();
+			UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] Game Instance에서 플레이어 이름 조회: %s"), *PlayerName);
+		}
+	}
+	if (PlayerName.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] Player Name 없음, 빈 문자열로 JoinRoom 호출"));
+	}
+
+	BRPC->JoinRoomWithPlayerName(SessionIndex, PlayerName);
 }
 
 void UBRWidgetFunctionLibrary::ToggleReady(const UObject* WorldContextObject)
@@ -267,6 +296,27 @@ bool UBRWidgetFunctionLibrary::AddChildToContainer(const UObject* WorldContextOb
 		return false;
 	}
 
+	// Standalone 모드에서 위젯이 입력을 받을 수 있도록 OwningPlayer 설정
+	if (UUserWidget* UserWidget = Cast<UUserWidget>(Content))
+	{
+		if (UserWidget->GetOwningPlayer() == nullptr)
+		{
+			// WorldContextObject에서 PlayerController 가져오기
+			if (WorldContextObject)
+			{
+				UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+				if (World)
+				{
+					if (APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0))
+					{
+						UserWidget->SetOwningPlayer(PC);
+						UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] 위젯 OwningPlayer 설정 완료 (Standalone 모드 대응)"));
+					}
+				}
+			}
+		}
+	}
+
 	// VerticalBox에 추가 (우선순위)
 	if (VerticalBox && IsValid(VerticalBox))
 	{
@@ -299,6 +349,27 @@ bool UBRWidgetFunctionLibrary::AddChildToContainerAuto(const UObject* WorldConte
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] AddChildToContainerAuto: Container가 유효하지 않습니다."));
 		return false;
+	}
+
+	// Standalone 모드에서 위젯이 입력을 받을 수 있도록 OwningPlayer 설정
+	if (UUserWidget* UserWidget = Cast<UUserWidget>(Content))
+	{
+		if (UserWidget->GetOwningPlayer() == nullptr)
+		{
+			// WorldContextObject에서 PlayerController 가져오기
+			if (WorldContextObject)
+			{
+				UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+				if (World)
+				{
+					if (APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0))
+					{
+						UserWidget->SetOwningPlayer(PC);
+						UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] 위젯 OwningPlayer 설정 완료 (Standalone 모드 대응)"));
+					}
+				}
+			}
+		}
 	}
 
 	// VerticalBox인지 확인
