@@ -1,6 +1,7 @@
 // BRWidgetFunctionLibrary.cpp
 #include "BRWidgetFunctionLibrary.h"
 #include "BRPlayerController.h"
+#include "BRGameInstance.h"
 #include "BRGameSession.h"
 #include "BRGameState.h"
 #include "BRPlayerState.h"
@@ -8,6 +9,7 @@
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/PlayerController.h"
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/Widget.h"
@@ -63,28 +65,39 @@ void UBRWidgetFunctionLibrary::JoinRoom(const UObject* WorldContextObject, int32
 {
 	UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] JoinRoom 함수 호출됨: 세션 인덱스=%d"), SessionIndex);
 	
-	// 화면에 디버그 메시지 표시
 	if (GEngine)
 	{
 		FString Message = FString::Printf(TEXT("[WidgetFunctionLibrary] 방 참가 요청: 세션 인덱스 %d"), SessionIndex);
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, Message);
 	}
 	
-	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
-	{
-		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] PlayerController 찾음, JoinRoom 호출 중..."));
-		BRPC->JoinRoom(SessionIndex);
-	}
-	else
+	ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject);
+	if (!BRPC)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[WidgetFunctionLibrary] PlayerController를 찾을 수 없습니다."));
-		
-		// 화면에 디버그 메시지 표시
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[WidgetFunctionLibrary] 실패: PlayerController를 찾을 수 없습니다!"));
 		}
+		return;
 	}
+
+	// Game Instance에서 Player Name 조회 (블루프린트 Cast/Get Game Instance 불필요)
+	FString PlayerName;
+	if (UGameInstance* GI = BRPC->GetGameInstance())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(GI))
+		{
+			PlayerName = BRGI->GetPlayerName();
+			UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] Game Instance에서 플레이어 이름 조회: %s"), *PlayerName);
+		}
+	}
+	if (PlayerName.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] Player Name 없음, 빈 문자열로 JoinRoom 호출"));
+	}
+
+	BRPC->JoinRoomWithPlayerName(SessionIndex, PlayerName);
 }
 
 void UBRWidgetFunctionLibrary::ToggleReady(const UObject* WorldContextObject)
