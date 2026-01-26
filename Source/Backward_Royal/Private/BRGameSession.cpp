@@ -377,18 +377,19 @@ void ABRGameSession::FindSessions()
 	SessionSearch->MaxSearchResults = 100;
 	SessionSearch->PingBucketSize = 50;
 	
-	// Steam을 사용할 때는 bIsLanQuery를 false로 설정해야 함
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
 	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
-	SessionSearch->bIsLanQuery = !bIsSteam; // Steam이면 false, Null이면 true
 	
-	// Steam 세션 검색: QuerySettings 필터 없이 검색
-	// PRESENCE/PRESENCESEARCH 필터가 우리 로비를 제외시키는 사례가 많아, 필터를 두지 않음.
-	// FOnlineSessionSearch 기본 생성 시 QuerySettings는 비어 있음 → 전체 로비 검색.
+	// Steam: 동일 LAN에서 방이 LAN 목록에 뜨는 경우가 많음. bIsLanQuery=true로 검색.
+	// Null: LAN 전용.
+	SessionSearch->bIsLanQuery = true;
+	
 	if (bIsSteam)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam 세션 검색: QuerySettings 필터 없음 (전체 로비 검색)"));
+		// 최소 1개 QuerySettings 필요(검색 미실행 방지). PRESENCESEARCH = bUsesPresence와 쌍.
+		SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")), true, EOnlineComparisonOp::Equals);
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam: bIsLanQuery=true, PRESENCESEARCH=true"));
 	}
 	
 	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s"), 
@@ -816,11 +817,10 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 				if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
 				{
 					UE_LOG(LogTemp, Warning, TEXT("Steam 세션을 찾지 못한 가능한 원인:"));
-					UE_LOG(LogTemp, Warning, TEXT("  1. 방이 아직 생성되지 않음 (다른 PC에서 방 생성 확인)"));
-					UE_LOG(LogTemp, Warning, TEXT("  2. 방 생성 시 bShouldAdvertise=false로 설정됨"));
-					UE_LOG(LogTemp, Warning, TEXT("  3. 방 생성과 방 찾기의 세션 설정이 일치하지 않음"));
-					UE_LOG(LogTemp, Warning, TEXT("  4. Steam 네트워크 문제 (방화벽, NAT 등)"));
-					UE_LOG(LogTemp, Warning, TEXT("  5. 같은 프로세스에서 생성한 세션은 검색되지 않을 수 있음"));
+					UE_LOG(LogTemp, Warning, TEXT("  1. 호스트 PC에서 먼저 방 생성 → '[방 생성] CreateSession 호출 성공' 로그 확인"));
+					UE_LOG(LogTemp, Warning, TEXT("  2. 두 PC가 같은 LAN(와이파이/유선)에 연결되어 있는지 확인"));
+					UE_LOG(LogTemp, Warning, TEXT("  3. Steam 양쪽 실행·로그인, 방화벽에서 게임/Steam 허용"));
+					UE_LOG(LogTemp, Warning, TEXT("  4. 방 찾기 버튼 한 번 더 눌러 재검색"));
 				}
 				UE_LOG(LogTemp, Warning, TEXT("========================================"));
 				
@@ -828,11 +828,10 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 				if (GEngine)
 				{
 					FString WarningMsg = TEXT("[방 찾기] 사용 가능한 세션이 없습니다.\n");
-					WarningMsg += TEXT("확인 사항:\n");
-					WarningMsg += TEXT("1. 다른 PC에서 방이 생성되었는지 확인\n");
-					WarningMsg += TEXT("2. 방 생성과 방 찾기의 설정이 일치하는지 확인\n");
-					WarningMsg += TEXT("3. Steam 네트워크 연결 확인");
-					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, WarningMsg);
+					WarningMsg += TEXT("1. 호스트에서 먼저 방 만들기 → 생성 성공 로그 확인\n");
+					WarningMsg += TEXT("2. 두 PC 같은 LAN 연결 확인\n");
+					WarningMsg += TEXT("3. 방 찾기 다시 눌러 재검색");
+					GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor::Yellow, WarningMsg);
 				}
 			}
 		}
