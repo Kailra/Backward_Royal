@@ -40,6 +40,9 @@ void UBRGameInstance::Init()
 {
 	Super::Init();
 	UE_LOG(LogTemp, Log, TEXT("[GameInstance] BRGameInstance 초기화 완료 - 콘솔 명령어 사용 가능"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 네트워크 모드: %s"), 
+		bUseLANOnly ? TEXT("LAN 전용") : TEXT("인터넷 매칭 (Steam)"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 모드 변경: 콘솔에서 'SetLANOnly 1' (LAN) 또는 'SetLANOnly 0' (인터넷)"));
 	ReloadAllConfigs();
 }
 

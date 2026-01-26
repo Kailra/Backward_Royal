@@ -78,8 +78,10 @@ public:
 	void SetPlayerName(const FString& NewPlayerName) { PlayerName = NewPlayerName; }
 
 	// LAN 전용(true) / 인터넷(Steam) 매칭(false). 방 생성·방 찾기 시 사용.
+	// 기본값: false (인터넷 매칭) - Steam을 통한 인터넷 매칭 사용
+	// 콘솔 명령어: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷 매칭)
 	UPROPERTY(BlueprintReadWrite, Category = "Session|Match")
-	bool bUseLANOnly = true;
+	bool bUseLANOnly = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Session|Match")
 	void SetUseLANOnly(bool bLAN) { bUseLANOnly = bLAN; }
