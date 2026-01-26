@@ -247,9 +247,15 @@ void UBRGameInstance::ReloadAllConfigs()
 			// 1. JSON 파일 읽어서 메모리상 DT 업데이트
 			UpdateDataTableFromJson(TargetTable, JsonFileName);
 
-			// 2. 에디터 환경인 경우 .uasset 파일로 영구 저장
+			// 2. 에디터 환경이고 게임이 실행 중이 아닌 경우에만 .uasset 파일로 영구 저장
+			// Standalone 모드나 PIE 모드에서는 저장하지 않음
 		#if WITH_EDITOR
-			SaveDataTableToAsset(TargetTable);
+			// 에디터에서만 저장하고, 게임 실행 중이 아닐 때만 저장
+			// GetWorld()가 있으면 게임이 실행 중인 것으로 간주
+			if (GIsEditor && !GetWorld())
+			{
+				SaveDataTableToAsset(TargetTable);
+			}
 		#endif
 		}
 	}
@@ -409,10 +415,26 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable* TargetTable, FString F
 void UBRGameInstance::SaveDataTableToAsset(UDataTable* TargetTable)
 {
 #if WITH_EDITOR
-	if (!TargetTable) return;
+	// 게임 실행 중이면 저장하지 않음 (Standalone, PIE 모드 등)
+	// GetWorld()가 있으면 게임이 실행 중인 것으로 간주
+	if (GetWorld())
+	{
+		GI_LOG(Warning, TEXT("게임 실행 중이므로 Asset 저장을 건너뜁니다."));
+		return;
+	}
+
+	if (!TargetTable) 
+	{
+		GI_LOG(Error, TEXT("TargetTable이 유효하지 않습니다."));
+		return;
+	}
 
 	UPackage* Package = TargetTable->GetOutermost();
-	if (!Package) return;
+	if (!Package) 
+	{
+		GI_LOG(Error, TEXT("Package를 찾을 수 없습니다."));
+		return;
+	}
 
 	FString PackageFileName = FPackageName::LongPackageNameToFilename(
 		Package->GetName(),
@@ -432,6 +454,9 @@ void UBRGameInstance::SaveDataTableToAsset(UDataTable* TargetTable)
 	{
 		GI_LOG(Error, TEXT("Asset 저장 실패: %s"), *PackageFileName);
 	}
+#else
+	// 에디터가 아닌 환경에서는 저장하지 않음
+	GI_LOG(Warning, TEXT("에디터가 아니므로 Asset 저장을 건너뜁니다."));
 #endif
 }
 
