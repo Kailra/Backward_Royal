@@ -184,14 +184,25 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 
 	// 세션 설정 생성
 	SessionSettings = MakeShareable(new FOnlineSessionSettings());
-	SessionSettings->bIsLANMatch = true; // LAN 또는 Steam 등으로 변경 가능
+	
+	// Steam을 사용할 때는 bIsLANMatch를 false로 설정해야 함
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
+	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
+	
+	SessionSettings->bIsLANMatch = !bIsSteam; // Steam이면 false, Null이면 true
 	SessionSettings->NumPublicConnections = 8; // 최대 8명
 	SessionSettings->NumPrivateConnections = 0;
 	SessionSettings->bAllowInvites = true;
 	SessionSettings->bAllowJoinInProgress = true;
 	SessionSettings->bShouldAdvertise = true;
 	SessionSettings->bUsesPresence = true;
-	SessionSettings->bUseLobbiesIfAvailable = false;
+	SessionSettings->bUseLobbiesIfAvailable = bIsSteam; // Steam이면 Lobby 사용
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s, bUseLobbiesIfAvailable=%s"), 
+		*SubsystemName,
+		SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"),
+		SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
 	SessionSettings->Set(FName(TEXT("MAPNAME")), FString("Lobby"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
 	// 세션 이름 설정
@@ -202,8 +213,36 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 		SessionSettings->bIsLANMatch ? TEXT("예") : TEXT("아니오"));
 
 	// 세션 생성
-	UE_LOG(LogTemp, Log, TEXT("[방 생성] 세션 생성 요청 전송 중..."));
-	SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 생성 요청 전송 중..."));
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정 요약:"));
+	UE_LOG(LogTemp, Warning, TEXT("  - Subsystem: %s"), *SubsystemName);
+	UE_LOG(LogTemp, Warning, TEXT("  - bIsLANMatch: %s"), SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("  - bUseLobbiesIfAvailable: %s"), SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("  - bShouldAdvertise: %s"), SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("  - bUsesPresence: %s"), SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"));
+	
+	if (GEngine)
+	{
+		FString DebugMsg = FString::Printf(TEXT("[방 생성] 세션 생성 요청 중...\nSubsystem: %s\nLAN: %s"), 
+			*SubsystemName,
+			SessionSettings->bIsLANMatch ? TEXT("Yes") : TEXT("No"));
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
+	}
+	
+	bool bCreateResult = SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
+	if (!bCreateResult)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession 호출이 즉시 실패했습니다!"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 생성] CreateSession 호출 실패!"));
+		}
+		OnCreateSessionComplete.Broadcast(false);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 성공 (비동기 처리 대기 중...)"));
+	}
 }
 
 void ABRGameSession::FindSessions()
@@ -259,7 +298,16 @@ void ABRGameSession::FindSessions()
 	SessionSearch = MakeShareable(new FOnlineSessionSearch());
 	SessionSearch->MaxSearchResults = 100;
 	SessionSearch->PingBucketSize = 50;
-	SessionSearch->bIsLanQuery = true; // LAN 또는 Steam 등으로 변경 가능
+	
+	// Steam을 사용할 때는 bIsLanQuery를 false로 설정해야 함
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
+	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
+	SessionSearch->bIsLanQuery = !bIsSteam; // Steam이면 false, Null이면 true
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s"), 
+		*SubsystemName,
+		SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"));
 
 	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 검색 설정: 최대 결과=%d, LAN 검색=%s"), 
 		SessionSearch->MaxSearchResults,
@@ -484,12 +532,46 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 	}
 	else
 	{
+		UE_LOG(LogTemp, Error, TEXT("========================================"));
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: 세션 생성에 실패했습니다."));
+		UE_LOG(LogTemp, Error, TEXT("세션 이름: %s"), *InSessionName.ToString());
+		
+		// 실패 원인 확인
+		if (SessionInterface.IsValid())
+		{
+			IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+			FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
+			UE_LOG(LogTemp, Error, TEXT("Online Subsystem: %s"), *SubsystemName);
+			
+			// Steam 관련 추가 정보
+			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+			{
+				UE_LOG(LogTemp, Error, TEXT("Steam 세션 생성 실패 가능 원인:"));
+				UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
+				UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음"));
+				UE_LOG(LogTemp, Error, TEXT("  3. Steam 네트워크 연결 문제"));
+				UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제"));
+			}
+		}
+		UE_LOG(LogTemp, Error, TEXT("========================================"));
 		
 		// 화면에 디버그 메시지 표시 (Standalone 모드에서도 확인 가능)
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[GameSession] 방 생성 실패!"));
+			FString ErrorMsg = TEXT("[GameSession] 방 생성 실패!\n");
+			if (SessionInterface.IsValid())
+			{
+				IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+				FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
+				ErrorMsg += FString::Printf(TEXT("Subsystem: %s\n"), *SubsystemName);
+				
+				if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+				{
+					ErrorMsg += TEXT("Steam 세션 생성 실패\n");
+					ErrorMsg += TEXT("Steam 클라이언트 확인 필요");
+				}
+			}
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, ErrorMsg);
 		}
 	}
 
