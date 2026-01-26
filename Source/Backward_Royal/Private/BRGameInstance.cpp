@@ -18,6 +18,7 @@
 #include "StaminaComponent.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "GameFramework/GameModeBase.h"
+#include "Kismet/GameplayStatics.h"
 
 #if WITH_EDITOR
 #include "UObject/SavePackage.h"
@@ -36,6 +37,99 @@ void UBRGameInstance::Init()
 	Super::Init();
 	UE_LOG(LogTemp, Log, TEXT("[GameInstance] BRGameInstance 초기화 완료 - 콘솔 명령어 사용 가능"));
 	ReloadAllConfigs();
+}
+
+void UBRGameInstance::OnStart()
+{
+	Super::OnStart();
+	
+	UE_LOG(LogTemp, Log, TEXT("[GameInstance] OnStart 호출 - 첫 번째 World 생성 완료"));
+	
+	// PendingRoomName이 있으면 자동으로 ListenServer 모드로 전환 시도
+	if (!PendingRoomName.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] PendingRoomName 감지: %s"), *PendingRoomName);
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 자동으로 ListenServer 모드로 전환을 시도합니다."));
+		
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			ENetMode NetMode = World->GetNetMode();
+			UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 현재 NetMode: %s"), 
+				NetMode == NM_Standalone ? TEXT("Standalone") :
+				NetMode == NM_ListenServer ? TEXT("ListenServer") :
+				NetMode == NM_Client ? TEXT("Client") :
+				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+			
+			// Standalone 모드인 경우에만 ListenServer로 전환 시도
+			if (NetMode == NM_Standalone)
+			{
+				// 현재 맵 경로 가져오기
+				FString CurrentMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
+				if (CurrentMapPath.IsEmpty())
+				{
+					CurrentMapPath = World->GetMapName();
+					CurrentMapPath.RemoveFromStart(World->StreamingLevelsPrefix);
+				}
+				
+				// 맵 경로를 /Game/.../MapName.MapName 형식으로 변환
+				if (!CurrentMapPath.Contains(TEXT("/")))
+				{
+					CurrentMapPath = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *CurrentMapPath, *CurrentMapPath);
+				}
+				else if (!CurrentMapPath.Contains(TEXT(".")))
+				{
+					FString MapName = FPaths::GetBaseFilename(CurrentMapPath);
+					CurrentMapPath = FString::Printf(TEXT("%s.%s"), *CurrentMapPath, *MapName);
+				}
+				
+				FString ListenURL = FString::Printf(TEXT("%s?listen"), *CurrentMapPath);
+				FString OpenCommand = FString::Printf(TEXT("open %s"), *ListenURL);
+				
+				UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ListenServer 모드로 전환 시도"));
+				UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 명령어: %s"), *OpenCommand);
+				
+				if (GEngine)
+				{
+					FString DebugMsg = FString::Printf(
+						TEXT("[GameInstance] PendingRoomName 감지!\n")
+						TEXT("자동으로 ListenServer 모드로 전환합니다.\n")
+						TEXT("명령어: %s")
+					);
+					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, DebugMsg);
+				}
+				
+				// PlayerController를 통한 ConsoleCommand 실행
+				if (APlayerController* PC = World->GetFirstPlayerController())
+				{
+					PC->ConsoleCommand(OpenCommand, /*bExecInEditor=*/false);
+					UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ✅ ConsoleCommand 실행 완료: %s"), *OpenCommand);
+				}
+				else
+				{
+					// PlayerController가 없으면 GEngine->Exec 사용
+					if (GEngine)
+					{
+						bool bExecResult = GEngine->Exec(World, *OpenCommand);
+						UE_LOG(LogTemp, Warning, TEXT("[GameInstance] GEngine->Exec 결과: %s"), bExecResult ? TEXT("성공") : TEXT("실패"));
+					}
+				}
+			}
+			else if (NetMode == NM_ListenServer)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ✅ 이미 ListenServer 모드입니다!"));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+						TEXT("[GameInstance] ✅ 이미 ListenServer 모드입니다!"));
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[GameInstance] World가 없습니다. ListenServer 전환을 시도할 수 없습니다."));
+		}
+	}
 }
 
 void UBRGameInstance::CreateRoom(const FString& RoomName)

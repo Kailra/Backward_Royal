@@ -18,6 +18,7 @@ public:
 	UBRGameInstance();
 	
 	virtual void Init() override;
+	virtual void OnStart() override;
 
 	// 방 생성
 	UFUNCTION(Exec)

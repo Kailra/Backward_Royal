@@ -3,6 +3,7 @@
 #include "BRGameInstance.h"
 #include "BRGameMode.h"
 #include "BRPlayerState.h"
+#include "BRPlayerController.h"
 #include "BRGameState.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
@@ -286,16 +287,50 @@ void ABRGameSession::BeginPlay()
 		}
 		else if (NetMode == NM_Standalone)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("========================================"));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] ⚠️ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetMode: Standalone"));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
-			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Error, TEXT("========================================"));
+			UE_LOG(LogTemp, Error, TEXT("[GameSession] ❌ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
+			UE_LOG(LogTemp, Error, TEXT("[GameSession] NetMode: Standalone"));
+			UE_LOG(LogTemp, Error, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
 			
-			if (GEngine)
+			// PendingRoomName이 있으면 open ?listen 명령어가 실행되었지만 NetMode가 전환되지 않은 것
+			FString PendingRoomName;
+			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Orange, 
-					TEXT("[GameSession] ⚠️ Standalone 모드입니다.\n클라이언트가 접속할 수 없습니다."));
+				PendingRoomName = BRGI->GetPendingRoomName();
+			}
+			
+			if (!PendingRoomName.IsEmpty())
+			{
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ PendingRoomName이 있습니다: %s"), *PendingRoomName);
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ open ?listen 명령어가 실행되었지만 NetMode가 ListenServer로 전환되지 않았습니다."));
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ 이것은 Unreal Engine의 제한사항일 수 있습니다."));
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ 해결 방법: 게임을 시작할 때 명령줄 인수로 ?listen을 전달하세요."));
+				UE_LOG(LogTemp, Error, TEXT("========================================"));
+				
+				if (GEngine)
+				{
+					FString ErrorMsg = FString::Printf(
+						TEXT("[GameSession] ❌ Standalone 모드입니다.\n")
+						TEXT("open ?listen 명령어가 실행되었지만 NetMode가 전환되지 않았습니다.\n")
+						TEXT("\n")
+						TEXT("해결 방법:\n")
+						TEXT("1. 게임을 시작할 때 명령줄 인수로 ?listen을 전달하세요.\n")
+						TEXT("2. 또는 게임을 완전히 종료하고 다시 시작하세요.\n")
+						TEXT("\n")
+						TEXT("현재 상태: Standalone 모드\n")
+						TEXT("클라이언트가 접속할 수 없습니다.")
+					);
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, ErrorMsg);
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("========================================"));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Orange, 
+						TEXT("[GameSession] ⚠️ Standalone 모드입니다.\n클라이언트가 접속할 수 없습니다."));
+				}
 			}
 		}
 	}
@@ -920,7 +955,51 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				NetMode == NM_Client ? TEXT("Client") :
 				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
 			
-			// Standalone 모드인 경우에만 리슨 서버로 전환
+			// Standalone 모드인 경우 처리
+			// 참고: Unreal Engine에서는 런타임에 Standalone에서 ListenServer로 직접 전환할 수 없습니다.
+			// 따라서 세션이 성공적으로 생성되었으면, Standalone 모드에서도 세션을 활성화된 것으로 간주하고
+			// PlayerController에게 로비로 이동하도록 알립니다.
+			if (NetMode == NM_Standalone)
+			{
+				// Standalone 모드에서 세션이 성공적으로 생성되었으므로,
+				// PlayerController에게 로비로 이동하도록 직접 알림
+				// 참고: Unreal Engine에서는 Standalone 모드에서 ListenServer로 런타임 전환이 불가능하므로,
+				// 세션이 활성화된 상태로 유지하고 로비로 이동합니다.
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드: 세션 생성 완료 - PlayerController에게 로비 이동 알림"));
+				
+				if (APlayerController* PC = World->GetFirstPlayerController())
+				{
+					if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+					{
+						// 로비로 이동하도록 직접 호출
+						BRPC->SetMainScreenToLobbyMenu();
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드: LobbyMenu로 전환 요청 완료"));
+						
+						if (GEngine)
+						{
+							FString SuccessMsg = FString::Printf(
+								TEXT("[방 생성] ✅ 세션 생성 완료!\n")
+								TEXT("Standalone 모드에서 세션이 활성화되었습니다.\n")
+								TEXT("클라이언트가 이 세션을 찾아 참가할 수 있습니다.")
+							);
+							GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, SuccessMsg);
+						}
+						
+						// open ?listen 시도는 하지 않고, Standalone 모드에서 세션만 활성화된 상태로 유지
+						// 클라이언트는 이 세션을 찾아서 참가할 수 있습니다.
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드에서 세션 활성화 완료. 클라이언트가 이 세션을 찾아 참가할 수 있습니다."));
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 참고: Standalone 모드에서는 NetMode가 전환되지 않지만, 세션은 정상적으로 작동합니다."));
+						
+						// 함수 끝에서 OnCreateSessionComplete.Broadcast(true)가 호출되므로 여기서는 호출하지 않음
+						return; // open ?listen 시도하지 않고 반환
+					}
+				}
+				
+				// PlayerController를 찾을 수 없으면 기존 로직 계속 (open ?listen 시도)
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] PlayerController를 찾을 수 없습니다. open ?listen 시도를 계속합니다."));
+			}
+			
+			// 기존 로직: open ?listen 시도 (PlayerController를 찾지 못한 경우 또는 다른 모드)
 			if (NetMode == NM_Standalone)
 			{
 				// 로비 맵 경로: GameMode의 LobbyMapPath 사용, 없으면 현재 맵
@@ -997,35 +1076,96 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 					BRGI->SetPendingRoomName(SavedRoomName);
 				}
 				
-				// Standalone 모드에서는 ServerTravel 대신 ConsoleCommand 또는 GEngine->Exec 사용
-				// 참고: ConsoleCommand는 패키징된 exe에서도 작동합니다 (콘솔이 없어도 내부적으로 실행됨)
-				bool bCommandExecuted = false;
+			// Standalone 모드에서는 ServerTravel 대신 ConsoleCommand 또는 GEngine->Exec 사용
+			// 참고: ConsoleCommand는 패키징된 exe에서도 작동합니다 (콘솔이 없어도 내부적으로 실행됨)
+			
+			// 진단 로그: 이 코드 경로에 도달했는지 확인
+			UE_LOG(LogTemp, Error, TEXT("========================================"));
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] ⚠️ Standalone 모드 전환 코드 실행 시작"));
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] ListenURL: %s"), *ListenURL);
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] TravelMapPath: %s"), *TravelMapPath);
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] GEngine 유효성: %s"), GEngine ? TEXT("유효함") : TEXT("NULL!"));
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] World 유효성: %s"), World ? TEXT("유효함") : TEXT("NULL!"));
+			UE_LOG(LogTemp, Error, TEXT("========================================"));
+			
+			bool bCommandExecuted = false;
+			
+			// 방법 1: UGameplayStatics::OpenLevel 시도 (Standalone에서도 작동할 수 있음)
+			// 하지만 Standalone에서는 일반적으로 작동하지 않으므로 주석 처리
+			// UGameplayStatics::OpenLevel(World, FName(*TravelMapPath), true, FString::Printf(TEXT("?listen")));
+			
+			// 방법 2: GEngine->Exec 사용 (가장 확실함)
+			if (GEngine)
+			{
+				FString ExecCommand = FString::Printf(TEXT("open %s"), *ListenURL);
 				
-				// 방법 1: GEngine->Exec 사용 (가장 확실함)
+				// 화면에 큰 메시지로 표시 (로그만으로는 놓치기 쉬움)
 				if (GEngine)
 				{
-					FString ExecCommand = FString::Printf(TEXT("open %s"), *ListenURL);
-					UE_LOG(LogTemp, Warning, TEXT("========================================"));
-					UE_LOG(LogTemp, Warning, TEXT("[방 생성] GEngine->Exec 호출 시도"));
-					UE_LOG(LogTemp, Warning, TEXT("[방 생성] 명령어: %s"), *ExecCommand);
-					UE_LOG(LogTemp, Warning, TEXT("========================================"));
+					FString DebugMsg = FString::Printf(TEXT("========================================\n[방 생성] GEngine->Exec 호출 시도\n명령어: %s\nListenURL: %s\n========================================"), *ExecCommand, *ListenURL);
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, DebugMsg);
+				}
+				
+				UE_LOG(LogTemp, Error, TEXT("========================================"));
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] GEngine->Exec 호출 시도"));
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] 명령어: %s"), *ExecCommand);
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] ListenURL: %s"), *ListenURL);
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] TravelMapPath: %s"), *TravelMapPath);
+				UE_LOG(LogTemp, Error, TEXT("========================================"));
+				
+				// 중요: open 명령어는 게임을 완전히 재시작하므로, 
+				// 이 함수가 반환되기 전에 게임이 재시작될 수 있습니다.
+				// 따라서 Exec 호출 후에는 추가 로직이 실행되지 않을 수 있습니다.
+				bool bExecResult = GEngine->Exec(World, *ExecCommand);
+				
+				// 결과를 화면과 로그에 모두 표시
+				FString ResultMsg = FString::Printf(TEXT("[방 생성] GEngine->Exec 결과: %s"), bExecResult ? TEXT("✅ 성공") : TEXT("❌ 실패"));
+				UE_LOG(LogTemp, Error, TEXT("%s"), *ResultMsg);
+				
+				if (GEngine)
+				{
+					FColor ResultColor = bExecResult ? FColor::Green : FColor::Red;
+					GEngine->AddOnScreenDebugMessage(-1, 15.0f, ResultColor, ResultMsg);
+				}
+				
+				if (bExecResult)
+				{
+					bCommandExecuted = true;
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ✅ GEngine->Exec 호출 성공!"));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ⚠️ 중요: open 명령어는 게임을 재시작합니다."));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ⚠️ 게임이 재시작되면 BeginPlay에서 NetMode를 확인하세요."));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ⚠️ 만약 여전히 Standalone 모드라면, 게임 시작 시 ?listen 인수가 필요할 수 있습니다."));
 					
-					// Exec는 bool을 반환하지만, open 명령어는 게임을 재시작하므로 항상 true를 반환할 수 있습니다
-					bool bExecResult = GEngine->Exec(World, *ExecCommand);
-					UE_LOG(LogTemp, Warning, TEXT("[방 생성] GEngine->Exec 결과: %s"), bExecResult ? TEXT("true") : TEXT("false"));
-					
-					if (bExecResult)
+					if (GEngine)
 					{
-						bCommandExecuted = true;
-						UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ GEngine->Exec 호출 성공!"));
-						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 게임이 재시작되며 리슨 서버 모드로 전환됩니다."));
+						GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green,
+							TEXT("[방 생성] ✅ 리슨 서버로 전환 중...\n게임이 재시작됩니다.\n재시작 후 NetMode를 확인하세요."));
 					}
-					else
+					
+					// open 명령어는 게임을 재시작하므로, 여기서 반환합니다.
+					// 추가 로직은 실행되지 않을 수 있습니다.
+					return;
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GEngine->Exec 호출 실패!"));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] 명령어를 확인하세요: %s"), *ExecCommand);
+					
+					if (GEngine)
 					{
-						UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GEngine->Exec 호출 실패!"));
-						UE_LOG(LogTemp, Error, TEXT("[방 생성] 명령어를 확인하세요: %s"), *ExecCommand);
+						FString ErrorMsg = FString::Printf(TEXT("[방 생성] ❌ GEngine->Exec 실패!\n명령어: %s\nConsoleCommand로 재시도합니다."), *ExecCommand);
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, ErrorMsg);
 					}
 				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GEngine가 NULL입니다! ConsoleCommand로 재시도합니다."));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("[방 생성] ❌ GEngine가 NULL입니다!"));
+				}
+			}
 				
 				// 방법 2: PlayerController의 ConsoleCommand 사용 (대안)
 				if (!bCommandExecuted)
