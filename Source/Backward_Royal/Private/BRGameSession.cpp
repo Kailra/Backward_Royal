@@ -178,8 +178,26 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
 	if (ExistingSession != nullptr)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[방 생성] 기존 세션 제거 중..."));
-		SessionInterface->DestroySession(NAME_GameSession);
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션이 발견되었습니다. 제거 중..."));
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 정보: 최대 인원=%d, 현재 인원=%d"), 
+			ExistingSession->SessionSettings.NumPublicConnections,
+			ExistingSession->NumOpenPublicConnections);
+		
+		// DestroySession은 비동기이므로 완료를 기다려야 할 수 있지만,
+		// CreateSession이 실패하는 경우가 있으므로 즉시 제거 시도
+		bool bDestroyResult = SessionInterface->DestroySession(NAME_GameSession);
+		if (bDestroyResult)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 제거 요청 전송됨 (비동기 처리 중...)"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션 제거 실패! 세션이 이미 제거되었을 수 있습니다."));
+		}
+		
+		// 잠시 대기 (세션 제거 완료 대기)
+		// 참고: DestroySession이 완료될 때까지 기다리는 것이 이상적이지만,
+		// 현재는 즉시 CreateSession을 시도합니다
 	}
 
 	// 세션 설정 생성
@@ -197,9 +215,9 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	SessionSettings->bAllowJoinInProgress = true;
 	SessionSettings->bShouldAdvertise = true;
 	SessionSettings->bUsesPresence = true;
-	// Steam에서는 Lobby를 사용하지 않고 일반 세션을 사용하는 것이 더 안정적일 수 있습니다
-	// Lobby를 사용하면 검색 방법이 달라질 수 있음
-	SessionSettings->bUseLobbiesIfAvailable = false; // Lobby 비활성화 (일반 세션 사용)
+	// Steam에서는 Lobby를 사용하는 것이 더 안정적입니다
+	// Lobby를 사용하지 않으면 Steam 세션 생성이 실패할 수 있습니다
+	SessionSettings->bUseLobbiesIfAvailable = bIsSteam; // Steam이면 Lobby 사용
 	
 	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s, bUseLobbiesIfAvailable=%s"), 
 		*SubsystemName,
@@ -231,19 +249,72 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
 	}
 	
+	// Steam 세션 생성 전 추가 검증
+	if (bIsSteam)
+	{
+		// Steam 클라이언트 확인
+		if (!OnlineSubsystem || OnlineSubsystem->GetSubsystemName() != FName("Steam"))
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam OnlineSubsystem이 올바르게 초기화되지 않았습니다!"));
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("[방 생성] Steam 초기화 실패!\nSteam 클라이언트를 확인하세요."));
+			}
+			OnCreateSessionComplete.Broadcast(false);
+			return;
+		}
+		
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] Steam 세션 생성 시도 중..."));
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] Steam 세션 설정 확인:"));
+		UE_LOG(LogTemp, Warning, TEXT("  - bIsLANMatch: %s"), SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"));
+		UE_LOG(LogTemp, Warning, TEXT("  - bUseLobbiesIfAvailable: %s"), SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
+		UE_LOG(LogTemp, Warning, TEXT("  - bUsesPresence: %s"), SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"));
+		UE_LOG(LogTemp, Warning, TEXT("  - bShouldAdvertise: %s"), SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
+	}
+	
 	bool bCreateResult = SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
 	if (!bCreateResult)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession 호출이 즉시 실패했습니다!"));
-		if (GEngine)
+		
+		// Steam 관련 추가 정보
+		if (bIsSteam)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 생성] CreateSession 호출 실패!"));
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam 세션 생성 즉시 실패 - 가능한 원인:"));
+			UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
+			UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음"));
+			UE_LOG(LogTemp, Error, TEXT("  3. Steam 네트워크 연결 문제"));
+			UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제"));
+			UE_LOG(LogTemp, Error, TEXT("  5. 이미 다른 세션이 활성화되어 있음"));
+			
+			if (GEngine)
+			{
+				FString ErrorMsg = TEXT("[방 생성] Steam 세션 생성 실패!\n");
+				ErrorMsg += TEXT("확인 사항:\n");
+				ErrorMsg += TEXT("1. Steam 클라이언트 실행 중인지 확인\n");
+				ErrorMsg += TEXT("2. Steam에 로그인되어 있는지 확인\n");
+				ErrorMsg += TEXT("3. Steam 네트워크 연결 확인\n");
+				ErrorMsg += TEXT("4. 기존 세션이 있는지 확인");
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, ErrorMsg);
+			}
 		}
+		else
+		{
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 생성] CreateSession 호출 실패!"));
+			}
+		}
+		
 		OnCreateSessionComplete.Broadcast(false);
 	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 성공 (비동기 처리 대기 중...)"));
+		if (GEngine && bIsSteam)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("[방 생성] Steam 세션 생성 요청 전송됨..."));
+		}
 	}
 }
 
