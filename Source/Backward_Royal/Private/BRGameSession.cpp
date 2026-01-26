@@ -14,6 +14,7 @@
 #include "TimerManager.h"
 #include "Engine/NetDriver.h"
 #include "OnlineSubsystemUtils.h"
+#include "Containers/Set.h"
 
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
@@ -371,8 +372,28 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 		SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
 	SessionSettings->Set(FName(TEXT("MAPNAME")), FString("Lobby"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
-	// 세션 이름 설정
-	SessionSettings->Set(FName(TEXT("SESSION_NAME")), RoomName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	// 호스트(방장) 이름 — GameInstance에서 조회 (표시용)
+	FString HostName;
+	if (UWorld* W = GetWorld())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
+		{
+			HostName = BRGI->GetPlayerName();
+		}
+	}
+	SessionSettings->Set(FName(TEXT("HOST_NAME")), HostName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
+	// 세션 이름: RoomName 사용, 비어 있으면 "호스트이름의 방" fallback
+	FString EffectiveRoomName = RoomName;
+	if (EffectiveRoomName.IsEmpty() && !HostName.IsEmpty())
+	{
+		EffectiveRoomName = HostName + TEXT("의 방");
+	}
+	if (EffectiveRoomName.IsEmpty())
+	{
+		EffectiveRoomName = TEXT("이름 없는 방");
+	}
+	SessionSettings->Set(FName(TEXT("SESSION_NAME")), EffectiveRoomName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
 	UE_LOG(LogTemp, Log, TEXT("[방 생성] 세션 설정 완료: 최대 인원=%d, LAN 매치=%s"), 
 		SessionSettings->NumPublicConnections,
@@ -531,6 +552,9 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 
 	// 검색 시작 플래그 설정
 	bIsSearchingSessions = true;
+
+	// 이전 검색 취소 (중복/스태일 결과 방지)
+	SessionInterface->CancelFindSessions();
 
 	// 세션 검색 설정
 	SessionSearch = MakeShareable(new FOnlineSessionSearch());
@@ -932,7 +956,27 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 		if (SessionSearch.IsValid())
 		{
 			Results = SessionSearch->SearchResults;
-			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 성공: 찾은 세션 수 = %d"), Results.Num());
+			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 성공: 찾은 세션 수(중복 제거 전) = %d"), Results.Num());
+
+			// SessionId 기준 중복 제거 (같은 방이 여러 번 나오는 현상 방지)
+			const int32 RawCount = Results.Num();
+			TSet<FString> SeenIds;
+			TArray<FOnlineSessionSearchResult> Deduplicated;
+			for (const FOnlineSessionSearchResult& R : Results)
+			{
+				FString Sid = R.GetSessionIdStr();
+				if (Sid.IsEmpty()) Sid = FString::Printf(TEXT("row-%d"), Deduplicated.Num());
+				if (SeenIds.Contains(Sid)) continue;
+				SeenIds.Add(Sid);
+				Deduplicated.Add(R);
+			}
+			Results = MoveTemp(Deduplicated);
+			SessionSearch->SearchResults = Results;
+			if (RawCount != Results.Num())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 중복 제거: %d개 → %d개"), RawCount, Results.Num());
+			}
+			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 성공: 찾은 세션 수(중복 제거 후) = %d"), Results.Num());
 			
 			// Steam 세션 검색 시 추가 정보
 			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Online Subsystem: %s"), *SubsystemName);
@@ -965,50 +1009,30 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 				{
 					const FOnlineSessionSearchResult& Result = Results[i];
 					FString FoundSessionName;
+					FString FoundHostName;
 					FString FoundMapName;
-					int32 CurrentPlayerCount = 0;
-					int32 MaxPlayerCount = 0;
-					
-					// 세션 정보 추출
-					if (Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName))
+					Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName);
+					Result.Session.SessionSettings.Get(FName(TEXT("HOST_NAME")), FoundHostName);
+					// 표시 이름: SESSION_NAME → HOST_NAME → "(이름 없음)"
+					FString DisplayName = !FoundSessionName.IsEmpty() ? FoundSessionName : (!FoundHostName.IsEmpty() ? FoundHostName : TEXT("(이름 없음)"));
+
+					int32 CurrentPlayerCount = Result.Session.NumOpenPublicConnections + Result.Session.NumOpenPrivateConnections;
+					int32 MaxPlayerCount = Result.Session.SessionSettings.NumPublicConnections + Result.Session.SessionSettings.NumPrivateConnections;
+					int32 ActualPlayerCount = FMath::Max(0, MaxPlayerCount - CurrentPlayerCount);
+
+					UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 이름=%s, Ping=%dms"), i, *DisplayName, Result.PingInMs);
+					if (GEngine)
 					{
-						UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 이름=%s, Ping=%dms"), i, *FoundSessionName, Result.PingInMs);
-						
-						// 화면에 세션 정보 표시
-						if (GEngine)
-						{
-							CurrentPlayerCount = Result.Session.NumOpenPublicConnections + Result.Session.NumOpenPrivateConnections;
-							MaxPlayerCount = Result.Session.SessionSettings.NumPublicConnections + Result.Session.SessionSettings.NumPrivateConnections;
-							int32 ActualPlayerCount = MaxPlayerCount - CurrentPlayerCount;
-							FString SessionInfo = FString::Printf(TEXT("  [%d] %s - 플레이어: %d/%d, Ping: %dms"), 
-								i, *FoundSessionName, ActualPlayerCount, MaxPlayerCount, Result.PingInMs);
-							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, SessionInfo);
-						}
-					}
-					else
-					{
-						UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 이름=(없음), Ping=%dms"), i, Result.PingInMs);
-						
-						// 화면에 세션 정보 표시 (이름 없음)
-						if (GEngine)
-						{
-							CurrentPlayerCount = Result.Session.NumOpenPublicConnections + Result.Session.NumOpenPrivateConnections;
-							MaxPlayerCount = Result.Session.SessionSettings.NumPublicConnections + Result.Session.SessionSettings.NumPrivateConnections;
-							int32 ActualPlayerCount = MaxPlayerCount - CurrentPlayerCount;
-							FString SessionInfo = FString::Printf(TEXT("  [%d] (이름 없음) - 플레이어: %d/%d, Ping: %dms"), 
-								i, ActualPlayerCount, MaxPlayerCount, Result.PingInMs);
-							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, SessionInfo);
-						}
+						FString SessionInfo = FString::Printf(TEXT("  [%d] %s - 플레이어: %d/%d, Ping: %dms"),
+							i, *DisplayName, ActualPlayerCount, MaxPlayerCount, Result.PingInMs);
+						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, SessionInfo);
 					}
 					
 					if (Result.Session.SessionSettings.Get(FName(TEXT("MAPNAME")), FoundMapName))
 					{
 						UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 맵=%s"), i, *FoundMapName);
 					}
-					
-					CurrentPlayerCount = Result.Session.NumOpenPublicConnections + Result.Session.NumOpenPrivateConnections;
-					MaxPlayerCount = Result.Session.SessionSettings.NumPublicConnections + Result.Session.SessionSettings.NumPrivateConnections;
-					UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 플레이어 수=%d/%d"), i, MaxPlayerCount - CurrentPlayerCount, MaxPlayerCount);
+					UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d]: 플레이어 수=%d/%d"), i, ActualPlayerCount, MaxPlayerCount);
 					UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 [%d] 참가 명령: JoinRoom %d"), i, i);
 				}
 			}
@@ -1321,13 +1345,13 @@ FString ABRGameSession::GetSessionName(int32 SessionIndex) const
 
 	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
 	FString FoundSessionName;
-	
-	if (Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName))
-	{
-		return FoundSessionName;
-	}
-
-	return FString();
+	FString FoundHostName;
+	Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName);
+	Result.Session.SessionSettings.Get(FName(TEXT("HOST_NAME")), FoundHostName);
+	// SESSION_NAME → HOST_NAME → "(이름 없음)"
+	if (!FoundSessionName.IsEmpty()) return FoundSessionName;
+	if (!FoundHostName.IsEmpty()) return FoundHostName;
+	return TEXT("(이름 없음)");
 }
 
 bool ABRGameSession::HasActiveSession() const
