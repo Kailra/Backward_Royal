@@ -5,6 +5,7 @@
 #include "BRGameState.h"
 #include "BRPlayerState.h"
 #include "BRGameMode.h"
+#include "BRGameInstance.h"
 #include "GameFramework/GameModeBase.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -127,21 +128,44 @@ void ABRPlayerController::BeginPlay()
 				if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
 				{
 					bHasActiveSession = GameSession->HasActiveSession();
-					if (GEngine)
-					{
-						FString DebugMsg = FString::Printf(TEXT("[BeginPlay] NetMode: %s, HasActiveSession: %s"), 
-							NetMode == NM_Standalone ? TEXT("Standalone") :
-							NetMode == NM_ListenServer ? TEXT("ListenServer") :
-							NetMode == NM_Client ? TEXT("Client") : TEXT("Other"),
-							bHasActiveSession ? TEXT("Yes") : TEXT("No"));
-						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
-					}
 				}
 			}
 			
-			// Standalone 모드에서 세션이 활성화되어 있으면 방 생성 후 ServerTravel로 인한 재로드 상태
+			// 플레이어가 이미 입장했다면 (PostLogin 호출됨) 세션이 있다고 간주
+			// ServerTravel 후 세션이 일시적으로 사라질 수 있지만, 플레이어 입장은 유지됨
+			bool bHasPlayers = false;
+			int32 PlayerCount = 0;
+			if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
+			{
+				PlayerCount = BRGameState->PlayerArray.Num();
+				bHasPlayers = PlayerCount > 0;
+			}
+			
+			// 방 생성 후 ServerTravel 직전에 설정된 플래그 (GameInstance 유지)
+			bool bDidCreateRoomThenTravel = false;
+			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+			{
+				bDidCreateRoomThenTravel = BRGI->GetDidCreateRoomThenTravel();
+			}
+			
+			// 세션이 있거나, (방 생성→ServerTravel 직후이며 플레이어 있음) 이면 방 생성 완료 상태로 간주
+			// Standalone 첫 실행(메인 맵)에서는 플래그 미설정 → 엔트런스 UI
+			bool bRoomCreated = bHasActiveSession || (bDidCreateRoomThenTravel && bHasPlayers);
+			
+			if (GEngine)
+			{
+				FString DebugMsg = FString::Printf(TEXT("[BeginPlay] NetMode: %s, HasActiveSession: %s, Players: %d"), 
+					NetMode == NM_Standalone ? TEXT("Standalone") :
+					NetMode == NM_ListenServer ? TEXT("ListenServer") :
+					NetMode == NM_Client ? TEXT("Client") : TEXT("Other"),
+					bHasActiveSession ? TEXT("Yes") : TEXT("No"),
+					PlayerCount);
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
+			}
+			
+			// Standalone 모드에서 세션이 있거나 플레이어가 있으면 방 생성 후 ServerTravel로 인한 재로드 상태
 			// 이 경우 ListenServer 모드로 간주하여 로비로 이동해야 함
-			if (bHasActiveSession && NetMode == NM_Standalone)
+			if (bRoomCreated && NetMode == NM_Standalone)
 			{
 				// 방 생성 후 ServerTravel로 인한 재로드인지 확인
 				// 게임 재시작 시에는 세션이 정리되므로, 세션이 있으면 방 생성 완료 상태로 간주
@@ -156,10 +180,19 @@ void ABRPlayerController::BeginPlay()
 						TEXT("[PlayerController] 방 생성 완료 - 로비로 이동"));
 				}
 			}
-			else if (bHasActiveSession && NetMode == NM_ListenServer)
+			else if (bRoomCreated && NetMode == NM_ListenServer)
 			{
 				// ListenServer 모드에서 세션이 활성화되어 있으면 정상적인 방 생성 완료 상태
-				UE_LOG(LogTemp, Log, TEXT("[PlayerController] ListenServer 모드에서 세션 활성화 확인 - 로비로 이동"));
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] ListenServer 모드에서 세션/플레이어 확인 - 로비로 이동"));
+			}
+			
+			// 로비 표시 시 플래그 클리어 (다음 메인 복귀 시 엔트런스 표시용)
+			if ((NetMode == NM_Client || NetMode == NM_ListenServer) && (MainScreenWidget || LobbyMenuWidgetClass))
+			{
+				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+				{
+					BRGI->SetDidCreateRoomThenTravel(false);
+				}
 			}
 			
 			// MainScreenWidget이 설정되어 있으면 네트워크 모드에 따라 적절한 메뉴로 전환
@@ -177,6 +210,10 @@ void ABRPlayerController::BeginPlay()
 				}
 				else
 				{
+					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+					{
+						BRGI->SetDidCreateRoomThenTravel(false);
+					}
 					SetMainScreenToEntranceMenu();
 					UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 - Standalone 모드"));
 				}
@@ -213,6 +250,10 @@ void ABRPlayerController::BeginPlay()
 				// Standalone 모드이면 EntranceMenu 표시
 				else
 				{
+					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+					{
+						BRGI->SetDidCreateRoomThenTravel(false);
+					}
 					if (EntranceMenuWidgetClass)
 					{
 						ShowEntranceMenu();

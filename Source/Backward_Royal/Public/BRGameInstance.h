@@ -89,6 +89,13 @@ public:
 	UFUNCTION(Exec, Category = "Session|Match")
 	void SetLANOnly(int32 bEnabled);
 
+	/** 방 생성 성공 후 ServerTravel 직전에 설정. 맵 재로드 후 로비 UI 표시 판단용. */
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void SetDidCreateRoomThenTravel(bool b) { bDidCreateRoomThenTravel = b; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	bool GetDidCreateRoomThenTravel() const { return bDidCreateRoomThenTravel; }
+
 	// 전역 변수 설정을 위한 함수
 	void ApplyGlobalMultipliers();
 		
@@ -97,5 +104,8 @@ protected:
 	void LoadConfigFromJson(const FString& FileName, class UDataTable* TargetTable);
 
 	FString GetConfigDirectory();
+
+	/** 방 생성 후 ServerTravel 호출 직전에 true 설정. BeginPlay에서 로비 표시 여부 판단에 사용. */
+	bool bDidCreateRoomThenTravel = false;
 };
 

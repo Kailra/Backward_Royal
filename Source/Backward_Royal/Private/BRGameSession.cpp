@@ -1,6 +1,7 @@
 // BRGameSession.cpp
 #include "BRGameSession.h"
 #include "BRGameInstance.h"
+#include "BRGameMode.h"
 #include "BRPlayerState.h"
 #include "BRGameState.h"
 #include "OnlineSubsystem.h"
@@ -801,30 +802,44 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 			// Standalone 모드인 경우에만 리슨 서버로 전환
 			if (NetMode == NM_Standalone)
 			{
-				// 방법 1: ServerTravel(?listen) 사용 (맵 재로드)
-				// 현재 맵 경로 가져오기
-				FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
-				
-				// 맵 경로가 비어있으면 GetMapName() 사용
-				if (CurrentMapName.IsEmpty())
+				// 로비 맵 경로: GameMode의 LobbyMapPath 사용, 없으면 현재 맵
+				FString TravelMapPath;
+				if (AGameModeBase* GM = World->GetAuthGameMode())
 				{
-					CurrentMapName = World->GetMapName();
-					CurrentMapName.RemoveFromStart(World->StreamingLevelsPrefix);
+					if (ABRGameMode* BRGM = Cast<ABRGameMode>(GM))
+					{
+						TravelMapPath = BRGM->LobbyMapPath;
+					}
 				}
 				
-				// 맵 경로 구성 (현재 맵을 리슨 서버로 다시 로드)
-				FString ListenURL = FString::Printf(TEXT("%s?listen"), *CurrentMapName);
+				if (TravelMapPath.IsEmpty())
+				{
+					TravelMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
+					if (TravelMapPath.IsEmpty())
+					{
+						TravelMapPath = World->GetMapName();
+						TravelMapPath.RemoveFromStart(World->StreamingLevelsPrefix);
+					}
+					UE_LOG(LogTemp, Log, TEXT("[방 생성] LobbyMapPath 미설정 → 현재 맵으로 이동: %s"), *TravelMapPath);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Log, TEXT("[방 생성] 로비 맵으로 이동: %s"), *TravelMapPath);
+				}
+				
+				FString ListenURL = FString::Printf(TEXT("%s?listen"), *TravelMapPath);
 				
 				UE_LOG(LogTemp, Log, TEXT("[방 생성] 리슨 서버로 전환 중: %s"), *ListenURL);
 				UE_LOG(LogTemp, Log, TEXT("[방 생성] 클라이언트 연결 대기 중..."));
 				
-				// 리슨 서버로 전환
+				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+				{
+					BRGI->SetDidCreateRoomThenTravel(true);
+				}
 				World->ServerTravel(ListenURL);
 				
-				// ServerTravel은 비동기이므로, BeginPlay에서 리슨 서버 전환 완료를 확인해야 함
 				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 완료. 맵 재로드 후 BeginPlay에서 리슨 서버 전환 확인 예정."));
 				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 참고: Standalone 모드에서 ServerTravel(?listen)이 제대로 작동하지 않을 수 있습니다."));
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 맵 재로드 후에도 NetMode가 Standalone이면, Steam 세션을 통한 연결만 가능합니다."));
 			}
 			else if (NetMode == NM_ListenServer)
 			{
