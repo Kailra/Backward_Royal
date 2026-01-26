@@ -194,6 +194,8 @@ void ABRGameSession::InitializeOnlineSubsystem()
 	if (OnlineSubsystem)
 	{
 		FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
+		// 이전 코드: UE_LOG(LogTemp, Warning, TEXT("OSS : %s is Avaliable."), *OSS->GetSubsystemName().ToString());
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] OSS : %s is Available."), *SubsystemName);
 		UE_LOG(LogTemp, Log, TEXT("[GameSession] Online Subsystem 초기화: %s"), *SubsystemName);
 		
 		// 화면에 메시지 표시
@@ -224,6 +226,8 @@ void ABRGameSession::InitializeOnlineSubsystem()
 	}
 	else
 	{
+		// 이전 코드: UE_LOG(LogTemp, Warning, TEXT("Not found subsystem."));
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] Not found subsystem."));
 		UE_LOG(LogTemp, Error, TEXT("[GameSession] Online Subsystem 초기화 실패 - NULL"));
 		if (GEngine)
 		{
@@ -595,9 +599,11 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	}
 
 	// 기존 세션이 있으면 제거
+	// 이전 코드: if (AlreadyExsistingSession) { UE_LOG(LogTemp, Warning, TEXT("%s is already exsist. re-createSession."),*SESSION_NAME.ToString()); }
 	auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
 	if (ExistingSession != nullptr)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] %s is already exist. re-createSession."), *FName(NAME_GameSession).ToString());
 		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션이 발견되었습니다. 제거 중..."));
 		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 정보: 최대 인원=%d, 현재 인원=%d"), 
 			ExistingSession->SessionSettings.NumPublicConnections,
@@ -659,7 +665,34 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	// 이전 코드: SessionInterface->CreateSession(0,SESSION_NAME,SessionSettings);
 	// 이전 코드: if (MainMenu) MainMenu->Shutdown();
 	// 이전 코드처럼 바로 CreateSession 호출
-	SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 중..."));
+	bool bCreateResult = SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
+	
+	if (!bCreateResult)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession 호출이 즉시 실패했습니다!"));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 가능한 원인:"));
+		UE_LOG(LogTemp, Error, TEXT("  1. 기존 세션이 아직 제거되지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  2. Steam 클라이언트가 실행되지 않음 (인터넷 모드)"));
+		UE_LOG(LogTemp, Error, TEXT("  3. Steam에 로그인되지 않음 (인터넷 모드)"));
+		UE_LOG(LogTemp, Error, TEXT("  4. Online Subsystem 초기화 문제"));
+		
+		if (GEngine)
+		{
+			FString ErrorMsg = TEXT("[방 생성] CreateSession 즉시 실패!\n");
+			ErrorMsg += FString::Printf(TEXT("Subsystem: %s\n"), *SubsystemName);
+			if (!SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase))
+			{
+				ErrorMsg += TEXT("Steam 클라이언트 확인 필요");
+			}
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, ErrorMsg);
+		}
+		
+		OnCreateSessionComplete.Broadcast(false);
+		return;
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 성공 (비동기 처리 대기 중...)"));
 }
 
 void ABRGameSession::FindSessions()
@@ -827,8 +860,10 @@ void ABRGameSession::JoinSessionByIndex(int32 SessionIndex)
 		return;
 	}
 
+	// 이전 코드: if(SessionSearch->SearchResults.Num() > (int32)Index) SessionInterface->JoinSession(...); else UE_LOG(LogTemp, Warning, TEXT("Empty Session"));
 	if (SessionIndex < 0 || SessionIndex >= SessionSearch->SearchResults.Num())
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] Empty Session"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 잘못된 세션 인덱스 (%d). 사용 가능한 범위: 0-%d"), 
 			SessionIndex, SessionSearch->SearchResults.Num() - 1);
 		
@@ -939,7 +974,46 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 	// 이전 코드: if (!IsSuccess) { UE_LOG(LogTemp, Error, TEXT("Could not Createsession")); return; }
 	if (!bWasSuccessful)
 	{
+		// 이전 코드: UE_LOG(LogTemp, Error, TEXT("Could not Createsession"));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] Could not Createsession"));
+		UE_LOG(LogTemp, Error, TEXT("========================================"));
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: 세션 생성에 실패했습니다."));
+		UE_LOG(LogTemp, Error, TEXT("세션 이름: %s"), *InSessionName.ToString());
+		
+		// 실패 원인 확인
+		IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+		FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
+		UE_LOG(LogTemp, Error, TEXT("Online Subsystem: %s"), *SubsystemName);
+		
+		if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam 세션 생성 실패 가능 원인:"));
+			UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
+			UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음"));
+			UE_LOG(LogTemp, Error, TEXT("  3. Steam 네트워크 연결 문제"));
+			UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제"));
+			UE_LOG(LogTemp, Error, TEXT("  5. 기존 세션이 아직 제거되지 않음"));
+		}
+		else if (SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase))
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] NULL Subsystem - LAN 모드 사용 중"));
+			UE_LOG(LogTemp, Error, TEXT("  1. 같은 LAN에 연결되어 있는지 확인"));
+			UE_LOG(LogTemp, Error, TEXT("  2. 방화벽에서 포트 7777 허용 확인"));
+		}
+		
+		UE_LOG(LogTemp, Error, TEXT("========================================"));
+		
+		if (GEngine)
+		{
+			FString ErrorMsg = TEXT("[방 생성] 세션 생성 실패!\n");
+			ErrorMsg += FString::Printf(TEXT("Subsystem: %s\n"), *SubsystemName);
+			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+			{
+				ErrorMsg += TEXT("Steam 클라이언트 확인 필요");
+			}
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, ErrorMsg);
+		}
+		
 		OnCreateSessionComplete.Broadcast(false);
 		return;
 	}
@@ -1068,11 +1142,24 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 				for (int32 i = 0; i < Results.Num(); i++)
 				{
 					const FOnlineSessionSearchResult& Result = Results[i];
+					
+					// 이전 코드: UE_LOG(LogTemp, Display, TEXT("Found Session name : %s"), *SearchResult.GetSessionIdStr());
+					// 이전 코드: UE_LOG(LogTemp, Display, TEXT("Ping : %d"), SearchResult.PingInMs);
+					UE_LOG(LogTemp, Display, TEXT("[방 찾기] Found Session name : %s"), *Result.GetSessionIdStr());
+					UE_LOG(LogTemp, Display, TEXT("[방 찾기] Ping : %d"), Result.PingInMs);
+					
 					FString FoundSessionName;
 					FString FoundHostName;
 					FString FoundMapName;
 					Result.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), FoundSessionName);
 					Result.Session.SessionSettings.Get(FName(TEXT("HOST_NAME")), FoundHostName);
+					
+					// 이전 코드: if (SearchResult.Session.SessionSettings.Get(SESSION_SETTINGS_KEY, ServerName)) ServerData.Name = ServerName; else UE_LOG(LogTemp, Warning, TEXT("Session Name Not Found"));
+					if (FoundSessionName.IsEmpty())
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Session Name Not Found"));
+					}
+					
 					// 표시 이름: SESSION_NAME → HOST_NAME → "(이름 없음)"
 					FString DisplayName = !FoundSessionName.IsEmpty() ? FoundSessionName : (!FoundHostName.IsEmpty() ? FoundHostName : TEXT("(이름 없음)"));
 
@@ -1161,6 +1248,9 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 		}
 	}
 
+	// 이전 코드: UE_LOG(LogTemp, Warning, TEXT("Finished Finding Session"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Finished Finding Session"));
+	
 	OnFindSessionsComplete.Broadcast(Results);
 	
 	// 블루프린트용 이벤트도 브로드캐스트 (세션 개수 전달)
@@ -1205,6 +1295,7 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	}
 	
 	// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { return; }
+	// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { UE_LOG(LogTemp, Error, TEXT("Could not convert IP Address")); return; }
 	// 성공/실패 여부와 관계없이 연결 문자열 가져오기 시도
 	FString TravelURL;
 	bool bGotConnectString = SessionInterface->GetResolvedConnectString(InSessionName, TravelURL);
@@ -1217,6 +1308,8 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	
 	if (!bGotConnectString)
 	{
+		// 이전 코드: UE_LOG(LogTemp, Error, TEXT("Could not convert IP Address"));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] Could not convert IP Address"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 연결 주소를 가져올 수 없습니다."));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인: 서버가 ListenServer 모드가 아니거나 Steam 연결 문제"));
@@ -1260,10 +1353,11 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	}
 	
 	// 이전 코드: Engine->AddOnScreenDebugMessage(0,5,FColor::Green,FString::Printf(TEXT("Joining To %s"),*Address));
+	// 이전 코드: Engine->AddOnScreenDebugMessage(0,5,FColor::Green,FString::Printf(TEXT("Joining To %s"),*Address));
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
-			FString::Printf(TEXT("[방 참가] 서버로 이동 중: %s"), *TravelURL));
+			FString::Printf(TEXT("Joining To %s"), *TravelURL));
 	}
 	
 	// 이전 코드: PC->ClientTravel(Address,ETravelType::TRAVEL_Absolute);
