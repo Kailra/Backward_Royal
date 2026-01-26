@@ -234,6 +234,39 @@ void ABRGameSession::BeginPlay()
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 클라이언트 연결을 받을 수 있는 상태입니다."));
 			
+			// NetDriver 상태 확인
+			if (UNetDriver* NetDriver = World->GetNetDriver())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver 상태: 활성화됨"));
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver가 정상적으로 초기화되었습니다."));
+				
+				// 포트 정보 가져오기 (LocalAddr가 유효한 경우)
+				if (NetDriver->LocalAddr.IsValid())
+				{
+					FString LocalAddress = NetDriver->LocalAddr->ToString(false);
+					UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver LocalAddr: %s"), *LocalAddress);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver LocalAddr가 아직 초기화되지 않았습니다."));
+				}
+				
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+						TEXT("[GameSession] ✅ 리슨 서버 활성화! NetDriver 정상 작동 중"));
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] ❌ NetDriver가 없습니다! 클라이언트가 연결할 수 없습니다."));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, 
+						TEXT("[GameSession] ❌ NetDriver 없음! 리슨 서버로 재시작하세요."));
+				}
+			}
+			
 			// 리슨 서버 모드인데 세션이 없으면 자동으로 재생성 시도
 			if (!bHasActiveSession)
 			{
@@ -299,6 +332,27 @@ void ABRGameSession::BeginPlay()
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ 클라이언트가 접속할 수 없습니다!"));
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] NetMode: Standalone"));
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
+			
+			// NetDriver 상태 확인
+			if (UNetDriver* NetDriver = World->GetNetDriver())
+			{
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] NetDriver는 있지만 Standalone 모드입니다."));
+				
+				// LocalAddr 정보 확인
+				if (NetDriver->LocalAddr.IsValid())
+				{
+					FString LocalAddress = NetDriver->LocalAddr->ToString(false);
+					UE_LOG(LogTemp, Error, TEXT("[GameSession] NetDriver LocalAddr: %s"), *LocalAddress);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[GameSession] NetDriver LocalAddr가 없습니다."));
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] NetDriver가 없습니다. 이것이 클라이언트 연결 실패의 원인입니다."));
+			}
 			
 			// PendingRoomName이 있으면 open ?listen 명령어가 실행되었지만 NetMode가 전환되지 않은 것
 			FString PendingRoomName;
