@@ -79,6 +79,14 @@ protected:
 	// 검색 진행 중 플래그
 	bool bIsSearchingSessions;
 
+	// 방 찾기 0건 시 자동 재시도 (간헐적 실패 완화)
+	int32 FindSessionsRetryCount;
+	FTimerHandle FindSessionsRetryHandle;
+	static constexpr int32 MaxFindSessionsRetries = 2;
+
+	void FindSessionsInternal(bool bIsRetry);
+	void FindSessionsRetryCallback();
+
 	// 세션 생성 완료 콜백
 	void OnCreateSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful);
 

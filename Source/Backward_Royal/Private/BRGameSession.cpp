@@ -5,11 +5,14 @@
 #include "OnlineSessionSettings.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
 
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
+	, FindSessionsRetryCount(0)
 {
 	// 생성자에서는 초기화하지 않음 (BeginPlay에서 초기화)
 	// Standalone 모드에서는 생성자 시점에 World가 준비되지 않을 수 있음
@@ -351,22 +354,40 @@ void ABRGameSession::FindSessions()
 	if (bIsSearchingSessions)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 이미 검색이 진행 중입니다. 기다려주세요."));
-		
-		// 화면에 디버그 메시지 표시
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("[방 찾기] 이미 검색이 진행 중입니다. 기다려주세요."));
 		}
-		
 		return;
 	}
 
-	// 기존 검색이 진행 중이면 취소
-	if (SessionSearch.IsValid())
+	FindSessionsInternal(false);
+}
+
+void ABRGameSession::FindSessionsRetryCallback()
+{
+	FindSessionsInternal(true);
+}
+
+void ABRGameSession::FindSessionsInternal(bool bIsRetry)
+{
+	if (!SessionInterface.IsValid())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[방 찾기] 기존 검색 취소 중..."));
-		SessionInterface->CancelFindSessions();
-		bIsSearchingSessions = false;
+		return;
+	}
+
+	if (!bIsRetry)
+	{
+		FindSessionsRetryCount = 0;
+		GetWorld()->GetTimerManager().ClearTimer(FindSessionsRetryHandle);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 자동 재검색 실행 (%d/%d)"), FindSessionsRetryCount, MaxFindSessionsRetries);
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("[방 찾기] 재검색 중..."));
+		}
 	}
 
 	// 검색 시작 플래그 설정
@@ -808,10 +829,24 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 			}
 			else
 			{
+				// 0건일 때 Steam이면 최대 2회 자동 재검색 (간헐적 실패 완화)
+				if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase) &&
+					FindSessionsRetryCount < MaxFindSessionsRetries)
+				{
+					FindSessionsRetryCount++;
+					UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 세션 0건. %d초 후 재검색 (%d/%d)"), 2, FindSessionsRetryCount, MaxFindSessionsRetries);
+					if (GEngine)
+					{
+						FString RetryMsg = FString::Printf(TEXT("[방 찾기] 방 없음 → 2초 후 재검색 (%d/%d)"), FindSessionsRetryCount, MaxFindSessionsRetries);
+						GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange, RetryMsg);
+					}
+					GetWorld()->GetTimerManager().SetTimer(FindSessionsRetryHandle, this, &ABRGameSession::FindSessionsRetryCallback, 2.0f, false);
+					return; // 브로드캐스트하지 않음, 재검색 후 콜백에서 처리
+				}
+
 				UE_LOG(LogTemp, Warning, TEXT("========================================"));
 				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 사용 가능한 세션이 없습니다."));
 				
-				// Steam 세션 검색 시 추가 정보
 				UE_LOG(LogTemp, Warning, TEXT("Online Subsystem: %s"), *SubsystemName);
 				
 				if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
@@ -824,7 +859,6 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 				}
 				UE_LOG(LogTemp, Warning, TEXT("========================================"));
 				
-				// 화면에 디버그 메시지 표시
 				if (GEngine)
 				{
 					FString WarningMsg = TEXT("[방 찾기] 사용 가능한 세션이 없습니다.\n");
