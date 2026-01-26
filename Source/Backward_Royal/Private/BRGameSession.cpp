@@ -143,6 +143,28 @@ void ABRGameSession::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	// 리슨 서버 전환 완료 확인 (ServerTravel 후 맵 재로드 시)
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		ENetMode NetMode = World->GetNetMode();
+		bool bHasActiveSession = HasActiveSession();
+		
+		if (bHasActiveSession && NetMode == NM_ListenServer)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: 리슨 서버 전환 완료 확인! NetMode=ListenServer, HasActiveSession=Yes"));
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+					TEXT("[GameSession] 리슨 서버 전환 완료! 클라이언트 연결 대기 중..."));
+			}
+		}
+		else if (bHasActiveSession && NetMode == NM_Standalone)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: 세션은 있지만 아직 Standalone 모드. 리슨 서버 전환 대기 중..."));
+		}
+	}
+	
 	// BeginPlay에서 Online Subsystem 초기화 (Standalone 모드에서도 작동하도록)
 	// 약간의 지연 후 초기화 (모든 시스템이 준비된 후)
 	FTimerHandle TimerHandle;
@@ -672,6 +694,9 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				
 				// 리슨 서버로 전환
 				World->ServerTravel(ListenURL);
+				
+				// ServerTravel은 비동기이므로, BeginPlay에서 리슨 서버 전환 완료를 확인해야 함
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 완료. 맵 재로드 후 BeginPlay에서 리슨 서버 전환 확인 예정."));
 			}
 			else if (NetMode == NM_ListenServer)
 			{
@@ -943,11 +968,16 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			if (!bGotConnectString)
 			{
 				UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 세션이 제대로 등록되지 않았을 수 있습니다."));
+				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 가능한 원인: 1) 호스트가 아직 리슨 서버로 전환 중, 2) Steam 연결 문자열 준비 중, 3) 세션 등록 실패"));
+				
 				if (GEngine)
 				{
 					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, 
-						TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n호스트가 리슨 서버로 전환되었는지 확인하세요."));
+						TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n호스트가 리슨 서버로 전환되었는지 확인하세요.\n잠시 후 다시 시도해보세요."));
 				}
+				
+				// GetResolvedConnectString 실패는 UnknownError로 처리되므로 여기서는 로그만 남김
+				// 실제 연결은 ClientTravel에서 실패할 것이므로, 여기서는 경고만 표시
 			}
 			
 			// 포트가 0이면 기본 포트 7777로 변경
