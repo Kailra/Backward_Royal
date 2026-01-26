@@ -314,20 +314,49 @@ void ABRGameSession::FindSessions()
 		SessionSearch->bIsLanQuery ? TEXT("예") : TEXT("아니오"));
 
 	// 세션 찾기 시작
-	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 검색 요청 전송 중..."));
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 요청 전송 중..."));
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정 요약:"));
+	UE_LOG(LogTemp, Warning, TEXT("  - Subsystem: %s"), *SubsystemName);
+	UE_LOG(LogTemp, Warning, TEXT("  - bIsLanQuery: %s"), SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("  - MaxSearchResults: %d"), SessionSearch->MaxSearchResults);
+	
+	if (GEngine)
+	{
+		FString DebugMsg = FString::Printf(TEXT("[방 찾기] 검색 요청 중...\nSubsystem: %s\nLAN: %s"), 
+			*SubsystemName,
+			SessionSearch->bIsLanQuery ? TEXT("Yes") : TEXT("No"));
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
+	}
+	
 	bool bFindSessionsResult = SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
 	if (!bFindSessionsResult)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[방 찾기] FindSessions 호출 실패"));
+		UE_LOG(LogTemp, Error, TEXT("[방 찾기] FindSessions 호출이 즉시 실패했습니다!"));
+		UE_LOG(LogTemp, Error, TEXT("[방 찾기] 가능한 원인:"));
+		UE_LOG(LogTemp, Error, TEXT("  1. SessionInterface가 유효하지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  2. Steam 네트워크 연결 문제"));
+		UE_LOG(LogTemp, Error, TEXT("  3. 이미 검색이 진행 중"));
 		
 		// 화면에 디버그 메시지 표시
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] FindSessions 호출 실패!"));
+			FString ErrorMsg = TEXT("[방 찾기] FindSessions 호출 실패!\n");
+			ErrorMsg += FString::Printf(TEXT("Subsystem: %s\n"), *SubsystemName);
+			ErrorMsg += TEXT("Steam 네트워크 연결 확인 필요");
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, ErrorMsg);
 		}
 		
 		bIsSearchingSessions = false;
 		OnFindSessionsComplete.Broadcast(TArray<FOnlineSessionSearchResult>());
+		OnFindSessionsCompleteBP.Broadcast(0);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] FindSessions 호출 성공 (비동기 처리 대기 중...)"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("[방 찾기] 검색 중... 잠시만 기다려주세요."));
+		}
 	}
 }
 
@@ -580,10 +609,18 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 
 void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 {
+	UE_LOG(LogTemp, Warning, TEXT("========================================"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] OnFindSessionsCompleteDelegate 호출됨"));
+	UE_LOG(LogTemp, Warning, TEXT("  - bWasSuccessful: %s"), bWasSuccessful ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("  - bIsSearchingSessions: %s"), bIsSearchingSessions ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("  - SessionSearch.IsValid(): %s"), SessionSearch.IsValid() ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("========================================"));
+	
 	// 검색이 진행 중이 아니면 무시 (중복 콜백 방지)
 	// 단, 첫 번째 콜백이 이미 처리되었을 수 있으므로 조용히 무시
 	if (!bIsSearchingSessions)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 이미 처리된 콜백이므로 무시합니다."));
 		// 이미 처리된 콜백이므로 조용히 무시 (로그 출력 안 함)
 		return;
 	}
@@ -591,18 +628,34 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 	// 검색 완료 플래그 해제
 	bIsSearchingSessions = false;
 
+	// OnlineSubsystem을 함수 상단에서 한 번만 가져옴 (중복 선언 방지)
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
+
 	TArray<FOnlineSessionSearchResult> Results;
-	
-	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 콜백 호출: bWasSuccessful=%s, SessionSearch.IsValid()=%s"), 
-		bWasSuccessful ? TEXT("true") : TEXT("false"),
-		SessionSearch.IsValid() ? TEXT("true") : TEXT("false"));
 	
 	if (bWasSuccessful)
 	{
 		if (SessionSearch.IsValid())
 		{
 			Results = SessionSearch->SearchResults;
-			UE_LOG(LogTemp, Log, TEXT("[방 찾기] 성공: 찾은 세션 수 = %d"), Results.Num());
+			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 성공: 찾은 세션 수 = %d"), Results.Num());
+			
+			// Steam 세션 검색 시 추가 정보
+			UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Online Subsystem: %s"), *SubsystemName);
+			
+			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+			{
+				if (Results.Num() == 0)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam 세션을 찾지 못했습니다."));
+					UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 가능한 원인:"));
+					UE_LOG(LogTemp, Warning, TEXT("  1. 방이 아직 생성되지 않음"));
+					UE_LOG(LogTemp, Warning, TEXT("  2. 방 생성 시 bShouldAdvertise=false로 설정됨"));
+					UE_LOG(LogTemp, Warning, TEXT("  3. Steam 네트워크 문제"));
+					UE_LOG(LogTemp, Warning, TEXT("  4. 방 생성과 방 찾기의 세션 설정이 일치하지 않음"));
+				}
+			}
 			
 			// 화면에 디버그 메시지 표시
 			if (GEngine)
@@ -668,15 +721,32 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 			}
 			else
 			{
+				UE_LOG(LogTemp, Warning, TEXT("========================================"));
 				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 사용 가능한 세션이 없습니다."));
-				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 참고: 같은 프로세스에서 생성한 세션은 검색되지 않을 수 있습니다."));
-				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 참고: 다른 게임 인스턴스를 실행하여 테스트해보세요."));
+				
+				// Steam 세션 검색 시 추가 정보
+				UE_LOG(LogTemp, Warning, TEXT("Online Subsystem: %s"), *SubsystemName);
+				
+				if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("Steam 세션을 찾지 못한 가능한 원인:"));
+					UE_LOG(LogTemp, Warning, TEXT("  1. 방이 아직 생성되지 않음 (다른 PC에서 방 생성 확인)"));
+					UE_LOG(LogTemp, Warning, TEXT("  2. 방 생성 시 bShouldAdvertise=false로 설정됨"));
+					UE_LOG(LogTemp, Warning, TEXT("  3. 방 생성과 방 찾기의 세션 설정이 일치하지 않음"));
+					UE_LOG(LogTemp, Warning, TEXT("  4. Steam 네트워크 문제 (방화벽, NAT 등)"));
+					UE_LOG(LogTemp, Warning, TEXT("  5. 같은 프로세스에서 생성한 세션은 검색되지 않을 수 있음"));
+				}
+				UE_LOG(LogTemp, Warning, TEXT("========================================"));
 				
 				// 화면에 디버그 메시지 표시
 				if (GEngine)
 				{
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 찾기] 사용 가능한 세션이 없습니다."));
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("다른 게임 인스턴스를 실행하여 테스트해보세요."));
+					FString WarningMsg = TEXT("[방 찾기] 사용 가능한 세션이 없습니다.\n");
+					WarningMsg += TEXT("확인 사항:\n");
+					WarningMsg += TEXT("1. 다른 PC에서 방이 생성되었는지 확인\n");
+					WarningMsg += TEXT("2. 방 생성과 방 찾기의 설정이 일치하는지 확인\n");
+					WarningMsg += TEXT("3. Steam 네트워크 연결 확인");
+					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, WarningMsg);
 				}
 			}
 		}
