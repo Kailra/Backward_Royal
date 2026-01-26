@@ -26,6 +26,103 @@ ABRGameSession::ABRGameSession()
 	// Standalone 모드에서는 생성자 시점에 World가 준비되지 않을 수 있음
 }
 
+void ABRGameSession::CheckNetDriverStatus(UWorld* World)
+{
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+	UE_LOG(LogTemp, Error, TEXT("[GameSession] CheckNetDriverStatus 호출됨"));
+	
+	if (!World || !IsValid(World))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] World가 NULL이거나 유효하지 않습니다!"));
+		return;
+	}
+	
+	// this 객체도 유효한지 확인 (맵 전환 중 파괴될 수 있음)
+	if (!IsValid(this))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] this 객체가 유효하지 않습니다!"));
+		return;
+	}
+	
+	ENetMode NetMode = World->GetNetMode();
+	UE_LOG(LogTemp, Error, TEXT("[GameSession] 현재 NetMode: %s"), 
+		NetMode == NM_Standalone ? TEXT("Standalone") :
+		NetMode == NM_ListenServer ? TEXT("ListenServer") :
+		NetMode == NM_Client ? TEXT("Client") :
+		NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+	
+	// NetDriver 상태 확인 (안전하게 접근)
+	UNetDriver* NetDriver = nullptr;
+	if (World)
+	{
+		NetDriver = World->GetNetDriver();
+	}
+	
+	if (NetDriver)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] ✅ NetDriver 상태: 활성화됨 (NetMode: %s)"), 
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer") :
+			NetMode == NM_Client ? TEXT("Client") :
+			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+		
+		// 포트 정보 가져오기 (LocalAddr가 유효한 경우)
+		// 안전하게 접근하기 위해 유효성 검사 강화
+		if (NetDriver->LocalAddr.IsValid())
+		{
+			TSharedPtr<FInternetAddr> LocalAddr = NetDriver->LocalAddr;
+			if (LocalAddr.IsValid())
+			{
+				// ToString 호출 전에 포인터가 유효한지 확인
+				FInternetAddr* AddrPtr = LocalAddr.Get();
+				if (AddrPtr)
+				{
+					FString LocalAddress = AddrPtr->ToString(false);
+					if (!LocalAddress.IsEmpty())
+					{
+						UE_LOG(LogTemp, Error, TEXT("[GameSession] ✅ NetDriver LocalAddr: %s"), *LocalAddress);
+						
+						if (GEngine && NetMode == NM_ListenServer)
+						{
+							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+								FString::Printf(TEXT("[GameSession] ✅ NetDriver 활성화! 주소: %s"), *LocalAddress));
+						}
+					}
+					else
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] ⚠️ LocalAddr->ToString()가 빈 문자열을 반환했습니다."));
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[GameSession] ⚠️ LocalAddr 포인터가 NULL입니다."));
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ NetDriver LocalAddr가 아직 초기화되지 않았습니다."));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] ❌ NetDriver가 없습니다. (NetMode: %s)"), 
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer") :
+			NetMode == NM_Client ? TEXT("Client") :
+			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+		
+		if (GEngine && NetMode == NM_ListenServer)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, 
+				TEXT("[GameSession] ❌ NetDriver 없음! 리슨 서버로 재시작하세요."));
+		}
+	}
+	
+	UE_LOG(LogTemp, Error, TEXT("[GameSession] CheckNetDriverStatus 완료"));
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+}
+
 void ABRGameSession::InitializeOnlineSubsystem()
 {
 	// 맵 전환(open ?listen) 중 등으로 this/World 무효 시 스킵 — 타이머 콜백 크래시 방지
@@ -159,10 +256,15 @@ void ABRGameSession::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+	UE_LOG(LogTemp, Error, TEXT("[GameSession] BeginPlay 호출됨!"));
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+	
 	// 리슨 서버 전환 완료 확인 (ServerTravel 후 맵 재로드 시)
 	UWorld* World = GetWorld();
 	if (World)
 	{
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] World 유효함"));
 		ENetMode NetMode = World->GetNetMode();
 		bool bHasActiveSession = HasActiveSession();
 		
@@ -219,52 +321,34 @@ void ABRGameSession::BeginPlay()
 		}
 		
 		// 리슨 서버 모드 확인 (ServerTravel(?listen) 후 맵 재로드 시)
-		UE_LOG(LogTemp, Warning, TEXT("========================================"));
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: NetMode 확인"));
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetMode: %s"), 
+		UE_LOG(LogTemp, Error, TEXT("========================================"));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] BeginPlay: NetMode 확인"));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] NetMode: %s"), 
 			NetMode == NM_Standalone ? TEXT("Standalone") :
 			NetMode == NM_ListenServer ? TEXT("ListenServer ✅") :
 			NetMode == NM_Client ? TEXT("Client") :
 			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
-		UE_LOG(LogTemp, Warning, TEXT("========================================"));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] HasActiveSession: %s"), bHasActiveSession ? TEXT("Yes") : TEXT("No"));
+		
+		// NetDriver 상태 확인 (모든 NetMode에서 확인)
+		// BeginPlay 시점에 NetDriver가 아직 초기화되지 않았을 수 있으므로 즉시 확인
+		CheckNetDriverStatus(World);
+		
+		// 주의: 타이머 콜백에서 크래시가 발생할 수 있으므로 타이머는 제거
+		// NetDriver는 보통 BeginPlay 시점에 이미 초기화되어 있음
+		// 만약 초기화되지 않았다면, 리슨 서버 모드로 시작하지 않은 것이 원인일 수 있음
+		
+		UE_LOG(LogTemp, Error, TEXT("========================================"));
 		
 		if (NetMode == NM_ListenServer)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 클라이언트 연결을 받을 수 있는 상태입니다."));
 			
-			// NetDriver 상태 확인
-			if (UNetDriver* NetDriver = World->GetNetDriver())
+			if (GEngine)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver 상태: 활성화됨"));
-				UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver가 정상적으로 초기화되었습니다."));
-				
-				// 포트 정보 가져오기 (LocalAddr가 유효한 경우)
-				if (NetDriver->LocalAddr.IsValid())
-				{
-					FString LocalAddress = NetDriver->LocalAddr->ToString(false);
-					UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver LocalAddr: %s"), *LocalAddress);
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[GameSession] NetDriver LocalAddr가 아직 초기화되지 않았습니다."));
-				}
-				
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
-						TEXT("[GameSession] ✅ 리슨 서버 활성화! NetDriver 정상 작동 중"));
-				}
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("[GameSession] ❌ NetDriver가 없습니다! 클라이언트가 연결할 수 없습니다."));
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, 
-						TEXT("[GameSession] ❌ NetDriver 없음! 리슨 서버로 재시작하세요."));
-				}
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+					TEXT("[GameSession] ✅ 리슨 서버 모드 활성화!"));
 			}
 			
 			// 리슨 서버 모드인데 세션이 없으면 자동으로 재생성 시도
@@ -396,9 +480,18 @@ void ABRGameSession::BeginPlay()
 			}
 		}
 	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] World가 NULL입니다!"));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] BeginPlay에서 World를 가져올 수 없습니다!"));
+	}
+	
+	UE_LOG(LogTemp, Error, TEXT("[GameSession] BeginPlay 완료 - Online Subsystem 초기화 시작"));
 	
 	// Online Subsystem 즉시 초기화 (타이머 사용 시 open ?listen 맵 전환 중 크래시 가능)
 	InitializeOnlineSubsystem();
+	
+	UE_LOG(LogTemp, Error, TEXT("[GameSession] InitializeOnlineSubsystem 완료"));
 }
 
 void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)

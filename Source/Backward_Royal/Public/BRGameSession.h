@@ -99,6 +99,9 @@ protected:
 	// Online Subsystem 초기화 (BeginPlay에서 호출)
 	void InitializeOnlineSubsystem();
 
+	// NetDriver 상태 확인 (진단용)
+	void CheckNetDriverStatus(UWorld* World);
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 };
