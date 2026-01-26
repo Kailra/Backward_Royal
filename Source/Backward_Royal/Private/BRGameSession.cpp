@@ -1421,8 +1421,41 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 
 void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinSessionCompleteResult::Type Result)
 {
+	// 이전 코드(OSS251030last)처럼 Result를 체크하지 않고 바로 GetResolvedConnectString 시도
+	// 성공/실패 여부와 관계없이 연결 문자열을 가져올 수 있으면 ClientTravel 시도
 	bool bWasSuccessful = (Result == EOnJoinSessionCompleteResult::Success);
 	
+	// 이전 코드처럼 SessionInterface 유효성만 확인하고 바로 진행
+	if (!SessionInterface.IsValid())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] SessionInterface가 유효하지 않습니다."));
+		OnJoinSessionComplete.Broadcast(false);
+		return;
+	}
+	
+	// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { return; }
+	// 성공/실패 여부와 관계없이 연결 문자열 가져오기 시도
+	FString TravelURL;
+	bool bGotConnectString = SessionInterface->GetResolvedConnectString(InSessionName, TravelURL);
+	
+	if (!bGotConnectString)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 연결 주소를 가져올 수 없습니다."));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인: 서버가 ListenServer 모드가 아니거나 Steam 연결 문제"));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] Result 코드: %d"), (int32)Result);
+		
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, 
+				TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n서버가 ListenServer 모드인지 확인하세요."));
+		}
+		
+		OnJoinSessionComplete.Broadcast(false);
+		return; // 이전 코드처럼 실패 시 바로 return
+	}
+	
+	// 연결 문자열을 가져왔으면 성공/실패 여부와 관계없이 ClientTravel 시도
+	// (이전 코드는 Result를 체크하지 않고 바로 ClientTravel 호출)
 	if (bWasSuccessful)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 참가] 성공: 세션 참가 완료 - %s"), *InSessionName.ToString());
@@ -1434,66 +1467,57 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
 		}
 		
-		// 서버로 여행 (클라이언트만)
-		// 이전 코드(OSS251030last)처럼 간단하게 처리
-		if (SessionInterface.IsValid())
+		UE_LOG(LogTemp, Log, TEXT("[방 참가] 성공: 세션 참가 완료 - %s"), *InSessionName.ToString());
+		
+		// 화면에 디버그 메시지 표시
+		if (GEngine)
 		{
-			FString TravelURL;
-			// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { return; }
-			// 중요: InSessionName을 사용해야 함 (NAME_GameSession이 아님!)
-			if (!SessionInterface->GetResolvedConnectString(InSessionName, TravelURL))
-			{
-				UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 연결 주소를 가져올 수 없습니다."));
-				UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인: 서버가 ListenServer 모드가 아니거나 Steam 연결 문제"));
-				
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, 
-						TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n서버가 ListenServer 모드인지 확인하세요."));
-				}
-				
-				OnJoinSessionComplete.Broadcast(false);
-				return; // 이전 코드처럼 실패 시 바로 return
-			}
-			
-			// 이전 코드: Engine->AddOnScreenDebugMessage(0,5,FColor::Green,FString::Printf(TEXT("Joining To %s"),*Address));
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
-					FString::Printf(TEXT("[방 참가] 서버로 이동 중: %s"), *TravelURL));
-			}
-			
-			// 이전 코드: PC->ClientTravel(Address,ETravelType::TRAVEL_Absolute);
-			// 이전 코드처럼 바로 ClientTravel 호출 (NetMode 체크 없이)
-			UWorld* World = GetWorld();
-			if (World)
-			{
-				if (APlayerController* PC = World->GetFirstPlayerController())
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[방 참가] 서버로 이동: %s"), *TravelURL);
-					PC->ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
-				}
-				else
-				{
-					UE_LOG(LogTemp, Error, TEXT("[방 참가] PlayerController를 찾을 수 없습니다!"));
-					OnJoinSessionComplete.Broadcast(false);
-				}
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("[방 참가] World를 찾을 수 없습니다!"));
-				OnJoinSessionComplete.Broadcast(false);
-			}
+			FString Message = FString::Printf(TEXT("[방 참가] 성공! 세션: %s"), *InSessionName.ToString());
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] Result가 Success가 아니지만 연결 문자열을 가져왔으므로 시도합니다. (Result: %d)"), (int32)Result);
+	}
+	
+	// 이전 코드: Engine->AddOnScreenDebugMessage(0,5,FColor::Green,FString::Printf(TEXT("Joining To %s"),*Address));
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+			FString::Printf(TEXT("[방 참가] 서버로 이동 중: %s"), *TravelURL));
+	}
+	
+	// 이전 코드: PC->ClientTravel(Address,ETravelType::TRAVEL_Absolute);
+	// 이전 코드처럼 바로 ClientTravel 호출 (NetMode 체크 없이)
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		if (APlayerController* PC = World->GetFirstPlayerController())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 서버로 이동: %s"), *TravelURL);
+			PC->ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Error, TEXT("[방 참가] SessionInterface가 유효하지 않습니다!"));
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] PlayerController를 찾을 수 없습니다!"));
 			OnJoinSessionComplete.Broadcast(false);
 		}
 	}
 	else
 	{
-		// 세션 상태 확인 (디버깅용)
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] World를 찾을 수 없습니다!"));
+		OnJoinSessionComplete.Broadcast(false);
+	}
+	
+	// 성공한 경우에만 Broadcast
+	if (bWasSuccessful)
+	{
+		OnJoinSessionComplete.Broadcast(true);
+	}
+	else
+	{
+		// 실패한 경우 상세 진단 정보 출력
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] JoinSession 실패 상세 진단"));
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
@@ -1590,8 +1614,8 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			UE_LOG(LogTemp, Error, TEXT("[방 참가] Online Subsystem이 NULL입니다!"));
 		}
 		
-		// 현재 NetMode 확인
-		UWorld* World = GetWorld();
+		// 현재 NetMode 확인 (위에서 선언한 World 변수 재사용)
+		World = GetWorld();
 		if (World)
 		{
 			ENetMode NetMode = World->GetNetMode();
@@ -1646,9 +1670,10 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("다른 게임 인스턴스를 실행하여 테스트해보세요."));
 			}
 		}
+		
+		// 실패한 경우 Broadcast
+		OnJoinSessionComplete.Broadcast(false);
 	}
-
-	OnJoinSessionComplete.Broadcast(bWasSuccessful);
 }
 
 int32 ABRGameSession::GetSessionCount() const
