@@ -864,6 +864,13 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				
 				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 완료. 맵 재로드 후 BeginPlay에서 리슨 서버 전환 확인 예정."));
 				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 참고: Standalone 모드에서 ServerTravel(?listen)이 제대로 작동하지 않을 수 있습니다."));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor::Orange,
+						TEXT("클라이언트 접속 안 될 때: 호스트를 Listen Server로 실행하세요.\n")
+						TEXT("1) 콘솔(~) 열고 OpenListenServer 입력 후 방 만들기\n")
+						TEXT("2) 또는 게임을 '맵이름?listen'으로 실행한 뒤 방 만들기"));
+				}
 			}
 			else if (NetMode == NM_ListenServer)
 			{
