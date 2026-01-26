@@ -9,6 +9,8 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
+#include "Engine/NetDriver.h"
+#include "OnlineSubsystemUtils.h"
 
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
@@ -162,6 +164,15 @@ void ABRGameSession::BeginPlay()
 		else if (bHasActiveSession && NetMode == NM_Standalone)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: 세션은 있지만 아직 Standalone 모드. 리슨 서버 전환 대기 중..."));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] Standalone 모드에서는 ServerTravel(?listen)이 제대로 작동하지 않을 수 있습니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] Steam 세션을 통한 클라이언트 연결은 가능하지만, NetMode는 Standalone으로 유지될 수 있습니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 클라이언트는 Steam을 통해 연결할 수 있으며, GetResolvedConnectString으로 연결 주소를 가져올 수 있습니다."));
+			
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Yellow, 
+					TEXT("[GameSession] Standalone 모드: Steam 세션 활성화됨.\n클라이언트는 Steam을 통해 연결할 수 있습니다."));
+			}
 		}
 	}
 	
@@ -676,6 +687,7 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 			// Standalone 모드인 경우에만 리슨 서버로 전환
 			if (NetMode == NM_Standalone)
 			{
+				// 방법 1: ServerTravel(?listen) 사용 (맵 재로드)
 				// 현재 맵 경로 가져오기
 				FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
 				
@@ -697,6 +709,8 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 				
 				// ServerTravel은 비동기이므로, BeginPlay에서 리슨 서버 전환 완료를 확인해야 함
 				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 완료. 맵 재로드 후 BeginPlay에서 리슨 서버 전환 확인 예정."));
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 참고: Standalone 모드에서 ServerTravel(?listen)이 제대로 작동하지 않을 수 있습니다."));
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] 맵 재로드 후에도 NetMode가 Standalone이면, Steam 세션을 통한 연결만 가능합니다."));
 			}
 			else if (NetMode == NM_ListenServer)
 			{
@@ -1048,6 +1062,10 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	else
 	{
 		// 세션 상태 확인 (디버깅용)
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] JoinSession 실패 상세 진단"));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
+		
 		if (SessionInterface.IsValid())
 		{
 			auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
@@ -1056,11 +1074,32 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 실패 시 세션 상태: NumOpenPublicConnections=%d/%d"), 
 					Session->NumOpenPublicConnections, 
 					Session->SessionSettings.NumPublicConnections);
+				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 세션 설정: bIsLANMatch=%s, bUsesPresence=%s, bUseLobbiesIfAvailable=%s"),
+					Session->SessionSettings.bIsLANMatch ? TEXT("true") : TEXT("false"),
+					Session->SessionSettings.bUsesPresence ? TEXT("true") : TEXT("false"),
+					Session->SessionSettings.bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 실패 시 세션 상태: GetNamedSession(NAME_GameSession) = NULL"));
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패 시 세션 상태: GetNamedSession(NAME_GameSession) = NULL"));
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] → 세션이 제대로 등록되지 않았습니다!"));
 			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] SessionInterface가 유효하지 않습니다!"));
+		}
+		
+		// Online Subsystem 정보
+		IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+		if (OnlineSubsystem)
+		{
+			FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 현재 Online Subsystem: %s"), *SubsystemName);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] Online Subsystem이 NULL입니다!"));
 		}
 		
 		FString ErrorMessage;
