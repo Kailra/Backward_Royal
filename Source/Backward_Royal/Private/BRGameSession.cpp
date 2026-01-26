@@ -620,157 +620,46 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 		// 현재는 즉시 CreateSession을 시도합니다
 	}
 
-	// 세션 설정 생성
+	// 세션 설정 생성 - 이전 코드(OSS251030last)처럼 간단하게
 	SessionSettings = MakeShareable(new FOnlineSessionSettings());
 	
+	// 이전 코드: if (IOnlineSubsystem::Get()->GetSubsystemName() == "NULL") SessionSettings.bIsLANMatch = true; else SessionSettings.bIsLANMatch = false;
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
-	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
-	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
-	
-	// LAN 전용(true) / 인터넷(Steam) 매칭(false) — GameInstance에서 읽음
-	bool bUseLAN = true;
-	if (UWorld* W = GetWorld())
+	if (OnlineSubsystem && OnlineSubsystem->GetSubsystemName() == "NULL")
 	{
-		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
-		{
-			bUseLAN = BRGI->GetUseLANOnly();
-		}
+		SessionSettings->bIsLANMatch = true;
 	}
-	SessionSettings->bIsLANMatch = bUseLAN;
-	SessionSettings->NumPublicConnections = 8; // 최대 8명
-	SessionSettings->NumPrivateConnections = 0;
-	SessionSettings->bAllowInvites = true;
-	SessionSettings->bAllowJoinInProgress = true;
-	SessionSettings->bShouldAdvertise = true;
+	else
+	{
+		SessionSettings->bIsLANMatch = false;
+	}
+	
+	// 이전 코드: SessionSettings.NumPublicConnections = 24;
+	SessionSettings->NumPublicConnections = 8; // 현재 프로젝트는 8명
+	// 이전 코드: SessionSettings.bUsesPresence = SessionSettings.bShouldAdvertise = true;
 	SessionSettings->bUsesPresence = true;
-	// Steam presence 검색/참가에 필요 (방 찾기 시 SEARCH_PRESENCE와 쌍을 이룸)
-	if (bIsSteam)
-	{
-		SessionSettings->bAllowJoinViaPresence = true;
-	}
-	// Steam에서는 Lobby를 사용하는 것이 더 안정적입니다
-	// Lobby를 사용하지 않으면 Steam 세션 생성이 실패할 수 있습니다
-	SessionSettings->bUseLobbiesIfAvailable = bIsSteam; // Steam이면 Lobby 사용
-	
-	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s (%s), bUseLobbiesIfAvailable=%s"), 
+	SessionSettings->bShouldAdvertise = true;
+	// 이전 코드: SessionSettings.Set(SESSION_SETTINGS_KEY, DesiredServerName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	// 세션 이름 설정
+	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("NULL");
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s"), 
 		*SubsystemName,
-		SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"),
-		bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷 매칭"),
-		SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
-	SessionSettings->Set(FName(TEXT("MAPNAME")), FString("Lobby"), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+		SessionSettings->bIsLANMatch ? TEXT("true (LAN)") : TEXT("false (인터넷)"));
 
-	// 호스트(방장) 이름 — GameInstance에서 조회 (표시용)
-	FString HostName;
-	if (UWorld* W = GetWorld())
-	{
-		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
-		{
-			HostName = BRGI->GetPlayerName();
-		}
-	}
-	SessionSettings->Set(FName(TEXT("HOST_NAME")), HostName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
-
-	// 세션 이름: RoomName 사용, 비어 있으면 "호스트이름의 방" fallback
+	// 이전 코드: SessionSettings->Set(SESSION_SETTINGS_KEY, DesiredServerName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	// 이전 코드의 SESSION_SETTINGS_KEY는 "FREE"였지만, 현재는 "SESSION_NAME" 사용
+	// RoomName이 비어있으면 기본값 사용
 	FString EffectiveRoomName = RoomName;
-	if (EffectiveRoomName.IsEmpty() && !HostName.IsEmpty())
-	{
-		EffectiveRoomName = HostName + TEXT("의 방");
-	}
 	if (EffectiveRoomName.IsEmpty())
 	{
 		EffectiveRoomName = TEXT("이름 없는 방");
 	}
 	SessionSettings->Set(FName(TEXT("SESSION_NAME")), EffectiveRoomName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
-	UE_LOG(LogTemp, Log, TEXT("[방 생성] 세션 설정 완료: 최대 인원=%d, LAN 매치=%s"), 
-		SessionSettings->NumPublicConnections,
-		SessionSettings->bIsLANMatch ? TEXT("예") : TEXT("아니오"));
-
-	// 세션 생성
-	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 생성 요청 전송 중..."));
-	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정 요약:"));
-	UE_LOG(LogTemp, Warning, TEXT("  - Subsystem: %s"), *SubsystemName);
-	UE_LOG(LogTemp, Warning, TEXT("  - bIsLANMatch: %s"), SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogTemp, Warning, TEXT("  - bUseLobbiesIfAvailable: %s"), SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogTemp, Warning, TEXT("  - bShouldAdvertise: %s"), SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogTemp, Warning, TEXT("  - bUsesPresence: %s"), SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"));
-	
-	if (GEngine)
-	{
-		FString DebugMsg = FString::Printf(TEXT("[방 생성] 세션 생성 요청 중...\nSubsystem: %s\nLAN: %s (%s)"), 
-			*SubsystemName,
-			SessionSettings->bIsLANMatch ? TEXT("Yes") : TEXT("No"),
-			bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷"));
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
-	}
-	
-	// Steam 세션 생성 전 추가 검증
-	if (bIsSteam)
-	{
-		// Steam 클라이언트 확인
-		if (!OnlineSubsystem || OnlineSubsystem->GetSubsystemName() != FName("Steam"))
-		{
-			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam OnlineSubsystem이 올바르게 초기화되지 않았습니다!"));
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("[방 생성] Steam 초기화 실패!\nSteam 클라이언트를 확인하세요."));
-			}
-			OnCreateSessionComplete.Broadcast(false);
-			return;
-		}
-		
-		UE_LOG(LogTemp, Warning, TEXT("[방 생성] Steam 세션 생성 시도 중..."));
-		UE_LOG(LogTemp, Warning, TEXT("[방 생성] Steam 세션 설정 확인:"));
-		UE_LOG(LogTemp, Warning, TEXT("  - bIsLANMatch: %s"), SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"));
-		UE_LOG(LogTemp, Warning, TEXT("  - bUseLobbiesIfAvailable: %s"), SessionSettings->bUseLobbiesIfAvailable ? TEXT("true") : TEXT("false"));
-		UE_LOG(LogTemp, Warning, TEXT("  - bUsesPresence: %s"), SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"));
-		UE_LOG(LogTemp, Warning, TEXT("  - bShouldAdvertise: %s"), SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
-	}
-	
-	bool bCreateResult = SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
-	if (!bCreateResult)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession 호출이 즉시 실패했습니다!"));
-		
-		// Steam 관련 추가 정보
-		if (bIsSteam)
-		{
-			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam 세션 생성 즉시 실패 - 가능한 원인:"));
-			UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
-			UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음"));
-			UE_LOG(LogTemp, Error, TEXT("  3. Steam 네트워크 연결 문제"));
-			UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제"));
-			UE_LOG(LogTemp, Error, TEXT("  5. 이미 다른 세션이 활성화되어 있음"));
-			
-			if (GEngine)
-			{
-				FString ErrorMsg = TEXT("[방 생성] Steam 세션 생성 실패!\n");
-				ErrorMsg += TEXT("확인 사항:\n");
-				ErrorMsg += TEXT("1. Steam 클라이언트 실행 중인지 확인\n");
-				ErrorMsg += TEXT("2. Steam에 로그인되어 있는지 확인\n");
-				ErrorMsg += TEXT("3. Steam 네트워크 연결 확인\n");
-				ErrorMsg += TEXT("4. 기존 세션이 있는지 확인");
-				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, ErrorMsg);
-			}
-		}
-		else
-		{
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 생성] CreateSession 호출 실패!"));
-			}
-		}
-		
-		OnCreateSessionComplete.Broadcast(false);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 성공 (비동기 처리 대기 중...)"));
-		if (GEngine && bIsSteam)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("[방 생성] Steam 세션 생성 요청 전송됨..."));
-		}
-	}
+	// 이전 코드: SessionInterface->CreateSession(0,SESSION_NAME,SessionSettings);
+	// 이전 코드: if (MainMenu) MainMenu->Shutdown();
+	// 이전 코드처럼 바로 CreateSession 호출
+	SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
 }
 
 void ABRGameSession::FindSessions()
@@ -843,57 +732,28 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 	// 이전 검색 취소 (중복/스태일 결과 방지)
 	SessionInterface->CancelFindSessions();
 
-	// 세션 검색 설정
+	// 이전 코드(OSS251030last)처럼 간단하게 설정
+	// 이전 코드: SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	// 이전 코드: SessionSearch->MaxSearchResults = 100;
+	// 이전 코드: SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")),true, EOnlineComparisonOp::Equals);
 	SessionSearch = MakeShareable(new FOnlineSessionSearch());
 	SessionSearch->MaxSearchResults = 100;
-	SessionSearch->PingBucketSize = 50;
+	SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")), true, EOnlineComparisonOp::Equals);
 	
+	// LAN 여부는 세션 생성 시와 동일하게 처리
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
-	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
-	bool bIsSteam = SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase);
-	
-	// LAN 전용(true) / 인터넷(Steam) 매칭(false) — GameInstance에서 읽음
-	bool bUseLAN = true;
-	if (UWorld* W = GetWorld())
+	if (OnlineSubsystem && OnlineSubsystem->GetSubsystemName() == "NULL")
 	{
-		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
-		{
-			bUseLAN = BRGI->GetUseLANOnly();
-		}
+		SessionSearch->bIsLanQuery = true;
 	}
-	SessionSearch->bIsLanQuery = bUseLAN;
-	
-	if (bIsSteam)
+	else
 	{
-		// 최소 1개 QuerySettings 필요(검색 미실행 방지). PRESENCESEARCH = bUsesPresence와 쌍.
-		SessionSearch->QuerySettings.Set(FName(TEXT("PRESENCESEARCH")), true, EOnlineComparisonOp::Equals);
-		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam: bIsLanQuery=%s, PRESENCESEARCH=true"), bUseLAN ? TEXT("true") : TEXT("false"));
+		SessionSearch->bIsLanQuery = false;
 	}
 	
-	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정: Subsystem=%s, bIsLanQuery=%s (%s)"), 
-		*SubsystemName,
-		SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"),
-		bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷"));
-
-	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 검색 설정: 최대 결과=%d, LAN 검색=%s"), 
-		SessionSearch->MaxSearchResults,
-		SessionSearch->bIsLanQuery ? TEXT("예") : TEXT("아니오"));
-
-	// 세션 찾기 시작
-	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 요청 전송 중..."));
-	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 설정 요약:"));
-	UE_LOG(LogTemp, Warning, TEXT("  - Subsystem: %s"), *SubsystemName);
-	UE_LOG(LogTemp, Warning, TEXT("  - bIsLanQuery: %s"), SessionSearch->bIsLanQuery ? TEXT("true") : TEXT("false"));
-	UE_LOG(LogTemp, Warning, TEXT("  - MaxSearchResults: %d"), SessionSearch->MaxSearchResults);
-	
-	if (GEngine)
-	{
-		FString DebugMsg = FString::Printf(TEXT("[방 찾기] 검색 요청 중...\nSubsystem: %s\nLAN: %s (%s)"), 
-			*SubsystemName,
-			SessionSearch->bIsLanQuery ? TEXT("Yes") : TEXT("No"),
-			bUseLAN ? TEXT("LAN 전용") : TEXT("인터넷"));
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
-	}
+	// 이전 코드: UE_LOG(LogTemp, Warning, TEXT("Finding Session"));
+	// 이전 코드: SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
+	UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 검색 요청 중..."));
 	
 	bool bFindSessionsResult = SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
 	if (!bFindSessionsResult)
@@ -907,6 +767,8 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 		// 화면에 디버그 메시지 표시
 		if (GEngine)
 		{
+			// 위에서 선언한 OnlineSubsystem 변수 재사용
+			FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
 			FString ErrorMsg = TEXT("[방 찾기] FindSessions 호출 실패!\n");
 			ErrorMsg += FString::Printf(TEXT("Subsystem: %s\n"), *SubsystemName);
 			ErrorMsg += TEXT("Steam 네트워크 연결 확인 필요");
@@ -1073,195 +935,53 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 
 void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful)
 {
-	if (bWasSuccessful)
+	// 이전 코드(OSS251030last)처럼 간단하게 처리
+	// 이전 코드: if (!IsSuccess) { UE_LOG(LogTemp, Error, TEXT("Could not Createsession")); return; }
+	if (!bWasSuccessful)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[방 생성] 성공: 세션이 생성되었습니다 - %s"), *InSessionName.ToString());
-		UE_LOG(LogTemp, Log, TEXT("[방 생성] 방이 생성되었으며 다른 플레이어가 참가할 수 있습니다."));
-		
-		// 화면에 디버그 메시지 표시 (Standalone 모드에서도 확인 가능)
-		if (GEngine)
-		{
-			FString Message = FString::Printf(TEXT("[GameSession] 방 생성 성공! 세션: %s"), *InSessionName.ToString());
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
-		}
-		
-		// 생성된 세션 정보 확인
-		if (SessionInterface.IsValid())
-		{
-			auto Session = SessionInterface->GetNamedSession(NAME_GameSession);
-			if (Session)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[방 생성] 세션 정보: 최대 인원=%d, 현재 인원=%d, LAN=%s, Advertise=%s"), 
-					Session->SessionSettings.NumPublicConnections,
-					Session->NumOpenPublicConnections,
-					Session->SessionSettings.bIsLANMatch ? TEXT("예") : TEXT("아니오"),
-					Session->SessionSettings.bShouldAdvertise ? TEXT("예") : TEXT("아니오"));
-			}
-		}
-
-		// 리슨 서버로 시작하기 위해 현재 맵을 ?listen 옵션과 함께 다시 로드
-		// 이전 코드(OSS251030last)처럼 세션 생성 후 바로 ServerTravel을 ?listen 옵션과 함께 호출
-		UWorld* World = GetWorld();
-		if (World)
-		{
-			ENetMode NetMode = World->GetNetMode();
-			UE_LOG(LogTemp, Log, TEXT("[방 생성] 현재 네트워크 모드: %s"), 
-				NetMode == NM_Standalone ? TEXT("Standalone") :
-				NetMode == NM_ListenServer ? TEXT("ListenServer") :
-				NetMode == NM_Client ? TEXT("Client") :
-				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
-			
-			// 이전 코드(OSS251030last)처럼 세션 생성 후 바로 ServerTravel을 ?listen 옵션과 함께 호출
-			// 이전 코드: World->ServerTravel("/Game/Maps/Lobby?listen");
-			// 로비 맵 경로: GameMode의 LobbyMapPath 사용, 없으면 현재 맵
-			FString TravelMapPath;
-			if (AGameModeBase* GM = World->GetAuthGameMode())
-			{
-				if (ABRGameMode* BRGM = Cast<ABRGameMode>(GM))
-				{
-					TravelMapPath = BRGM->LobbyMapPath;
-				}
-			}
-			
-			if (TravelMapPath.IsEmpty())
-			{
-				// LobbyMapPath가 비어있으면 기본 로비 맵 경로 사용
-				// 이전 코드(OSS251030last)는 "/Game/Maps/Lobby?listen"을 사용
-				// 현재 프로젝트 구조에 맞게 /Game/Main/Level/Lobby 시도
-				// 만약 없으면 /Game/Maps/Lobby 사용
-				TravelMapPath = TEXT("/Game/Main/Level/Lobby");
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] LobbyMapPath 미설정 → 기본 로비 맵 사용: %s"), *TravelMapPath);
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ GameMode의 LobbyMapPath를 설정하세요! (예: /Game/Main/Level/Lobby 또는 /Game/Maps/Lobby)"));
-			}
-			else
-			{
-				UE_LOG(LogTemp, Log, TEXT("[방 생성] 로비 맵으로 이동: %s"), *TravelMapPath);
-			}
-			
-			// 이전 코드(OSS251030last)처럼 세션 생성 후 바로 ServerTravel을 ?listen 옵션과 함께 호출
-			// 이전 코드: World->ServerTravel("/Game/Maps/Lobby?listen");
-			// Standalone 모드에서도 ServerTravel(?listen)을 시도 (이전 코드 방식)
-			
-			// 맵 경로를 /Game/.../MapName.MapName 형식으로 변환
-			FString TravelURL = TravelMapPath;
-			if (!TravelURL.Contains(TEXT("/")))
-			{
-				// 짧은 이름만 있는 경우 전체 경로로 변환
-				TravelURL = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *TravelURL, *TravelURL);
-				UE_LOG(LogTemp, Log, TEXT("[방 생성] 맵 경로 변환: %s -> %s"), *TravelMapPath, *TravelURL);
-			}
-			else if (!TravelURL.Contains(TEXT(".")))
-			{
-				// /Game/.../MapName 형식이지만 .MapName이 없는 경우 추가
-				FString MapName = FPaths::GetBaseFilename(TravelURL);
-				TravelURL = FString::Printf(TEXT("%s.%s"), *TravelURL, *MapName);
-			}
-			
-			// 이전 코드처럼 ServerTravel을 ?listen 옵션과 함께 호출
-			FString ListenURL = FString::Printf(TEXT("%s?listen"), *TravelURL);
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] 리슨 서버로 전환: %s (현재 모드: %s)"), 
-				*ListenURL,
-				NetMode == NM_Standalone ? TEXT("Standalone") :
-				NetMode == NM_ListenServer ? TEXT("ListenServer") : TEXT("Other"));
-			
-			UE_LOG(LogTemp, Warning, TEXT("========================================"));
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출 전 NetMode: %s"), 
-				NetMode == NM_Standalone ? TEXT("Standalone") :
-				NetMode == NM_ListenServer ? TEXT("ListenServer") :
-				NetMode == NM_Client ? TEXT("Client") :
-				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] 리슨 서버로 전환 시도: %s"), *ListenURL);
-			UE_LOG(LogTemp, Warning, TEXT("========================================"));
-			
-			// Standalone 모드인 경우 open ?listen 콘솔 명령 사용 (더 확실한 방법)
-			// CheatManager의 OpenListenServer와 동일한 방식
-			if (NetMode == NM_Standalone)
-			{
-				// Standalone 모드에서는 open ?listen 콘솔 명령이 더 확실함
-				FString OpenCmd = FString::Printf(TEXT("open %s?listen"), *TravelURL);
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드 → open ?listen 콘솔 명령 사용: %s"), *OpenCmd);
-				
-				if (APlayerController* PC = World->GetFirstPlayerController())
-				{
-					PC->ConsoleCommand(OpenCmd, false);
-					UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ open ?listen 콘솔 명령 호출 완료!"));
-					
-					if (GEngine)
-					{
-						FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ Listen Server로 전환 중...\n맵: %s\n맵 재로드 후 NetMode 확인 필요"), *TravelURL);
-						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, SuccessMsg);
-					}
-				}
-				else
-				{
-					UE_LOG(LogTemp, Error, TEXT("[방 생성] PlayerController를 찾을 수 없어 open 명령을 실행할 수 없습니다!"));
-					// PlayerController가 없으면 ServerTravel로 대체
-					World->ServerTravel(ListenURL, true);
-				}
-			}
-			else
-			{
-				// 이미 ListenServer 모드이거나 다른 모드인 경우 ServerTravel 사용
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ServerTravel 호출: %s"), *ListenURL);
-				World->ServerTravel(ListenURL, true);
-				
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ 중요: ServerTravel 후 맵이 재로드되면 BeginPlay에서 NetMode를 확인하세요."));
-				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ NetMode가 ListenServer가 아니면 클라이언트가 연결할 수 없습니다."));
-				
-				if (GEngine)
-				{
-					FString SuccessMsg = FString::Printf(TEXT("[방 생성] ✅ ServerTravel 호출 완료!\n맵: %s\n맵 재로드 후 NetMode 확인 필요"), *TravelURL);
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, SuccessMsg);
-				}
-			}
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("========================================"));
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: 세션 생성에 실패했습니다."));
-		UE_LOG(LogTemp, Error, TEXT("세션 이름: %s"), *InSessionName.ToString());
-		
-		// 실패 원인 확인
-		if (SessionInterface.IsValid())
+		OnCreateSessionComplete.Broadcast(false);
+		return;
+	}
+
+	// 이전 코드: UE_LOG(LogTemp, Warning, TEXT("Session name is %s"), *InSessionName.ToString());
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 성공: 세션 이름 = %s"), *InSessionName.ToString());
+
+	// 이전 코드: Engine->AddOnScreenDebugMessage(0, 2, FColor::Green, TEXT("Host Complate!"));
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("[방 생성] 완료!"));
+	}
+
+	// 이전 코드: World->ServerTravel("/Game/Maps/Lobby?listen");
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] World를 찾을 수 없습니다!"));
+		OnCreateSessionComplete.Broadcast(false);
+		return;
+	}
+
+	// 로비 맵 경로 결정: GameMode의 LobbyMapPath 사용, 없으면 이전 코드처럼 "/Game/Maps/Lobby"
+	FString LobbyMapPath = TEXT("/Game/Maps/Lobby"); // 이전 코드 기본값
+	if (AGameModeBase* GM = World->GetAuthGameMode())
+	{
+		if (ABRGameMode* BRGM = Cast<ABRGameMode>(GM))
 		{
-			IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
-			FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
-			UE_LOG(LogTemp, Error, TEXT("Online Subsystem: %s"), *SubsystemName);
-			
-			// Steam 관련 추가 정보
-			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+			if (!BRGM->LobbyMapPath.IsEmpty())
 			{
-				UE_LOG(LogTemp, Error, TEXT("Steam 세션 생성 실패 가능 원인:"));
-				UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
-				UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음"));
-				UE_LOG(LogTemp, Error, TEXT("  3. Steam 네트워크 연결 문제"));
-				UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제"));
+				LobbyMapPath = BRGM->LobbyMapPath;
 			}
-		}
-		UE_LOG(LogTemp, Error, TEXT("========================================"));
-		
-		// 화면에 디버그 메시지 표시 (Standalone 모드에서도 확인 가능)
-		if (GEngine)
-		{
-			FString ErrorMsg = TEXT("[GameSession] 방 생성 실패!\n");
-			if (SessionInterface.IsValid())
-			{
-				IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
-				FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("Unknown");
-				ErrorMsg += FString::Printf(TEXT("Subsystem: %s\n"), *SubsystemName);
-				
-				if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
-				{
-					ErrorMsg += TEXT("Steam 세션 생성 실패\n");
-					ErrorMsg += TEXT("Steam 클라이언트 확인 필요");
-				}
-			}
-			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, ErrorMsg);
 		}
 	}
 
-	OnCreateSessionComplete.Broadcast(bWasSuccessful);
+	// 이전 코드처럼 바로 ServerTravel 호출
+	FString ListenURL = FString::Printf(TEXT("%s?listen"), *LobbyMapPath);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 리슨 서버로 전환: %s"), *ListenURL);
+	
+	World->ServerTravel(ListenURL, true);
+	
+	OnCreateSessionComplete.Broadcast(true);
 }
 
 void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
