@@ -1435,93 +1435,59 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 		}
 		
 		// 서버로 여행 (클라이언트만)
+		// 이전 코드(OSS251030last)처럼 간단하게 처리
 		if (SessionInterface.IsValid())
 		{
 			FString TravelURL;
-			bool bGotConnectString = SessionInterface->GetResolvedConnectString(NAME_GameSession, TravelURL);
-			
-			UE_LOG(LogTemp, Warning, TEXT("[방 참가] GetResolvedConnectString 결과: bGotConnectString=%s, TravelURL='%s'"), 
-				bGotConnectString ? TEXT("true") : TEXT("false"), 
-				TravelURL.IsEmpty() ? TEXT("(비어있음)") : *TravelURL);
-			
-			if (!bGotConnectString)
+			// 이전 코드: if (!SessionInterface->GetResolvedConnectString(InSessionName, Address)) { return; }
+			if (!SessionInterface->GetResolvedConnectString(NAME_GameSession, TravelURL))
 			{
-				UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 세션이 제대로 등록되지 않았을 수 있습니다."));
-				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 가능한 원인: 1) 호스트가 아직 리슨 서버로 전환 중, 2) Steam 연결 문자열 준비 중, 3) 세션 등록 실패"));
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패! 연결 주소를 가져올 수 없습니다."));
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] 가능한 원인: 서버가 ListenServer 모드가 아니거나 Steam 연결 문제"));
 				
 				if (GEngine)
 				{
 					GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, 
-						TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n호스트가 리슨 서버로 전환되었는지 확인하세요.\n잠시 후 다시 시도해보세요."));
+						TEXT("[방 참가] 연결 주소를 가져올 수 없습니다.\n서버가 ListenServer 모드인지 확인하세요."));
 				}
 				
-				// GetResolvedConnectString 실패는 UnknownError로 처리되므로 여기서는 로그만 남김
-				// 실제 연결은 ClientTravel에서 실패할 것이므로, 여기서는 경고만 표시
+				OnJoinSessionComplete.Broadcast(false);
+				return; // 이전 코드처럼 실패 시 바로 return
 			}
 			
-			// 포트가 0이면 기본 포트 7777로 변경
-			if (bGotConnectString && TravelURL.Contains(TEXT(":0")))
+			// 이전 코드: Engine->AddOnScreenDebugMessage(0,5,FColor::Green,FString::Printf(TEXT("Joining To %s"),*Address));
+			if (GEngine)
 			{
-				FString IP;
-				if (TravelURL.Split(TEXT(":"), &IP, nullptr))
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, 
+					FString::Printf(TEXT("[방 참가] 서버로 이동 중: %s"), *TravelURL));
+			}
+			
+			// 이전 코드: PC->ClientTravel(Address,ETravelType::TRAVEL_Absolute);
+			// 이전 코드처럼 바로 ClientTravel 호출 (NetMode 체크 없이)
+			UWorld* World = GetWorld();
+			if (World)
+			{
+				if (APlayerController* PC = World->GetFirstPlayerController())
 				{
-					TravelURL = FString::Printf(TEXT("%s:7777"), *IP);
-					UE_LOG(LogTemp, Log, TEXT("[방 참가] 포트가 0이므로 기본 포트 7777로 변경: %s"), *TravelURL);
+					UE_LOG(LogTemp, Warning, TEXT("[방 참가] 서버로 이동: %s"), *TravelURL);
+					PC->ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
 				}
-			}
-			
-			if (!TravelURL.IsEmpty())
-			{
-				UWorld* World = GetWorld();
-				if (World)
+				else
 				{
-					ENetMode NetMode = World->GetNetMode();
-					
-					// ListenServer나 DedicatedServer가 아닌 경우에만 서버로 이동
-					// (Standalone 모드에서 다른 세션에 참가할 때는 ClientTravel 실행)
-					if (NetMode != NM_ListenServer && NetMode != NM_DedicatedServer)
-					{
-						UE_LOG(LogTemp, Log, TEXT("[방 참가] 서버로 이동 중: %s (네트워크 모드: %s)"), 
-							*TravelURL, 
-							NetMode == NM_Client ? TEXT("Client") : 
-							NetMode == NM_Standalone ? TEXT("Standalone") : TEXT("Unknown"));
-						
-						// 화면에 디버그 메시지 표시
-						if (GEngine)
-						{
-							FString TravelMsg = FString::Printf(TEXT("[방 참가] 서버로 이동 중: %s"), *TravelURL);
-							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TravelMsg);
-						}
-						
-						// 첫 번째 플레이어 컨트롤러에게만 여행 명령 전송
-						if (APlayerController* PC = World->GetFirstPlayerController())
-						{
-							PC->ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
-						}
-					}
-					else
-					{
-						UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미 서버이므로 다른 방에 참가할 수 없습니다."));
-						UE_LOG(LogTemp, Warning, TEXT("[방 참가] 클라이언트만 다른 방에 참가할 수 있습니다."));
-						
-						// 화면에 디버그 메시지 표시
-						if (GEngine)
-						{
-							GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
-						}
-					}
+					UE_LOG(LogTemp, Error, TEXT("[방 참가] PlayerController를 찾을 수 없습니다!"));
+					OnJoinSessionComplete.Broadcast(false);
 				}
 			}
 			else
 			{
-				UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 연결 문자열을 가져올 수 없습니다."));
-				
-				// 화면에 디버그 메시지 표시
-				if (GEngine)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 참가] 실패: 연결 문자열을 가져올 수 없습니다!"));
-				}
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] World를 찾을 수 없습니다!"));
+				OnJoinSessionComplete.Broadcast(false);
 			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] SessionInterface가 유효하지 않습니다!"));
+			OnJoinSessionComplete.Broadcast(false);
 		}
 	}
 	else
@@ -1568,6 +1534,7 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 		}
 		
 		FString ErrorMessage;
+		FString DetailedErrorMsg;
 		switch (Result)
 		{
 		case EOnJoinSessionCompleteResult::Success:
@@ -1575,6 +1542,7 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			break;
 		case EOnJoinSessionCompleteResult::CouldNotRetrieveAddress:
 			ErrorMessage = TEXT("주소를 가져올 수 없음");
+			DetailedErrorMsg = TEXT("서버의 연결 주소를 가져올 수 없습니다.\n가능한 원인:\n1. 서버가 ListenServer 모드가 아님\n2. Steam 네트워크 연결 문제\n3. 서버의 NetDriver가 초기화되지 않음");
 			break;
 		case EOnJoinSessionCompleteResult::AlreadyInSession:
 			ErrorMessage = TEXT("이미 세션에 참가 중입니다. 기존 세션을 먼저 떠나야 합니다.");
@@ -1584,21 +1552,56 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			break;
 		case EOnJoinSessionCompleteResult::SessionDoesNotExist:
 			ErrorMessage = TEXT("세션이 존재하지 않습니다");
+			DetailedErrorMsg = TEXT("찾은 세션이 더 이상 존재하지 않습니다.\n가능한 원인:\n1. 서버가 세션을 종료함\n2. Steam 세션 동기화 지연\n3. 방 찾기 후 시간이 지나 세션이 만료됨");
 			break;
 		case EOnJoinSessionCompleteResult::UnknownError:
 		default:
 			ErrorMessage = TEXT("알 수 없는 오류 (방화벽/네트워크 가능성)");
+			DetailedErrorMsg = TEXT("알 수 없는 오류가 발생했습니다.\n가능한 원인:\n1. 서버가 ListenServer 모드가 아님 (가장 가능성 높음)\n2. 방화벽이 연결을 차단\n3. 라우터 포트 포워딩 필요 (인터넷 모드)\n4. Steam 네트워크 문제\n5. 서버의 NetDriver가 없음");
 			break;
 		}
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패: 세션 참가에 실패했습니다. (결과 코드: %d, %s)"), (int32)Result, *ErrorMessage);
 		
-		if (Result == EOnJoinSessionCompleteResult::UnknownError ||
-			Result == EOnJoinSessionCompleteResult::CouldNotRetrieveAddress)
+		// 추가 진단 정보
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패 원인 상세 진단"));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
+		
+		// Online Subsystem 정보 (위에서 이미 선언된 변수 재사용)
+		OnlineSubsystem = IOnlineSubsystem::Get();
+		if (OnlineSubsystem)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 해결 안내: 호스트·클라이언트 방화벽에서 게임·Steam 허용"));
-			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 해결 안내: 호스트에서 포트 7777 인바운드 허용"));
-			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 해결 안내: 같은 LAN 연결 확인, 방 찾기 후 재시도"));
+			FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] Online Subsystem: %s"), *SubsystemName);
+			
+			// Steam인 경우 추가 정보
+			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+			{
+				UE_LOG(LogTemp, Error, TEXT("[방 참가] Steam 모드 진단:"));
+				UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트 실행 중인지 확인"));
+				UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되어 있는지 확인"));
+				UE_LOG(LogTemp, Error, TEXT("  3. 서버와 클라이언트 모두 Steam 실행 중인지 확인"));
+				UE_LOG(LogTemp, Error, TEXT("  4. 인터넷 모드인 경우 라우터 포트 포워딩 필요"));
+			}
 		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] Online Subsystem이 NULL입니다!"));
+		}
+		
+		// 현재 NetMode 확인
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			ENetMode NetMode = World->GetNetMode();
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] 클라이언트 NetMode: %s"), 
+				NetMode == NM_Standalone ? TEXT("Standalone") :
+				NetMode == NM_ListenServer ? TEXT("ListenServer") :
+				NetMode == NM_Client ? TEXT("Client") :
+				NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+		}
+		
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] ========================================"));
 		
 		// 화면에 디버그 메시지 표시
 		if (GEngine)
@@ -1606,13 +1609,28 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 			FString ErrorMsg = FString::Printf(TEXT("[방 참가] 실패: %s"), *ErrorMessage);
 			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, ErrorMsg);
 			
+			// 상세 오류 메시지 표시
+			if (!DetailedErrorMsg.IsEmpty())
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, DetailedErrorMsg);
+			}
+			
+			// 추가 해결 방법 안내
 			if (Result == EOnJoinSessionCompleteResult::UnknownError ||
 				Result == EOnJoinSessionCompleteResult::CouldNotRetrieveAddress)
 			{
-				FString Hint = TEXT("확인: 1) 호스트·클라이언트 방화벽에서 게임·Steam 허용\n");
-				Hint += TEXT("2) 호스트에서 포트 7777 인바운드 허용\n");
-				Hint += TEXT("3) 같은 LAN 연결, 4) 방 찾기 후 재시도");
-				GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor::Yellow, Hint);
+				FString Hint = TEXT("========================================\n");
+				Hint += TEXT("연결 실패 해결 방법:\n");
+				Hint += TEXT("========================================\n");
+				Hint += TEXT("1. 서버가 ListenServer 모드인지 확인\n");
+				Hint += TEXT("   (서버 로그에서 'NetMode: ListenServer' 확인)\n");
+				Hint += TEXT("2. 호스트·클라이언트 방화벽에서 게임·Steam 허용\n");
+				Hint += TEXT("3. 호스트에서 포트 7777 인바운드 허용\n");
+				Hint += TEXT("4. 인터넷 모드인 경우 라우터 포트 포워딩 필요\n");
+				Hint += TEXT("5. Steam 클라이언트 양쪽 모두 실행 중인지 확인\n");
+				Hint += TEXT("6. 같은 LAN 연결 확인 (LAN 모드인 경우)\n");
+				Hint += TEXT("7. 방 찾기 후 재시도");
+				GEngine->AddOnScreenDebugMessage(-1, 20.0f, FColor::Yellow, Hint);
 			}
 		}
 		
