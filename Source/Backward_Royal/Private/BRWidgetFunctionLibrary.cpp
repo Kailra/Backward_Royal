@@ -12,6 +12,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
+#include "Engine/LocalPlayer.h"
 #include "Components/VerticalBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/Widget.h"
@@ -20,21 +21,79 @@ ABRPlayerController* UBRWidgetFunctionLibrary::GetBRPlayerController(const UObje
 {
 	if (!WorldContextObject)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] GetBRPlayerController: WorldContextObject가 nullptr입니다."));
 		return nullptr;
 	}
 
-	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	UWorld* World = nullptr;
+	
+	// 여러 방법으로 World 가져오기 시도
+	if (GEngine)
+	{
+		World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	}
+	
+	// WorldContextObject가 UWorld를 직접 상속하는 경우
+	if (!World && WorldContextObject->IsA<UWorld>())
+	{
+		World = const_cast<UWorld*>(Cast<UWorld>(WorldContextObject));
+	}
+	
+	// WorldContextObject가 UObject이고 Outer를 통해 World를 찾는 경우
+	if (!World && WorldContextObject)
+	{
+		World = WorldContextObject->GetWorld();
+	}
+	
 	if (!World)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] GetBRPlayerController: World를 찾을 수 없습니다."));
 		return nullptr;
 	}
 
-	if (APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0))
+	// PlayerController 찾기 시도
+	APlayerController* PC = nullptr;
+	
+	// 방법 1: UGameplayStatics 사용
+	PC = UGameplayStatics::GetPlayerController(World, 0);
+	
+	// 방법 2: World에서 직접 가져오기
+	if (!PC && World->GetFirstPlayerController())
 	{
-		return Cast<ABRPlayerController>(PC);
+		PC = World->GetFirstPlayerController();
+	}
+	
+	// 방법 3: LocalPlayer를 통해 가져오기
+	if (!PC && GEngine)
+	{
+		if (ULocalPlayer* LocalPlayer = GEngine->GetFirstGamePlayer(World))
+		{
+			PC = LocalPlayer->GetPlayerController(World);
+		}
+	}
+	
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] GetBRPlayerController: PlayerController를 찾을 수 없습니다. (World: %s)"), 
+			World ? *World->GetName() : TEXT("None"));
+		return nullptr;
 	}
 
-	return nullptr;
+	ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC);
+	if (!BRPC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] GetBRPlayerController: PlayerController를 BRPlayerController로 캐스팅할 수 없습니다. (Type: %s)"), 
+			*PC->GetClass()->GetName());
+		return nullptr;
+	}
+
+	return BRPC;
+}
+
+bool UBRWidgetFunctionLibrary::GetBRPlayerControllerSafe(const UObject* WorldContextObject, ABRPlayerController*& OutPlayerController)
+{
+	OutPlayerController = GetBRPlayerController(WorldContextObject);
+	return OutPlayerController != nullptr;
 }
 
 void UBRWidgetFunctionLibrary::CreateRoom(const UObject* WorldContextObject, const FString& RoomName)

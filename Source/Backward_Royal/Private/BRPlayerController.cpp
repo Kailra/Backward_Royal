@@ -139,21 +139,22 @@ void ABRPlayerController::BeginPlay()
 				}
 			}
 			
-			// Standalone 모드에서 이전 세션이 남아있으면 정리 중이므로 로비로 넘어가지 않음
-			// (BRGameSession::BeginPlay에서 세션 정리 중)
-			// ListenServer 모드로 전환된 경우에만 로비로 넘어감
+			// Standalone 모드에서 세션이 활성화되어 있으면 방 생성 후 ServerTravel로 인한 재로드 상태
+			// 이 경우 ListenServer 모드로 간주하여 로비로 이동해야 함
 			if (bHasActiveSession && NetMode == NM_Standalone)
 			{
-				// 이전 세션이 남아있지만 Standalone 모드인 경우
-				// BRGameSession에서 세션을 정리 중이므로 로비로 넘어가지 않음
-				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Standalone 모드에서 이전 세션 감지 - 세션 정리 대기 중 (로비로 넘어가지 않음)"));
+				// 방 생성 후 ServerTravel로 인한 재로드인지 확인
+				// 게임 재시작 시에는 세션이 정리되므로, 세션이 있으면 방 생성 완료 상태로 간주
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] Standalone 모드에서 활성 세션 감지 - 방 생성 완료 상태로 간주"));
+				UE_LOG(LogTemp, Warning, TEXT("[PlayerController] ServerTravel 후 재로드로 인해 NetMode가 아직 Standalone일 수 있지만, 세션이 있으면 ListenServer로 간주"));
+				
+				// 세션이 활성화되어 있으면 ListenServer 모드로 간주하여 로비로 이동
+				NetMode = NM_ListenServer;
 				if (GEngine)
 				{
-					GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, 
-						TEXT("[PlayerController] 이전 세션 정리 중... 잠시만 기다려주세요."));
+					GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, 
+						TEXT("[PlayerController] 방 생성 완료 - 로비로 이동"));
 				}
-				// Standalone 모드에서는 EntranceMenu로 유지
-				NetMode = NM_Standalone; // ListenServer로 변경하지 않음
 			}
 			else if (bHasActiveSession && NetMode == NM_ListenServer)
 			{

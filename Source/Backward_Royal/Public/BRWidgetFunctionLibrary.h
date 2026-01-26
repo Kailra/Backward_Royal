@@ -29,8 +29,12 @@ public:
 	// ============================================
 	
 	// PlayerController 가져오기
-	UFUNCTION(BlueprintCallable, Category = "BR Widget|PlayerController", meta = (WorldContext = "WorldContextObject"))
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|PlayerController", meta = (WorldContext = "WorldContextObject", CallInEditor = "true"))
 	static ABRPlayerController* GetBRPlayerController(const UObject* WorldContextObject);
+	
+	// PlayerController 가져오기 (안전한 버전 - 유효성 검사 포함)
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|PlayerController", meta = (WorldContext = "WorldContextObject", CallInEditor = "true"))
+	static bool GetBRPlayerControllerSafe(const UObject* WorldContextObject, ABRPlayerController*& OutPlayerController);
 
 	// 방 생성
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))

@@ -2,6 +2,7 @@
 #include "BRGameSession.h"
 #include "BRGameInstance.h"
 #include "BRPlayerState.h"
+#include "BRGameState.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Interfaces/OnlineSessionInterface.h"
@@ -153,42 +154,56 @@ void ABRGameSession::BeginPlay()
 		ENetMode NetMode = World->GetNetMode();
 		bool bHasActiveSession = HasActiveSession();
 		
-		// Standalone 모드에서 이전 세션이 남아있으면 정리 (게임 재시작 시)
-		// 이전 세션이 남아있으면 재실행 시 로비로 바로 넘어가는 문제 방지
+		// Standalone 모드에서 이전 세션이 남아있는 경우 처리
+		// 방 생성 후 ServerTravel로 인한 재로드인지, 게임 재시작인지 구분 필요
 		if (bHasActiveSession && NetMode == NM_Standalone)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: Standalone 모드에서 이전 세션이 감지되었습니다. 정리 중..."));
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 게임 재시작 시 이전 세션이 남아있어 로비로 넘어가는 문제를 방지하기 위해 세션을 정리합니다."));
-			
-			// Online Subsystem 초기화 후 세션 정리
-			// InitializeOnlineSubsystem이 완료된 후 세션을 정리해야 함
-			FTimerHandle CleanupTimerHandle;
-			GetWorld()->GetTimerManager().SetTimer(CleanupTimerHandle, [this]()
+			// GameState를 확인하여 플레이어가 있는지 확인
+			// 플레이어가 있으면 방 생성 완료 상태, 없으면 게임 재시작 상태로 간주
+			bool bHasPlayers = false;
+			if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
 			{
-				// Online Subsystem이 초기화된 후 세션 정리
-				if (SessionInterface.IsValid())
+				bHasPlayers = BRGameState->PlayerArray.Num() > 0;
+			}
+			
+			if (bHasPlayers)
+			{
+				// 플레이어가 있으면 방 생성 완료 상태 (ServerTravel 후 재로드)
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: Standalone 모드에서 활성 세션 + 플레이어 존재 - 방 생성 완료 상태"));
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] ServerTravel 후 재로드로 인해 NetMode가 Standalone이지만, 세션과 플레이어가 있으면 정상 상태"));
+			}
+			else
+			{
+				// 플레이어가 없으면 게임 재시작 상태 - 이전 세션 정리
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay: Standalone 모드에서 이전 세션이 감지되었습니다. 정리 중..."));
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] 게임 재시작 시 이전 세션이 남아있어 로비로 넘어가는 문제를 방지하기 위해 세션을 정리합니다."));
+				
+				// Online Subsystem 초기화 후 세션 정리
+				FTimerHandle CleanupTimerHandle;
+				GetWorld()->GetTimerManager().SetTimer(CleanupTimerHandle, [this]()
 				{
-					auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
-					if (ExistingSession != nullptr)
+					// Online Subsystem이 초기화된 후 세션 정리
+					if (SessionInterface.IsValid())
 					{
-						UE_LOG(LogTemp, Warning, TEXT("[GameSession] 이전 세션 제거 중... (게임 재시작 시 정리)"));
-						SessionInterface->DestroySession(NAME_GameSession);
-						
-						if (GEngine)
+						auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
+						if (ExistingSession != nullptr)
 						{
-							GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, 
-								TEXT("[GameSession] 이전 세션 정리 완료"));
+							UE_LOG(LogTemp, Warning, TEXT("[GameSession] 이전 세션 제거 중... (게임 재시작 시 정리)"));
+							SessionInterface->DestroySession(NAME_GameSession);
+							
+							if (GEngine)
+							{
+								GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, 
+									TEXT("[GameSession] 이전 세션 정리 완료"));
+							}
 						}
 					}
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface가 아직 초기화되지 않았습니다. 세션 정리를 건너뜁니다."));
-				}
-			}, 0.5f, false); // InitializeOnlineSubsystem 완료 대기 (0.1초 + 여유 시간)
-			
-			// Standalone 모드에서 이전 세션을 정리하더라도 초기화는 계속 진행
-			// return을 제거하여 InitializeOnlineSubsystem이 호출되도록 함
+					else
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface가 아직 초기화되지 않았습니다. 세션 정리를 건너뜁니다."));
+					}
+				}, 0.5f, false); // InitializeOnlineSubsystem 완료 대기 (0.1초 + 여유 시간)
+			}
 		}
 		
 		if (bHasActiveSession && NetMode == NM_ListenServer)
