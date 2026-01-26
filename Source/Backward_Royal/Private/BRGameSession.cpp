@@ -1125,14 +1125,13 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 			
 			if (TravelMapPath.IsEmpty())
 			{
-				// 현재 맵의 전체 경로 가져오기
-				TravelMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
-				if (TravelMapPath.IsEmpty())
-				{
-					TravelMapPath = World->GetMapName();
-					TravelMapPath.RemoveFromStart(World->StreamingLevelsPrefix);
-				}
-				UE_LOG(LogTemp, Log, TEXT("[방 생성] LobbyMapPath 미설정 → 현재 맵으로 이동: %s"), *TravelMapPath);
+				// LobbyMapPath가 비어있으면 기본 로비 맵 경로 사용
+				// 이전 코드(OSS251030last)는 "/Game/Maps/Lobby?listen"을 사용
+				// 현재 프로젝트 구조에 맞게 /Game/Main/Level/Lobby 시도
+				// 만약 없으면 /Game/Maps/Lobby 사용
+				TravelMapPath = TEXT("/Game/Main/Level/Lobby");
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] LobbyMapPath 미설정 → 기본 로비 맵 사용: %s"), *TravelMapPath);
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ GameMode의 LobbyMapPath를 설정하세요! (예: /Game/Main/Level/Lobby 또는 /Game/Maps/Lobby)"));
 			}
 			else
 			{
