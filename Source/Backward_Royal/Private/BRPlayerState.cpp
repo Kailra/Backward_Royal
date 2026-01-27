@@ -209,6 +209,10 @@ void ABRPlayerState::SwapControlWithPartner()
 
 		ApplyRoleSettings(MyPC, bIsLowerBody);
 		ApplyRoleSettings(PartnerPC, PartnerPS->bIsLowerBody);
+
+		// [추가] SwitchOrb 획득 시 위젯 애니메이션 재생
+		MyPC->ClientPlayWidgetAnim();
+		PartnerPC->ClientPlayWidgetAnim();
 	}
 }
 

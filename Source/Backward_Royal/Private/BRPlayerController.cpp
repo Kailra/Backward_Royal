@@ -786,6 +786,27 @@ void ABRPlayerController::ClientNotifyGameStarting_Implementation()
 	// 하지만 로그를 남겨서 알림이 도착했는지 확인할 수 있습니다
 }
 
+void ABRPlayerController::ClientPlayWidgetAnim_Implementation()
+{
+	if (MainScreenWidget && MainScreenWidget->IsValidLowLevel())
+	{
+		UFunction* AnimFunc = MainScreenWidget->FindFunction(FName("PlaywidgetAnim"));
+		if (AnimFunc)
+		{
+			MainScreenWidget->ProcessEvent(AnimFunc, nullptr);
+			UE_LOG(LogTemp, Log, TEXT("[BRPlayerController] PlaywidgetAnim executed on MainScreenWidget."));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[BRPlayerController] PlaywidgetAnim function not found on MainScreenWidget."));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[BRPlayerController] MainScreenWidget is null or invalid. Cannot play PlaywidgetAnim."));
+	}
+}
+
 void ABRPlayerController::RequestRandomTeams()
 {
 	UWorld* World = GetWorld();

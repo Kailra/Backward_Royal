@@ -75,6 +75,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientNotifyGameStarting();
 
+	// 위젯 애니메이션 재생 (SwitchOrb 획득 시)
+	UFUNCTION(Client, Reliable)
+	void ClientPlayWidgetAnim();
+
 	// 역할에 따른 입력 매핑 교체 함수
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	void SetupRoleInput(bool bIsLower);
