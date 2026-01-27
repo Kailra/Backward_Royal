@@ -14,6 +14,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NavigationSystem.h"
 #include "Algo/Sort.h"
+#include "TimerManager.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -36,6 +37,18 @@ void ABRGameMode::BeginPlay()
 	{
 		BRGameState->MinPlayers = MinPlayers;
 		BRGameState->MaxPlayers = MaxPlayers;
+	}
+
+	// 로비에서 랜덤 팀 배정 후 예약된 경우: 게임 맵 로드 후 플레이어 스폰이 끝날 때까지 지연 후 적용
+	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+	{
+		if (GI->GetPendingApplyRandomTeamRoles())
+		{
+			GI->ClearPendingApplyRandomTeamRoles();
+			FTimerHandle H;
+			GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 게임 맵 로드됨 - 1.5초 후 상체/하체 Pawn 적용 예정"));
+		}
 	}
 }
 
@@ -337,6 +350,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	if (NumTeams < 1) return;
 
 	// 현재 월드에 있는 하체(APlayerCharacter) Pawn 수집 (순서 = PlayerArray 순)
+	// 로비에서 전원 하체로 스폰된 경우 N개가 되므로, 팀 수(NumTeams)만큼만 사용
 	TArray<APlayerCharacter*> AllLowerChars;
 	for (APlayerState* PS : BRGameState->PlayerArray)
 	{
@@ -346,10 +360,22 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 		if (APlayerCharacter* LC = Cast<APlayerCharacter>(P))
 			AllLowerChars.Add(LC);
 	}
-	if (AllLowerChars.Num() != NumTeams)
+	if (AllLowerChars.Num() < NumTeams)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 수(%d)와 팀 수(%d) 불일치"), AllLowerChars.Num(), NumTeams);
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 수(%d)가 팀 수(%d)보다 적어 중단"), AllLowerChars.Num(), NumTeams);
 		return;
+	}
+	// 사용하지 않는 하체(AllLowerChars[NumTeams] 이상)는 먼저 제거 → 팀당 1개 몸통만 남김
+	for (int32 i = NumTeams; i < AllLowerChars.Num(); i++)
+	{
+		APlayerCharacter* ExtraLower = AllLowerChars[i];
+		if (!ExtraLower || !IsValid(ExtraLower)) continue;
+		AController* LowerController = ExtraLower->GetController();
+		if (LowerController)
+		{
+			LowerController->UnPossess();
+		}
+		ExtraLower->Destroy();
 	}
 
 	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)

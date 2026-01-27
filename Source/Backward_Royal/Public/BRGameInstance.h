@@ -111,6 +111,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session|Match")
 	void ClearPendingRoomName() { PendingRoomName.Empty(); }
 
+	/** 로비에서 랜덤 팀 배정 후, 게임 맵 로드 시 상체/하체 Pawn 적용 대기 플래그 */
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void SetPendingApplyRandomTeamRoles(bool b) { bPendingApplyRandomTeamRoles = b; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	bool GetPendingApplyRandomTeamRoles() const { return bPendingApplyRandomTeamRoles; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void ClearPendingApplyRandomTeamRoles() { bPendingApplyRandomTeamRoles = false; }
+
 	// 전역 변수 설정을 위한 함수
 	void ApplyGlobalMultipliers();
 		
@@ -128,6 +138,9 @@ protected:
 
 	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
 	FString PendingRoomName;
+
+	/** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출 대기 */
+	bool bPendingApplyRandomTeamRoles = false;
 
 	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
 	FTimerHandle ListenServerTimerHandle;
