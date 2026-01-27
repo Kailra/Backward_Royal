@@ -135,35 +135,36 @@ void ABRGameSession::InitializeOnlineSubsystem()
 	}
 
 	// Online Subsystem 초기화
-	// NULL (LAN 모드) 사용
+	// Steam Online Subsystem 사용 (DefaultEngine.ini 설정에 따라)
 	IOnlineSubsystem* OnlineSubsystem = nullptr;
 	
-	// NULL Online Subsystem 사용 (LAN 모드)
-	UE_LOG(LogTemp, Warning, TEXT("[GameSession] NULL Online Subsystem 초기화 시도 중... (LAN 모드)"));
-	OnlineSubsystem = IOnlineSubsystem::Get(FName("Null"));
+	// Steam Online Subsystem 사용
+	UE_LOG(LogTemp, Warning, TEXT("[GameSession] Steam Online Subsystem 초기화 시도 중..."));
+	OnlineSubsystem = IOnlineSubsystem::Get();
 	if (OnlineSubsystem)
 	{
 		FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get(Null) 성공! SubsystemName: %s"), *SubsystemName);
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] IOnlineSubsystem::Get() 성공! SubsystemName: %s"), *SubsystemName);
 		if (GEngine)
 		{
-			FString SuccessMsg = FString::Printf(TEXT("[GameSession] NULL Online Subsystem 초기화 성공! (%s - LAN 모드)"), *SubsystemName);
+			FString SuccessMsg = FString::Printf(TEXT("[GameSession] ✅ %s Online Subsystem 초기화 성공!"), *SubsystemName);
 			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, SuccessMsg);
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[GameSession] IOnlineSubsystem::Get(Null) 실패"));
+		UE_LOG(LogTemp, Error, TEXT("[GameSession] IOnlineSubsystem::Get() 실패 - Steam이 로드되지 않았습니다."));
 		
-		// 기본값으로 시도
-		OnlineSubsystem = IOnlineSubsystem::Get();
+		// 폴백: NULL Online Subsystem 시도
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] NULL Online Subsystem으로 폴백 시도 중..."));
+		OnlineSubsystem = IOnlineSubsystem::Get(FName("Null"));
 		if (OnlineSubsystem)
 		{
 			FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
-			UE_LOG(LogTemp, Log, TEXT("[GameSession] IOnlineSubsystem::Get() (기본값) 성공: %s"), *SubsystemName);
+			UE_LOG(LogTemp, Log, TEXT("[GameSession] NULL Online Subsystem 폴백 성공: %s"), *SubsystemName);
 			if (GEngine)
 			{
-				FString Message = FString::Printf(TEXT("[GameSession] 기본 Online Subsystem 사용: %s"), *SubsystemName);
+				FString Message = FString::Printf(TEXT("[GameSession] ⚠️ Steam 실패, NULL Online Subsystem 사용: %s"), *SubsystemName);
 				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, Message);
 			}
 		}
@@ -172,7 +173,7 @@ void ABRGameSession::InitializeOnlineSubsystem()
 			UE_LOG(LogTemp, Error, TEXT("[GameSession] Online Subsystem 초기화 완전 실패!"));
 			if (GEngine)
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("[GameSession] Online Subsystem 초기화 실패!"));
+				GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("[GameSession] ❌ Online Subsystem 초기화 실패!"));
 			}
 		}
 	}
