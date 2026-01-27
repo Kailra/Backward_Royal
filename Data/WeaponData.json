@@ -2,8 +2,9 @@
   "Data": [
     {
       "Name": "Weapon_01",
-      "DisplayName": "대형망치",
+      "DisplayName": "None",
       "MassKg": 10.0,
+      "Durability": 100.0,
       "DamageCoefficient": 1.0,
       "ImpulseCoefficient": 1.0,
       "AttackSpeedCoefficient": 1.0,
@@ -12,8 +13,9 @@
     },
     {
       "Name": "Weapon_02",
-      "DisplayName": "대검1",
-      "MassKg": 20.0,
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
       "DamageCoefficient": 1.0,
       "ImpulseCoefficient": 1.0,
       "AttackSpeedCoefficient": 1.0,
@@ -22,28 +24,9 @@
     },
     {
       "Name": "Weapon_03",
-      "DisplayName": "대검2",
-      "MassKg": 5.0,
-      "DamageCoefficient": 1.0,
-      "ImpulseCoefficient": 1.0,
-      "AttackSpeedCoefficient": 1.0,
-      "DamageCategory": 0,
-      "WeaponType": 1
-    },
-    {
-      "Name": "Weapon_04",
-      "DisplayName": "검1",
-      "MassKg": 1.0,
-      "DamageCoefficient": 1.0,
-      "ImpulseCoefficient": 1.0,
-      "AttackSpeedCoefficient": 1.0,
-      "DamageCategory": 0,
-      "WeaponType": 0
-    },
-    {
-      "Name": "Weapon_05",
-      "DisplayName": "도끼1",
-      "MassKg": 1.0,
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
       "DamageCoefficient": 1.0,
       "ImpulseCoefficient": 1.0,
       "AttackSpeedCoefficient": 1.0,
