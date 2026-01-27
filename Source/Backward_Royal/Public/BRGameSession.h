@@ -28,6 +28,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void CreateRoomSession(const FString& RoomName);
 
+	// 방 생성 내부 함수 (기존 세션 체크 제외, DestroySession 완료 후 호출용)
+	void CreateRoomSessionInternal(const FString& RoomName);
+
 	// 방 찾기
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void FindSessions();
@@ -84,11 +87,18 @@ protected:
 	FTimerHandle FindSessionsRetryHandle;
 	static constexpr int32 MaxFindSessionsRetries = 2;
 
+	// DestroySession 완료 후 CreateSession 호출을 위한 방 이름 저장
+	FString PendingRoomName;
+	bool bPendingCreateSession;
+
 	void FindSessionsInternal(bool bIsRetry);
 	void FindSessionsRetryCallback();
 
 	// 세션 생성 완료 콜백
 	void OnCreateSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful);
+
+	// 세션 제거 완료 콜백 (이전 코드처럼 기존 세션 제거 후 CreateSession 호출용)
+	void OnDestroySessionCompleteDelegate(FName InSessionName, bool bWasSuccessful);
 
 	// 세션 찾기 완료 콜백
 	void OnFindSessionsCompleteDelegate(bool bWasSuccessful);
