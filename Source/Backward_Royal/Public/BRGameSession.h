@@ -4,6 +4,7 @@
 #include "GameFramework/GameSession.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "TimerManager.h"
 #include "BRGameSession.generated.h"
 
 // Forward declarations
@@ -48,6 +49,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	bool HasActiveSession() const;
 
+	/** PIE 종료 시 GameInstance::Shutdown에서 호출. SessionInterface 델리게이트 및 PendingRoom 타이머를 먼저 해제해 월드 참조 사슬을 끊음 */
+	void UnbindSessionDelegatesForPIEExit();
+
 	// 방 생성 완료 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnBRCreateSessionComplete OnCreateSessionComplete;
@@ -80,6 +84,9 @@ protected:
 	int32 FindSessionsRetryCount;
 	FTimerHandle FindSessionsRetryHandle;
 	static constexpr int32 MaxFindSessionsRetries = 2;
+
+	/** BeginPlay에서 PendingRoomName 자동 생성 시 사용. 로컬 핸들로 두면 PIE 종료 시 정리되지 않아 월드 참조 남음 → 멤버로 두고 EndPlay/Unbind에서 클리어 */
+	FTimerHandle PendingCreateRoomTimerHandle;
 
 	// DestroySession 완료 후 CreateSession 호출을 위한 방 이름 저장
 	FString PendingRoomName;

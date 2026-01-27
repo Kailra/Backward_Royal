@@ -49,9 +49,9 @@ void ABRGameSession::BeginPlay()
 	
 	// Online Subsystem이 준비될 때까지 대기 후 방 생성
 	// 람다에서 World를 캡처하지 않고 콜백 시점에 GetWorld()로 가져와 댕글링 포인터 크래시 방지
-	FTimerHandle Timer;
+	// 멤버 핸들 사용: PIE 종료 시 EndPlay/UnbindSessionDelegatesForPIEExit에서 클리어해 월드 참조 잔류 방지
 	FString RoomNameCopy = RoomName; // 복사본 저장
-	World->GetTimerManager().SetTimer(Timer, [this, RoomNameCopy]()
+	World->GetTimerManager().SetTimer(PendingCreateRoomTimerHandle, [this, RoomNameCopy]()
 	{
 		if (!IsValid(this))
 		{
@@ -150,6 +150,32 @@ void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(FindSessionsRetryHandle);
+		World->GetTimerManager().ClearTimer(PendingCreateRoomTimerHandle);
+	}
+}
+
+void ABRGameSession::UnbindSessionDelegatesForPIEExit()
+{
+	// SessionInterface가 GameSession(this)을 붙들고 있으면 UnrealEdEngine → OSS → SessionInterface → GameSession → World 참조 사슬로
+	// PIE 월드가 GC되지 않는다. PIE 종료 시 GameInstance::Shutdown에서 먼저 호출해 이 사슬을 끊는다.
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface->OnCreateSessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnStartSessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnDestroySessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
+	}
+	if (bIsSearchingSessions && SessionInterface.IsValid())
+	{
+		SessionInterface->CancelFindSessions();
+		bIsSearchingSessions = false;
+	}
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FindSessionsRetryHandle);
+		World->GetTimerManager().ClearTimer(PendingCreateRoomTimerHandle);
+		World->GetTimerManager().ClearAllTimersForObject(this);
 	}
 }
 

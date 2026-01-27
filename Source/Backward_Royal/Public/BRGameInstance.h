@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
+#include "TimerManager.h"
 #include "WeaponTypes.h"
 #include "ArmorTypes.h"
 #include "BRGameInstance.generated.h"
@@ -119,10 +120,17 @@ protected:
 
 	FString GetConfigDirectory();
 
+	/** Session/타이머/네비 등 정리 (Shutdown PIE 블록과 OnWorldCleanup 콜백에서 호출) */
+	void DoPIEExitCleanup(UWorld* World);
+
 	/** 방 생성 후 ServerTravel 호출 직전에 true 설정. BeginPlay에서 로비 표시 여부 판단에 사용. */
 	bool bDidCreateRoomThenTravel = false;
 
 	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
 	FString PendingRoomName;
+
+	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
+	FTimerHandle ListenServerTimerHandle;
+	FTimerHandle SessionRecreateTimerHandle;
 };
 

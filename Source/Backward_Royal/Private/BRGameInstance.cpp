@@ -45,6 +45,17 @@ void UBRGameInstance::Init()
 		bUseLANOnly ? TEXT("LAN 전용") : TEXT("인터넷 매칭 (Steam)"));
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 모드 변경: 콘솔에서 'SetLANOnly 1' (LAN) 또는 'SetLANOnly 0' (인터넷)"));
 	
+	// PIE 월드 클린업이 엔진의 '월드 참조 검사'보다 먼저 일어나게 등록.
+	// FDelegateHandle/Delegate 헤더 경로 이슈를 피하기 위해 해제하지 않고, 콜백에서 TWeakObjectPtr로만 판별.
+	TWeakObjectPtr<UBRGameInstance> Self(this);
+	FWorldDelegates::OnWorldCleanup.AddLambda([Self](UWorld* InWorld, bool bSessionEnding, bool bCleanupResources)
+	{
+		if (InWorld && InWorld->IsPlayInEditor() && Self.IsValid() && InWorld->GetGameInstance() == Self.Get())
+		{
+			Self->DoPIEExitCleanup(InWorld);
+		}
+	});
+	
 	// 패킹된 게임에서 Standalone 모드로 시작하는 것을 방지하기 위해
 	// 명령줄 인자 확인 (이미 ?listen이 있으면 그대로 사용)
 	FString CommandLine = FCommandLine::Get();
@@ -133,9 +144,9 @@ void UBRGameInstance::OnStart()
 			
 			// 짧은 지연 후 실행 (World가 완전히 초기화될 시간 필요)
 			// 람다에서 World를 캡처하지 않고 콜백 시점에 GetWorld()로 가져와 댕글링 포인터 크래시 방지
-			FTimerHandle ListenServerTimer;
+			// 멤버 핸들 사용: PIE 종료 시 Shutdown에서 명시적으로 클리어해 월드 참조 잔류/GC 실패 방지
 			FString OpenCommandCopy = OpenCommand;
-			World->GetTimerManager().SetTimer(ListenServerTimer, [this, OpenCommandCopy]()
+			World->GetTimerManager().SetTimer(ListenServerTimerHandle, [this, OpenCommandCopy]()
 			{
 				if (!IsValid(this) || !GEngine)
 				{
@@ -245,7 +256,7 @@ void UBRGameInstance::OnStart()
 				
 				// ListenServer 모드가 되었으므로 세션을 다시 생성
 				// GameSession이 초기화될 때까지 여러 번 시도
-				FTimerHandle SessionRecreateTimer;
+				// 멤버 핸들 사용: PIE 종료 시 Shutdown에서 명시적으로 클리어해 월드 참조 잔류/GC 실패 방지
 				int32 RetryCount = 0;
 				const int32 MaxRetries = 10; // 최대 10초 대기
 				
@@ -254,7 +265,7 @@ void UBRGameInstance::OnStart()
 				
 				UE_LOG(LogTemp, Error, TEXT("[GameInstance] ⚠️ GameSession 찾기 시작 (최대 %d초 대기)"), MaxRetries);
 				
-				World->GetTimerManager().SetTimer(SessionRecreateTimer, [this, WeakWorld, RoomNameToCreate, RetryCount, MaxRetries, &SessionRecreateTimer]() mutable
+				World->GetTimerManager().SetTimer(SessionRecreateTimerHandle, [this, WeakWorld, RoomNameToCreate, RetryCount, MaxRetries]() mutable
 				{
 					int32 CurrentRetry = RetryCount;
 					CurrentRetry++;
@@ -322,7 +333,7 @@ void UBRGameInstance::OnStart()
 					}
 					
 					// 타이머 정리
-					W->GetTimerManager().ClearTimer(SessionRecreateTimer);
+					W->GetTimerManager().ClearTimer(SessionRecreateTimerHandle);
 				}, 1.0f, true); // 1초마다 반복
 			}
 		}
@@ -808,43 +819,40 @@ void UBRGameInstance::ApplyGlobalMultipliers()
 	}
 }
 
+void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
+{
+	if (!World || !World->IsPlayInEditor())
+	{
+		return;
+	}
+	GI_LOG(Warning, TEXT("PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"));
+	
+	// SessionInterface→GameSession→World 참조 끊기
+	if (AGameModeBase* GameMode = World->GetAuthGameMode())
+	{
+		if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+		{
+			GameSession->UnbindSessionDelegatesForPIEExit();
+		}
+	}
+	
+	World->GetTimerManager().ClearTimer(ListenServerTimerHandle);
+	World->GetTimerManager().ClearTimer(SessionRecreateTimerHandle);
+	World->GetTimerManager().ClearAllTimersForObject(this);
+	
+	if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
+	{
+		NavSys->CleanUp();
+	}
+}
+
 void UBRGameInstance::Shutdown()
 {
-	// PIE 종료 시 World가 제대로 정리되도록 시도
-	// UnrealEdEngine이 World를 참조하여 GC가 되지 않는 문제는 Unreal Engine의 알려진 버그입니다.
-	// NavigationSystemV1이 World를 참조하여 GC가 되지 않는 문제를 해결하기 위해
-	// World의 서브시스템을 명시적으로 정리합니다.
-	
+	// OnWorldCleanup은 해제하지 않음(FDelegateHandle/헤더 경로 이슈 회피). Shutdown 시점에 한 번 더 정리.
 	UWorld* World = GetWorld();
 	if (World && World->IsPlayInEditor())
 	{
-		GI_LOG(Warning, TEXT("PIE 종료 시 Shutdown 호출 - World 및 서브시스템 정리 시도"));
-		
-		// World의 모든 타이머 정리 (이 GameInstance와 관련된 타이머만)
-		World->GetTimerManager().ClearAllTimersForObject(this);
-		
-		// NavigationSystem 정리 시도 (PIE 종료 시 GC 문제 해결)
-		// FNavigationSystem::GetCurrent는 World가 유효할 때만 작동
-		if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
-		{
-			GI_LOG(Warning, TEXT("Shutdown: NavigationSystem 정리 시도"));
-			// NavigationSystem의 CleanUp 호출 (PIE 종료 시 참조 해제)
-			// 주의: 이는 World가 파괴되기 전에 호출되어야 합니다
-			NavSys->CleanUp();
-			GI_LOG(Warning, TEXT("Shutdown: NavigationSystem CleanUp 완료"));
-		}
-		
-		// GameSession 정리 (이미 EndPlay에서 처리되었을 수 있지만, 확실히 하기 위해)
-		if (AGameModeBase* GameMode = World->GetAuthGameMode())
-		{
-			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
-			{
-				GI_LOG(Warning, TEXT("Shutdown: GameSession 정리 확인"));
-			}
-		}
-		
-		GI_LOG(Warning, TEXT("Shutdown 완료 - World는 엔진이 자동으로 정리합니다"));
-		GI_LOG(Warning, TEXT("참고: PIE 종료 시 NavigationSystem GC 경고는 Unreal Engine의 알려진 버그입니다."));
+		DoPIEExitCleanup(World);
 	}
 	
 	Super::Shutdown();
