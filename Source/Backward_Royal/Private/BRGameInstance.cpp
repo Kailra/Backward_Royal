@@ -51,11 +51,18 @@ void UBRGameInstance::OnStart()
 	Super::OnStart();
 	
 	UE_LOG(LogTemp, Log, TEXT("[GameInstance] OnStart 호출 - 첫 번째 World 생성 완료"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] PendingRoomName 상태 확인: %s"), 
+		PendingRoomName.IsEmpty() ? TEXT("비어있음") : *PendingRoomName);
 	
 	UWorld* World = GetWorld();
 	if (World)
 	{
 		ENetMode NetMode = World->GetNetMode();
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] OnStart 시점 NetMode: %s"), 
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer") :
+			NetMode == NM_Client ? TEXT("Client") :
+			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
 		
 		// Standalone 모드이면 자동으로 ListenServer 모드로 전환
 		// (처음부터 ListenServer로 시작하여 방 생성 시 맵 재로드 불필요)

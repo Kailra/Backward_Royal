@@ -8,6 +8,7 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Interfaces/OnlineSessionInterface.h"
+#include "Interfaces/OnlineIdentityInterface.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -184,6 +185,47 @@ void ABRGameSession::InitializeOnlineSubsystem()
 		// 이전 코드: UE_LOG(LogTemp, Warning, TEXT("OSS : %s is Avaliable."), *OSS->GetSubsystemName().ToString());
 		UE_LOG(LogTemp, Warning, TEXT("[GameSession] OSS : %s is Available."), *SubsystemName);
 		UE_LOG(LogTemp, Log, TEXT("[GameSession] Online Subsystem 초기화: %s"), *SubsystemName);
+		
+		// Steam인 경우 로그인 상태 확인
+		if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+		{
+			IOnlineIdentityPtr IdentityInterface = OnlineSubsystem->GetIdentityInterface();
+			if (IdentityInterface.IsValid())
+			{
+				bool bFoundLoggedInUser = false;
+				for (int32 UserIdx = 0; UserIdx < 4; UserIdx++)
+				{
+					ELoginStatus::Type LoginStatus = IdentityInterface->GetLoginStatus(UserIdx);
+					if (LoginStatus == ELoginStatus::LoggedIn)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ Steam 로그인 확인: LocalUserNum=%d"), UserIdx);
+						bFoundLoggedInUser = true;
+						
+						// 사용자 ID 가져오기
+						TSharedPtr<const FUniqueNetId> UserId = IdentityInterface->GetUniquePlayerId(UserIdx);
+						if (UserId.IsValid())
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[GameSession] Steam 사용자 ID: %s"), *UserId->ToString());
+						}
+						break;
+					}
+				}
+				if (!bFoundLoggedInUser)
+				{
+					UE_LOG(LogTemp, Error, TEXT("[GameSession] ⚠️ Steam에 로그인된 사용자가 없습니다!"));
+					UE_LOG(LogTemp, Error, TEXT("[GameSession] Steam 클라이언트가 실행 중이고 로그인되어 있는지 확인하세요."));
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, 
+							TEXT("[GameSession] ⚠️ Steam 로그인 필요!\nSteam 클라이언트를 실행하고 로그인하세요."));
+					}
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] Identity Interface를 가져올 수 없습니다."));
+			}
+		}
 		
 		// 화면에 메시지 표시
 		if (GEngine)
@@ -371,55 +413,97 @@ void ABRGameSession::BeginPlay()
 					TEXT("[GameSession] ✅ 리슨 서버 모드 활성화!"));
 			}
 			
-			// 리슨 서버 모드인데 세션이 없으면 자동으로 재생성 시도
-			if (!bHasActiveSession)
+		// 리슨 서버 모드인데 세션이 없으면 자동으로 재생성 시도
+		if (!bHasActiveSession)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] 리슨 서버 모드이지만 활성 세션이 없습니다."));
+			
+			// GameInstance에서 대기 중인 방 이름 확인
+			FString GameInstancePendingRoomName;
+			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
 			{
-				// GameInstance에서 대기 중인 방 이름 확인
-				FString GameInstancePendingRoomName;
-				if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+				GameInstancePendingRoomName = BRGI->GetPendingRoomName();
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay에서 PendingRoomName 확인: %s"), 
+					GameInstancePendingRoomName.IsEmpty() ? TEXT("비어있음") : *GameInstancePendingRoomName);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[GameSession] BeginPlay에서 BRGameInstance를 찾을 수 없습니다."));
+			}
+			
+			if (!GameInstancePendingRoomName.IsEmpty())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ PendingRoomName 발견! 자동으로 세션 재생성 시도: %s"), *GameInstancePendingRoomName);
+				
+				if (GEngine)
 				{
-					GameInstancePendingRoomName = BRGI->GetPendingRoomName();
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan,
+						FString::Printf(TEXT("[GameSession] 방 생성 중... (%s)"), *GameInstancePendingRoomName));
 				}
 				
-				if (!GameInstancePendingRoomName.IsEmpty())
+				// Online Subsystem 초기화 후 세션 재생성
+				FTimerHandle RecreateSessionTimerHandle;
+				GetWorld()->GetTimerManager().SetTimer(RecreateSessionTimerHandle, [this, GameInstancePendingRoomName]()
 				{
-					UE_LOG(LogTemp, Warning, TEXT("[GameSession] 리슨 서버 모드이지만 세션이 없습니다. 자동으로 세션 재생성 시도: %s"), *GameInstancePendingRoomName);
-					
-					// Online Subsystem 초기화 후 세션 재생성
-					FTimerHandle RecreateSessionTimerHandle;
-					GetWorld()->GetTimerManager().SetTimer(RecreateSessionTimerHandle, [this, GameInstancePendingRoomName]()
+					if (!IsValid(this))
 					{
-						// Online Subsystem이 초기화된 후 세션 재생성
-						if (SessionInterface.IsValid())
+						return;
+					}
+					
+					// Online Subsystem이 초기화된 후 세션 재생성
+					if (SessionInterface.IsValid())
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ 세션 자동 재생성 시작: %s"), *GameInstancePendingRoomName);
+						CreateRoomSession(GameInstancePendingRoomName);
+						
+						// 방 이름 클리어
+						if (UWorld* W = GetWorld())
 						{
-							UE_LOG(LogTemp, Warning, TEXT("[GameSession] 세션 자동 재생성 시작: %s"), *GameInstancePendingRoomName);
-							CreateRoomSession(GameInstancePendingRoomName);
-							
-							// 방 이름 클리어
-							if (UWorld* W = GetWorld())
+							if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 							{
-								if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
-								{
-									BRGI->ClearPendingRoomName();
-								}
+								BRGI->ClearPendingRoomName();
 							}
 						}
-						else
-						{
-							UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface가 아직 초기화되지 않았습니다. 세션 재생성을 건너뜁니다."));
-						}
-					}, 1.0f, false); // InitializeOnlineSubsystem 완료 대기
-				}
-				else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("[GameSession] 리슨 서버 모드이지만 세션이 없고, 대기 중인 방 이름도 없습니다."));
-					if (GEngine)
-					{
-						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, 
-							TEXT("[GameSession] ⚠️ 리슨 서버 모드이지만 세션이 없습니다.\n방을 다시 만들어주세요."));
 					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[GameSession] ❌ SessionInterface가 아직 초기화되지 않았습니다. 세션 재생성을 건너뜁니다."));
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] Online Subsystem 초기화를 다시 시도합니다..."));
+						
+						// SessionInterface가 없으면 다시 초기화 시도
+						InitializeOnlineSubsystem();
+						
+						// 초기화 후 재시도
+						FTimerHandle RetryTimer;
+						GetWorld()->GetTimerManager().SetTimer(RetryTimer, [this, GameInstancePendingRoomName]()
+						{
+							if (IsValid(this) && SessionInterface.IsValid())
+							{
+								UE_LOG(LogTemp, Warning, TEXT("[GameSession] ✅ 재시도: 세션 자동 재생성 시작: %s"), *GameInstancePendingRoomName);
+								CreateRoomSession(GameInstancePendingRoomName);
+								
+								if (UWorld* W = GetWorld())
+								{
+									if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
+									{
+										BRGI->ClearPendingRoomName();
+									}
+								}
+							}
+						}, 1.0f, false);
+					}
+				}, 1.0f, false); // InitializeOnlineSubsystem 완료 대기
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] ⚠️ 리슨 서버 모드이지만 세션이 없고, 대기 중인 방 이름도 없습니다."));
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, 
+						TEXT("[GameSession] ⚠️ 리슨 서버 모드이지만 세션이 없습니다.\n방을 다시 만들어주세요."));
 				}
 			}
+		}
 			else
 			{
 				if (GEngine)
@@ -616,59 +700,205 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 		return;
 	}
 	
-	// 기존 세션이 정말 제거되었는지 최종 확인
+	// 리슨 서버가 완전히 준비되었는지 확인 (openListenServer 명령어 사용 시 성공하는 이유)
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		ENetMode NetMode = World->GetNetMode();
+		UNetDriver* NetDriver = World->GetNetDriver();
+		
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 현재 상태 확인: NetMode=%d (0=Standalone, 3=ListenServer), NetDriver=%s"), 
+			(int32)NetMode, NetDriver ? TEXT("유효") : TEXT("NULL"));
+		
+		// Standalone 모드이지만 NetDriver가 있으면 ListenServer로 전환 중일 수 있음
+		if (NetMode == NM_Standalone && NetDriver)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ Standalone 모드이지만 NetDriver가 존재합니다. ListenServer 전환 중일 수 있습니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] NetDriver 초기화 완료 대기 후 재시도..."));
+			
+			// NetDriver가 완전히 준비될 때까지 대기 후 재시도
+			FTimerHandle RetryTimer;
+			World->GetTimerManager().SetTimer(RetryTimer, [this, RoomName]()
+			{
+				if (IsValid(this))
+				{
+					UWorld* W = GetWorld();
+					if (W)
+					{
+						ENetMode NM = W->GetNetMode();
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] 재시도: NetMode=%d, 재시도: %s"), (int32)NM, *RoomName);
+						CreateRoomSessionInternal(RoomName);
+					}
+				}
+			}, 1.0f, false); // 1초 후 재시도
+			return;
+		}
+		
+		if (NetMode == NM_ListenServer)
+		{
+			// 리슨 서버 모드인 경우 NetDriver가 활성화되었는지 확인
+			if (!NetDriver)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ 리슨 서버 모드이지만 NetDriver가 아직 초기화되지 않았습니다."));
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] NetDriver 초기화 대기 후 재시도..."));
+				
+				// NetDriver가 준비될 때까지 대기 후 재시도
+				FTimerHandle RetryTimer;
+				World->GetTimerManager().SetTimer(RetryTimer, [this, RoomName]()
+				{
+					if (IsValid(this))
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] NetDriver 초기화 대기 후 재시도: %s"), *RoomName);
+						CreateRoomSessionInternal(RoomName);
+					}
+				}, 0.5f, false); // 0.5초 후 재시도
+				return;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ 리슨 서버 NetDriver 확인됨 - CreateSession 진행"));
+			}
+		}
+		else if (NetMode == NM_Standalone && !NetDriver)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ Standalone 모드이고 NetDriver가 없습니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ListenServer 모드로 자동 전환 후 방 생성을 진행합니다..."));
+			
+			// GameInstance에 방 이름 저장 (ListenServer 전환 후 자동 방 생성용)
+			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+			{
+				BRGI->SetPendingRoomName(RoomName);
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] PendingRoomName 설정: %s"), *RoomName);
+			}
+			
+			// 현재 맵 경로 가져오기
+			FString CurrentMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
+			if (CurrentMapPath.IsEmpty())
+			{
+				CurrentMapPath = World->GetMapName();
+				CurrentMapPath.RemoveFromStart(World->StreamingLevelsPrefix);
+			}
+			
+			// 맵 경로를 /Game/.../MapName.MapName 형식으로 변환
+			if (!CurrentMapPath.Contains(TEXT("/")))
+			{
+				CurrentMapPath = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *CurrentMapPath, *CurrentMapPath);
+			}
+			else if (!CurrentMapPath.Contains(TEXT(".")))
+			{
+				FString MapName = FPaths::GetBaseFilename(CurrentMapPath);
+				CurrentMapPath = FString::Printf(TEXT("%s.%s"), *CurrentMapPath, *MapName);
+			}
+			
+			// 맵 경로가 유효한지 확인
+			if (CurrentMapPath.IsEmpty())
+			{
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] 맵 경로를 가져올 수 없습니다. ListenServer 전환을 건너뜁니다."));
+				OnCreateSessionComplete.Broadcast(false);
+				return;
+			}
+			
+			FString ListenURL = FString::Printf(TEXT("%s?listen"), *CurrentMapPath);
+			FString OpenCommand = FString::Printf(TEXT("open %s"), *ListenURL);
+			
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] ListenServer 모드로 자동 전환: %s"), *OpenCommand);
+			
+			if (GEngine)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan,
+					FString::Printf(TEXT("[방 생성] ListenServer 모드로 전환 중...\n맵 로드 후 자동으로 방 생성됩니다.")));
+			}
+			
+			// PlayerController를 통한 ConsoleCommand 실행
+			if (APlayerController* PC = World->GetFirstPlayerController())
+			{
+				PC->ConsoleCommand(OpenCommand, /*bExecInEditor=*/false);
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ openListenServer 명령어 실행 완료: %s"), *OpenCommand);
+			}
+			else
+			{
+				// PlayerController가 없으면 GEngine->Exec 사용
+				if (GEngine)
+				{
+					bool bExecResult = GEngine->Exec(World, *OpenCommand);
+					UE_LOG(LogTemp, Warning, TEXT("[방 생성] GEngine->Exec 결과: %s"), bExecResult ? TEXT("성공") : TEXT("실패"));
+				}
+			}
+			
+			// openListenServer 실행 후 맵이 다시 로드되면 OnStart()에서 PendingRoomName으로 자동 방 생성됨
+			// 여기서는 OnCreateSessionComplete를 호출하지 않음 (맵 로드 후 자동 방 생성에서 호출됨)
+			return;
+		}
+	}
+	
+	// GitHub 예제 참고: 기존 세션이 있으면 제거 (간단하게 처리)
 	auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
 	if (ExistingSession != nullptr)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] ⚠️ 경고: CreateRoomSessionInternal 호출 시점에 기존 세션이 아직 존재합니다!"));
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션 정보: 최대 인원=%d, 현재 인원=%d"), 
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션이 발견되었습니다. 제거 중..."));
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 정보: 최대 인원=%d, 현재 인원=%d"), 
 			ExistingSession->SessionSettings.NumPublicConnections,
 			ExistingSession->NumOpenPublicConnections);
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션을 다시 제거하고 재시도합니다..."));
 		
-		// 기존 세션이 있으면 다시 제거 시도
+		// GitHub 예제처럼 간단하게 처리: DestroySession 호출하고 대기
 		PendingRoomName = RoomName;
 		bPendingCreateSession = true;
-		bool bDestroyResult = SessionInterface->DestroySession(NAME_GameSession);
-		if (bDestroyResult)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 재제거 요청 전송됨 (OnDestroySessionCompleteDelegate에서 CreateSession 재시도 예정)"));
-			return;
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션 재제거 실패! CreateSession을 강제로 시도합니다."));
-			// DestroySession이 실패해도 CreateSession 시도 (세션이 이미 제거되었을 수 있음)
-		}
+		SessionInterface->DestroySession(NAME_GameSession);
+		// DestroySession은 비동기이므로 OnDestroySessionCompleteDelegate에서 CreateSession 호출
+		return;
 	}
 	
-	// 세션 설정 생성 - 이전 코드(OSS251030last)처럼 간단하게
+	// GitHub 예제 참고: 세션 설정 생성 (간단하게)
 	SessionSettings = MakeShareable(new FOnlineSessionSettings());
 	
-	// 이전 코드: if (IOnlineSubsystem::Get()->GetSubsystemName() == "NULL") SessionSettings.bIsLANMatch = true; else SessionSettings.bIsLANMatch = false;
+	// GitHub 예제: SessionSettings.bIsLANMatch = IOnlineSubsystem::Get()->GetSubsystemName() == "NULL";
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("NULL");
 	
-	// NULL (LAN 모드) 사용 중
+	// GitHub 예제처럼 간단하게 처리
+	SessionSettings->bIsLANMatch = (SubsystemName == TEXT("NULL"));
+	
 	if (SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[방 생성] NULL 서브시스템 사용 중 (LAN 모드) - 같은 LAN에 연결된 플레이어만 찾을 수 있습니다."));
-	}
-	
-	if (OnlineSubsystem && OnlineSubsystem->GetSubsystemName() == "NULL")
-	{
-		SessionSettings->bIsLANMatch = true;
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] NULL 서브시스템 사용 중 (LAN 모드)"));
 	}
 	else
 	{
-		SessionSettings->bIsLANMatch = false;
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] %s 서브시스템 사용 중 (인터넷 모드)"), *SubsystemName);
+	}
+	
+	// GameMode에서 최소/최대 플레이어 수 가져오기
+	int32 MinPlayerCount = 4; // 기본값
+	int32 MaxPlayerCount = 8; // 기본값
+	
+	World = GetWorld();
+	if (World)
+	{
+		if (ABRGameMode* BRGameMode = World->GetAuthGameMode<ABRGameMode>())
+		{
+			MinPlayerCount = BRGameMode->MinPlayers;
+			MaxPlayerCount = BRGameMode->MaxPlayers;
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] GameMode에서 플레이어 수 설정 가져옴: MinPlayers=%d, MaxPlayers=%d"), MinPlayerCount, MaxPlayerCount);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] GameMode를 찾을 수 없어 기본값 사용: MinPlayers=%d, MaxPlayers=%d"), MinPlayerCount, MaxPlayerCount);
+		}
 	}
 	
 	// 이전 코드: SessionSettings.NumPublicConnections = 24;
-	SessionSettings->NumPublicConnections = 8; // 현재 프로젝트는 8명
-	// 이전 코드: SessionSettings.bUsesPresence = SessionSettings.bShouldAdvertise = true;
+	SessionSettings->NumPublicConnections = MaxPlayerCount; // 최대 플레이어 수 설정
+	// 최소 플레이어 수를 세션 설정에 추가 (검색 시 필터링에 사용)
+	SessionSettings->Set(FName(TEXT("MIN_PLAYERS")), MinPlayerCount, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	
+	// GitHub 예제 참고: Steam 세션 설정
+	// bUsesPresence = true는 Steam Lobby에 필수
 	SessionSettings->bUsesPresence = true;
 	SessionSettings->bShouldAdvertise = true;
+	
+	// Steam을 사용할 때 추가 설정 (GitHub 예제는 설정하지 않지만, 필요시 추가)
+	// SessionSettings->bAllowInvites = true;
+	// SessionSettings->bAllowJoinInProgress = true;
 	// 이전 코드: SessionSettings.Set(SESSION_SETTINGS_KEY, DesiredServerName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	// 세션 이름 설정
 	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: Subsystem=%s, bIsLANMatch=%s"), 
@@ -685,21 +915,123 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 	}
 	SessionSettings->Set(FName(TEXT("SESSION_NAME")), EffectiveRoomName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
-	// 이전 코드: SessionInterface->CreateSession(0,SESSION_NAME,SessionSettings);
-	// 이전 코드: if (MainMenu) MainMenu->Shutdown();
-	// 이전 코드처럼 바로 CreateSession 호출
-	UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 중... (Subsystem: %s)"), *SubsystemName);
-	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: NumPublicConnections=%d, bUsesPresence=%s, bShouldAdvertise=%s"), 
+	// GitHub 예제 참고: Steam은 LocalUserNum=0을 사용 (단순하게 처리)
+	// 복잡한 로그인 확인 로직 제거하고 GitHub 예제처럼 단순하게 처리
+	int32 LocalUserNum = 0;
+	
+	// BuildUniqueId는 GitHub 예제에서 설정하지 않음 (설정하면 다른 빌드와 호환되지 않을 수 있음)
+	// 주석 처리: if (!SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase)) { SessionSettings->BuildUniqueId = 1; }
+	
+	// 최소 플레이어 수 가져오기 (로그용)
+	int32 LogMinPlayers = 4;
+	SessionSettings->Get(FName(TEXT("MIN_PLAYERS")), LogMinPlayers);
+	
+	// GitHub 예제 참고: CreateSession 호출 전 기존 세션 최종 확인
+	auto FinalCheckSession = SessionInterface->GetNamedSession(NAME_GameSession);
+	if (FinalCheckSession != nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] ⚠️ CreateSession 호출 직전에 기존 세션이 발견되었습니다!"));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 이것은 비정상적인 상황입니다. CreateSession을 시도하지 않습니다."));
+		OnCreateSessionComplete.Broadcast(false);
+		return;
+	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 중... (Subsystem: %s, LocalUserNum: %d)"), 
+		*SubsystemName, LocalUserNum);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 설정: MinPlayers=%d, MaxPlayers=%d, bUsesPresence=%s, bShouldAdvertise=%s, bIsLANMatch=%s"), 
+		LogMinPlayers,
 		SessionSettings->NumPublicConnections,
 		SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"),
-		SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
+		SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"),
+		SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"));
 	
-	bool bCreateResult = SessionInterface->CreateSession(0, NAME_GameSession, *SessionSettings);
+	// GitHub 예제 참고: CreateSession 호출 (단순하게)
+	// GitHub 예제: SessionInterface->CreateSession(0, k_SessionName, SessionSettings);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출 직전 최종 확인..."));
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - SessionInterface 유효: %s"), SessionInterface.IsValid() ? TEXT("Yes") : TEXT("No"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - LocalUserNum: %d"), LocalUserNum);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - SessionName: %s"), *FName(NAME_GameSession).ToString());
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - NumPublicConnections: %d"), SessionSettings->NumPublicConnections);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - bUsesPresence: %s"), SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - bShouldAdvertise: %s"), SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] - bIsLANMatch: %s"), SessionSettings->bIsLANMatch ? TEXT("true") : TEXT("false"));
+	
+	// 기존 세션 최종 재확인 (CreateSession 직전)
+	auto FinalCheckBeforeCreate = SessionInterface->GetNamedSession(NAME_GameSession);
+	if (FinalCheckBeforeCreate != nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ CreateSession 호출 직전에 기존 세션이 발견되었습니다!"));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 이것이 CreateSession 실패의 주요 원인입니다."));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션: 최대 인원=%d, 현재 인원=%d"), 
+			FinalCheckBeforeCreate->SessionSettings.NumPublicConnections,
+			FinalCheckBeforeCreate->NumOpenPublicConnections);
+		
+		// 기존 세션 강제 제거 시도
+		UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 강제 제거 시도..."));
+		PendingRoomName = RoomName;
+		bPendingCreateSession = true;
+		SessionInterface->DestroySession(NAME_GameSession);
+		
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Orange, 
+				TEXT("[방 생성] 기존 세션 발견! 제거 후 재시도 중..."));
+		}
+		return; // DestroySession 완료 후 OnDestroySessionCompleteDelegate에서 재시도
+	}
+	
+	// GitHub 예제 참고: CreateSession 호출 전 Steam 로그인 상태 확인
+	// Steam인 경우 로그인 상태를 먼저 확인하고, 로그인되지 않았으면 CreateSession을 호출하지 않음
+	if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
+	{
+		if (OnlineSubsystem)
+		{
+			IOnlineIdentityPtr IdentityInterface = OnlineSubsystem->GetIdentityInterface();
+			if (IdentityInterface.IsValid())
+			{
+				bool bHasLoggedInUser = false;
+				for (int32 UserIdx = 0; UserIdx < 4; UserIdx++)
+				{
+					ELoginStatus::Type LoginStatus = IdentityInterface->GetLoginStatus(UserIdx);
+					UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 전 확인: UserIdx=%d, LoginStatus=%d"), UserIdx, (int32)LoginStatus);
+					if (LoginStatus == ELoginStatus::LoggedIn)
+					{
+						bHasLoggedInUser = true;
+						UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ Steam 로그인 확인됨 (UserIdx=%d) - CreateSession 진행"), UserIdx);
+						break;
+					}
+				}
+				if (!bHasLoggedInUser)
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ Steam에 로그인된 사용자가 없습니다!"));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession을 호출하지 않습니다."));
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, 
+							TEXT("[방 생성] ❌ Steam 로그인 필요!\nSteam 클라이언트를 실행하고 로그인하세요."));
+					}
+					OnCreateSessionComplete.Broadcast(false);
+					return;
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ Identity Interface를 가져올 수 없지만 CreateSession을 시도합니다."));
+			}
+		}
+	}
+	
+	// GitHub 예제 참고: CreateSession 호출
+	// GitHub 예제: SessionInterface->CreateSession(0, k_SessionName, SessionSettings);
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] CreateSession 호출: LocalUserNum=%d, SessionName=%s"), 
+		LocalUserNum, *FName(NAME_GameSession).ToString());
+	
+	bool bCreateResult = SessionInterface->CreateSession(LocalUserNum, NAME_GameSession, *SessionSettings);
 	
 	if (!bCreateResult)
 	{
 		UE_LOG(LogTemp, Error, TEXT("========================================"));
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession 호출이 즉시 실패했습니다!"));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ CreateSession 호출이 즉시 실패했습니다!"));
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] Subsystem: %s"), *SubsystemName);
 		
 		// 기존 세션 재확인
@@ -710,18 +1042,73 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 			UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션: 최대 인원=%d, 현재 인원=%d"), 
 				CheckSession->SessionSettings.NumPublicConnections,
 				CheckSession->NumOpenPublicConnections);
+			
+			// 기존 세션 강제 제거 후 재시도
+			UE_LOG(LogTemp, Warning, TEXT("[방 생성] 기존 세션 강제 제거 후 재시도..."));
+			PendingRoomName = RoomName;
+			bPendingCreateSession = true;
+			SessionInterface->DestroySession(NAME_GameSession);
+			return; // OnDestroySessionCompleteDelegate에서 재시도
 		}
-		else
+		
+		// Steam 특정 진단
+		if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
 		{
-			UE_LOG(LogTemp, Error, TEXT("[방 생성] 기존 세션은 존재하지 않습니다."));
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam 세션 생성 실패 - 상세 진단:"));
+			
+			// Steam 로그인 상태 확인
+			if (OnlineSubsystem)
+			{
+				IOnlineIdentityPtr IdentityInterface = OnlineSubsystem->GetIdentityInterface();
+				if (IdentityInterface.IsValid())
+				{
+					bool bFoundLoggedIn = false;
+					for (int32 UserIdx = 0; UserIdx < 4; UserIdx++)
+					{
+						ELoginStatus::Type LoginStatus = IdentityInterface->GetLoginStatus(UserIdx);
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] UserIdx=%d, LoginStatus=%d (%s)"), 
+							UserIdx, (int32)LoginStatus,
+							LoginStatus == ELoginStatus::LoggedIn ? TEXT("LoggedIn") :
+							LoginStatus == ELoginStatus::NotLoggedIn ? TEXT("NotLoggedIn") :
+							LoginStatus == ELoginStatus::UsingLocalProfile ? TEXT("UsingLocalProfile") :
+							TEXT("Unknown"));
+						if (LoginStatus == ELoginStatus::LoggedIn)
+						{
+							bFoundLoggedIn = true;
+							UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ Steam 로그인 확인: UserIdx=%d"), UserIdx);
+							
+							// 사용자 ID 확인
+							TSharedPtr<const FUniqueNetId> UserId = IdentityInterface->GetUniquePlayerId(UserIdx);
+							if (UserId.IsValid())
+							{
+								UE_LOG(LogTemp, Warning, TEXT("[방 생성] Steam 사용자 ID: %s"), *UserId->ToString());
+							}
+						}
+					}
+					if (!bFoundLoggedIn)
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ Steam에 로그인된 사용자가 없습니다!"));
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] → Steam 클라이언트를 실행하고 로그인하세요."));
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ Identity Interface를 가져올 수 없습니다."));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] → Steam Online Subsystem 초기화 문제일 수 있습니다."));
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ OnlineSubsystem이 NULL입니다!"));
+			}
 		}
 		
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 가능한 원인:"));
 		UE_LOG(LogTemp, Error, TEXT("  1. 기존 세션이 아직 제거되지 않음 (위에서 확인됨)"));
-		UE_LOG(LogTemp, Error, TEXT("  2. Steam 클라이언트가 실행되지 않음 (인터넷 모드)"));
-		UE_LOG(LogTemp, Error, TEXT("  3. Steam에 로그인되지 않음 (인터넷 모드)"));
-		UE_LOG(LogTemp, Error, TEXT("  4. Online Subsystem 초기화 문제"));
-		UE_LOG(LogTemp, Error, TEXT("  5. Steam 네트워크 연결 문제"));
+		UE_LOG(LogTemp, Error, TEXT("  2. Steam 클라이언트가 실행되지 않음"));
+		UE_LOG(LogTemp, Error, TEXT("  3. Steam에 로그인되지 않음 (위에서 확인됨)"));
+		UE_LOG(LogTemp, Error, TEXT("  4. Steam 네트워크 연결 문제"));
+		UE_LOG(LogTemp, Error, TEXT("  5. Steam App ID 설정 문제 (현재: 480)"));
 		UE_LOG(LogTemp, Error, TEXT("========================================"));
 		
 		if (GEngine)
@@ -732,9 +1119,11 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 			{
 				ErrorMsg += TEXT("⚠️ 기존 세션이 아직 존재합니다!\n");
 			}
-			if (!SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase))
+			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
 			{
-				ErrorMsg += TEXT("Steam 클라이언트 확인 필요");
+				ErrorMsg += TEXT("Steam 클라이언트 확인 필요\n");
+				ErrorMsg += TEXT("1. Steam 실행 확인\n");
+				ErrorMsg += TEXT("2. Steam 로그인 확인");
 			}
 			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, ErrorMsg);
 		}
@@ -1074,11 +1463,52 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 		if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase))
 		{
 			UE_LOG(LogTemp, Error, TEXT("[방 생성] Steam 세션 생성 실패 가능 원인:"));
+			
+			// Steam 로그인 상태 확인
+			if (OnlineSubsystem)
+			{
+				IOnlineIdentityPtr IdentityInterface = OnlineSubsystem->GetIdentityInterface();
+				if (IdentityInterface.IsValid())
+				{
+					bool bFoundLoggedInUser = false;
+					for (int32 UserIdx = 0; UserIdx < 4; UserIdx++)
+					{
+						ELoginStatus::Type LoginStatus = IdentityInterface->GetLoginStatus(UserIdx);
+						if (LoginStatus == ELoginStatus::LoggedIn)
+						{
+							UE_LOG(LogTemp, Warning, TEXT("[방 생성] ✅ Steam 로그인 확인됨: LocalUserNum=%d"), UserIdx);
+							bFoundLoggedInUser = true;
+							break;
+						}
+					}
+					if (!bFoundLoggedInUser)
+					{
+						UE_LOG(LogTemp, Error, TEXT("  ❌ Steam에 로그인된 사용자가 없습니다!"));
+						UE_LOG(LogTemp, Error, TEXT("     → Steam 클라이언트를 실행하고 로그인하세요."));
+					}
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("  ⚠️ Identity Interface를 가져올 수 없습니다."));
+				}
+			}
+			
 			UE_LOG(LogTemp, Error, TEXT("  1. Steam 클라이언트가 실행되지 않음"));
-			UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음"));
+			UE_LOG(LogTemp, Error, TEXT("  2. Steam에 로그인되지 않음 (위에서 확인됨)"));
 			UE_LOG(LogTemp, Error, TEXT("  3. Steam 네트워크 연결 문제"));
-			UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제"));
+			UE_LOG(LogTemp, Error, TEXT("  4. Steam App ID 설정 문제 (현재: 480)"));
 			UE_LOG(LogTemp, Error, TEXT("  5. 기존 세션이 아직 제거되지 않음"));
+			
+			// 기존 세션 확인
+			if (SessionInterface.IsValid())
+			{
+				auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
+				if (ExistingSession != nullptr)
+				{
+					UE_LOG(LogTemp, Error, TEXT("  ⚠️ 기존 세션이 아직 존재합니다!"));
+					UE_LOG(LogTemp, Error, TEXT("     → 세션을 제거하고 다시 시도하세요."));
+				}
+			}
 		}
 		else if (SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase))
 		{
