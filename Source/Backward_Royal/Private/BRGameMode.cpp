@@ -10,6 +10,7 @@
 #include "UpperBodyPawn.h"
 #include "PlayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "NavigationSystem.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -74,8 +75,40 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			BRPS->SetUserUID(UserUID);
 		}
 
-		UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] %s가 게임에 입장했습니다. (현재 인원: %d/%d)"),
-			*PlayerName, BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
+		// 클라이언트 연결 확인 (Standalone 모드에서도 확인 가능)
+		UWorld* World = GetWorld();
+		ENetMode NetMode = World ? World->GetNetMode() : NM_Standalone;
+		FString NetModeString = NetMode == NM_ListenServer ? TEXT("ListenServer") : 
+		                       NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : 
+		                       NetMode == NM_Client ? TEXT("Client") : TEXT("Standalone");
+		
+		UE_LOG(LogTemp, Warning, TEXT("========================================"));
+		UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트 입장 확인!"));
+		UE_LOG(LogTemp, Warning, TEXT("========================================"));
+		UE_LOG(LogTemp, Warning, TEXT("[서버] 플레이어 이름: %s"), *PlayerName);
+		UE_LOG(LogTemp, Warning, TEXT("[서버] 현재 인원: %d/%d"), BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
+		UE_LOG(LogTemp, Warning, TEXT("[서버] 네트워크 모드: %s"), *NetModeString);
+		
+		// 리슨 서버 모드 확인
+		if (NetMode == NM_ListenServer)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[서버] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트 연결을 받을 수 있는 상태입니다."));
+		}
+		else if (NetMode == NM_Standalone)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[서버] ⚠️ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트가 접속할 수 없습니다. 리슨 서버로 전환하세요."));
+		}
+		
+		// 화면에 입장 메시지 표시
+		if (GEngine)
+		{
+			FString JoinMsg = FString::Printf(TEXT("[서버] %s 입장! (인원: %d/%d)"), 
+				*PlayerName, BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, JoinMsg);
+		}
+		
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 참고: 실제 방(세션)을 만들려면 'CreateRoom [방이름]' 명령어를 사용하세요."));
 
 		// [보존] 방장 설정
@@ -418,5 +451,25 @@ void ABRGameMode::StartGame()
 			// 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동으로 따라옵니다
 			World->ServerTravel(TravelURL, true);
 		}
+}
+
+void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+	
+	// PIE 종료 시 NavigationSystem이 World를 참조하여 GC가 되지 않는 문제는
+	// Unreal Engine의 알려진 버그입니다. NavigationSystem은 World가 파괴될 때
+	// 자동으로 정리되어야 하지만, PIE 종료 시 타이밍 문제로 인해 참조가 남을 수 있습니다.
+	// 
+	// 참고: NavigationSystem을 직접 정리하는 것은 권장되지 않으며,
+	// World의 정리 순서에 문제가 있을 수 있습니다.
+	// 이 문제는 주로 비동기 네비게이션 메시 빌드가 진행 중일 때 발생합니다.
+	
+	UWorld* World = GetWorld();
+	if (World && World->IsPlayInEditor())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] PIE 종료 - NavigationSystem은 World 파괴 시 자동으로 정리됩니다."));
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 참고: PIE 종료 시 NavigationSystem GC 경고는 Unreal Engine의 알려진 버그입니다."));
+	}
 }
 

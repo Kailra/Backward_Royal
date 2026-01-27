@@ -21,10 +21,12 @@ public class Backward_Royal : ModuleRules
 			"SlateCore",
             "Json",
             "JsonUtilities",
-            "Niagara"
+            "Niagara",
+			"NavigationSystem"
         });
 		
-		// Standalone 모드에서 Null Online Subsystem을 사용하기 위해 동적 로드
+		// Online Subsystem 모듈 동적 로드
+		DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemNull");
 	}
 }

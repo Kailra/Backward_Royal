@@ -21,6 +21,11 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Room Settings")
 	int32 MaxPlayers = 8;
 
+	// 방 생성 후 이동할 로비 맵 경로. 비어 있으면 현재 맵 유지.
+	// 예: /Game/Main/Level/Main_Scene 또는 /Game/Main/Level/Stage/Stage01_Temple
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (DisplayName = "로비 맵 경로"))
+	FString LobbyMapPath;
+
 	// 게임 시작 맵 경로 (레거시 - 랜덤 맵 선택 시 사용되지 않음)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	FString GameMapPath = TEXT("/Game/Main/Level/Stage/Stage01_Temple");
@@ -49,6 +54,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// 에디터(BP_BRGameMode)에서 BP_UpperBodyPawn을 할당할 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Classes")
