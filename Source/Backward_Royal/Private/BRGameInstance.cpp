@@ -9,6 +9,7 @@
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -43,6 +44,12 @@ void UBRGameInstance::Init()
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 네트워크 모드: %s"), 
 		bUseLANOnly ? TEXT("LAN 전용") : TEXT("인터넷 매칭 (Steam)"));
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 모드 변경: 콘솔에서 'SetLANOnly 1' (LAN) 또는 'SetLANOnly 0' (인터넷)"));
+	
+	// 패킹된 게임에서 Standalone 모드로 시작하는 것을 방지하기 위해
+	// 명령줄 인자 확인 (이미 ?listen이 있으면 그대로 사용)
+	FString CommandLine = FCommandLine::Get();
+	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 명령줄: %s"), *CommandLine);
+	
 	ReloadAllConfigs();
 }
 
@@ -124,31 +131,25 @@ void UBRGameInstance::OnStart()
 			}
 			
 			// 짧은 지연 후 실행 (World가 완전히 초기화될 시간 필요)
+			// 람다에서 World를 캡처하지 않고 콜백 시점에 GetWorld()로 가져와 댕글링 포인터 크래시 방지
 			FTimerHandle ListenServerTimer;
-			World->GetTimerManager().SetTimer(ListenServerTimer, [this, OpenCommand, World]()
+			FString OpenCommandCopy = OpenCommand;
+			World->GetTimerManager().SetTimer(ListenServerTimer, [this, OpenCommandCopy]()
 			{
-				// 타이머 콜백에서 World와 GEngine 유효성 재확인
-				if (!IsValid(this) || !World || !IsValid(World) || !GEngine)
+				if (!IsValid(this) || !GEngine)
 				{
-					UE_LOG(LogTemp, Error, TEXT("[GameInstance] 타이머 콜백: World 또는 GEngine이 유효하지 않습니다."));
+					UE_LOG(LogTemp, Error, TEXT("[GameInstance] 타이머 콜백: GameInstance 또는 GEngine이 유효하지 않습니다."));
 					return;
 				}
-				
-				// PlayerController를 통한 ConsoleCommand 실행
-				if (APlayerController* PC = World->GetFirstPlayerController())
+				UWorld* CurrentWorld = GetWorld();
+				if (!CurrentWorld || !IsValid(CurrentWorld))
 				{
-					PC->ConsoleCommand(OpenCommand, /*bExecInEditor=*/false);
-					UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ✅ ConsoleCommand 실행 완료: %s"), *OpenCommand);
+					UE_LOG(LogTemp, Error, TEXT("[GameInstance] 타이머 콜백: GetWorld()가 유효하지 않습니다."));
+					return;
 				}
-				else
-				{
-					// PlayerController가 없으면 GEngine->Exec 사용
-					if (GEngine)
-					{
-						bool bExecResult = GEngine->Exec(World, *OpenCommand);
-						UE_LOG(LogTemp, Warning, TEXT("[GameInstance] GEngine->Exec 결과: %s"), bExecResult ? TEXT("성공") : TEXT("실패"));
-					}
-				}
+				// GEngine->Exec 사용 (open 명령은 World 전환을 일으키므로 PC 대신 Exec이 안전)
+				bool bExecResult = GEngine->Exec(CurrentWorld, *OpenCommandCopy);
+				UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ✅ ListenServer 전환 Exec 결과: %s, 명령: %s"), bExecResult ? TEXT("성공") : TEXT("실패"), *OpenCommandCopy);
 			}, 0.1f, false); // 0.1초 후 실행
 			
 			// ListenServer로 전환되면 함수 종료 (아래 PendingRoomName 로직은 ListenServer 모드에서 실행됨)
