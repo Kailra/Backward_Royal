@@ -252,13 +252,6 @@ void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 void APlayerCharacter::Restart()
 {
 	Super::Restart();
-	if (IsLocallyControlled())
-	{
-		if (InputComponent)
-		{
-			SetupPlayerInputComponent(InputComponent);
-		}
-	}
 }
 
 void APlayerCharacter::OnRep_PlayerState()
@@ -266,10 +259,6 @@ void APlayerCharacter::OnRep_PlayerState()
 	Super::OnRep_PlayerState();
 	if (IsLocallyControlled())
 	{
-		if (InputComponent)
-		{
-			SetupPlayerInputComponent(InputComponent);
-		}
 		if (ABRPlayerController* PC = Cast<ABRPlayerController>(GetController()))
 		{
 			PC->SetupRoleInput(true);
