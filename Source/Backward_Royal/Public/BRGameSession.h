@@ -91,6 +91,12 @@ protected:
 	FString PendingRoomName;
 	bool bPendingCreateSession;
 
+	// BeginPlay 중복 호출 방지 플래그
+	bool bBeginPlayInitialized;
+
+	// InitializeOnlineSubsystem 중복 호출 방지 플래그
+	bool bOnlineSubsystemInitialized;
+
 	void FindSessionsInternal(bool bIsRetry);
 	void FindSessionsRetryCallback();
 

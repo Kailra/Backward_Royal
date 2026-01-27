@@ -497,52 +497,78 @@ void ABRPlayerController::HandleNetworkFailure(UWorld* World, UNetDriver* NetDri
 
 void ABRPlayerController::CreateRoom(const FString& RoomName)
 {
-	UE_LOG(LogTemp, Log, TEXT("[방 생성] 명령 실행: %s"), *RoomName);
+	UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateRoom 호출됨: %s"), *RoomName);
+	
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		ENetMode NetMode = World->GetNetMode();
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 현재 NetMode: %s"), 
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer") :
+			NetMode == NM_Client ? TEXT("Client") :
+			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
+	}
 	
 	// 방 생성 요청 시 플래그 설정 (ServerTravel 후 재로드 시 감지용)
-	if (UWorld* World = GetWorld())
+	if (World)
 	{
 		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
 		{
 			BRGI->SetDidCreateRoomThenTravel(true);
-			UE_LOG(LogTemp, Log, TEXT("[방 생성] SetDidCreateRoomThenTravel 플래그 설정"));
+			UE_LOG(LogTemp, Error, TEXT("[방 생성] SetDidCreateRoomThenTravel 플래그 설정"));
 		}
 	}
 	
 	if (HasAuthority())
 	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 서버 권한 있음 - 직접 실행"));
 		// 서버에서 직접 실행
-		if (UWorld* World = GetWorld())
+		if (World)
 		{
 			if (AGameModeBase* GameMode = World->GetAuthGameMode())
 			{
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] GameMode 발견: %s"), *GameMode->GetClass()->GetName());
 				if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
 				{
-					UE_LOG(LogTemp, Log, TEXT("[방 생성] 세션 생성 요청 중..."));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] GameSession 발견! 세션 생성 요청 중..."));
 					GameSession->CreateRoomSession(RoomName);
 				}
 				else
 				{
-					UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: GameSession을 찾을 수 없습니다."));
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GameSession을 찾을 수 없습니다."));
+					if (GameMode->GameSession)
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] GameMode->GameSession 타입: %s (ABRGameSession이 아님)"), 
+							*GameMode->GameSession->GetClass()->GetName());
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] GameMode->GameSession이 NULL입니다."));
+					}
 				}
 			}
 			else
 			{
-				UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패: GameMode를 찾을 수 없습니다."));
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GameMode를 찾을 수 없습니다."));
 			}
 		}
 	}
 	else
 	{
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] 클라이언트 권한 - 서버로 RPC 전송..."));
 		// 클라이언트에서는 서버로 RPC 전송
-		UE_LOG(LogTemp, Log, TEXT("[방 생성] 클라이언트에서 서버로 요청 전송..."));
 		ServerCreateRoom(RoomName);
 	}
 }
 
 void ABRPlayerController::CreateRoomWithPlayerName(const FString& RoomName, const FString& PlayerName)
 {
-	UE_LOG(LogTemp, Log, TEXT("[방 생성 및 플레이어 이름 설정] 방=%s, 이름=%s"), *RoomName, *PlayerName);
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+	UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateRoomWithPlayerName 호출됨!"));
+	UE_LOG(LogTemp, Error, TEXT("[방 생성] 방 이름: %s, 플레이어 이름: %s"), *RoomName, *PlayerName);
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+	
 	// 먼저 플레이어 이름 설정
 	SetPlayerName(PlayerName);
 	// 그 다음 방 생성

@@ -50,7 +50,9 @@ void UBRGameInstance::OnStart()
 {
 	Super::OnStart();
 	
-	UE_LOG(LogTemp, Log, TEXT("[GameInstance] OnStart 호출 - 첫 번째 World 생성 완료"));
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
+	UE_LOG(LogTemp, Error, TEXT("[GameInstance] OnStart 호출 - 첫 번째 World 생성 완료"));
+	UE_LOG(LogTemp, Error, TEXT("========================================"));
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] PendingRoomName 상태 확인: %s"), 
 		PendingRoomName.IsEmpty() ? TEXT("비어있음") : *PendingRoomName);
 	
@@ -236,30 +238,86 @@ void UBRGameInstance::OnStart()
 				}
 				
 				// ListenServer 모드가 되었으므로 세션을 다시 생성
-				// 짧은 지연 후 세션 생성 (GameSession이 초기화될 시간 필요)
+				// GameSession이 초기화될 때까지 여러 번 시도
 				FTimerHandle SessionRecreateTimer;
-				World->GetTimerManager().SetTimer(SessionRecreateTimer, [this, World]()
+				int32 RetryCount = 0;
+				const int32 MaxRetries = 10; // 최대 10초 대기
+				
+				TWeakObjectPtr<UWorld> WeakWorld = World;
+				FString RoomNameToCreate = PendingRoomName; // 복사본 저장
+				
+				UE_LOG(LogTemp, Error, TEXT("[GameInstance] ⚠️ GameSession 찾기 시작 (최대 %d초 대기)"), MaxRetries);
+				
+				World->GetTimerManager().SetTimer(SessionRecreateTimer, [this, WeakWorld, RoomNameToCreate, RetryCount, MaxRetries, &SessionRecreateTimer]() mutable
 				{
-					if (AGameModeBase* GameMode = World->GetAuthGameMode())
+					int32 CurrentRetry = RetryCount;
+					CurrentRetry++;
+					
+					if (!WeakWorld.IsValid())
 					{
-						if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+						UE_LOG(LogTemp, Error, TEXT("[GameInstance] ❌ World가 유효하지 않습니다."));
+						return;
+					}
+					
+					UWorld* W = WeakWorld.Get();
+					if (!W)
+					{
+						UE_LOG(LogTemp, Error, TEXT("[GameInstance] ❌ World 포인터가 NULL입니다."));
+						return;
+					}
+					
+					UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameMode 찾기 시도 %d/%d"), CurrentRetry, MaxRetries);
+					
+					AGameModeBase* GameMode = W->GetAuthGameMode();
+					if (!GameMode)
+					{
+						UE_LOG(LogTemp, Error, TEXT("[GameInstance] ❌ GameMode를 찾을 수 없습니다. 재시도 중... (%d/%d)"), CurrentRetry, MaxRetries);
+						if (CurrentRetry >= MaxRetries)
 						{
-							UE_LOG(LogTemp, Warning, TEXT("[GameInstance] ListenServer 모드에서 세션 재생성: %s"), *PendingRoomName);
-							GameSession->CreateRoomSession(PendingRoomName);
-							
-							// PendingRoomName 클리어 (재생성 완료)
-							PendingRoomName.Empty();
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] ❌ GameMode를 찾을 수 없습니다. 최대 재시도 횟수 초과."));
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] ⚠️ 블루프린트 GameMode(BP_MainGameMode)가 C++ ABRGameMode를 상속하는지 확인하세요."));
+							return;
+						}
+						return; // 타이머가 계속 실행됨
+					}
+					
+					UE_LOG(LogTemp, Error, TEXT("[GameInstance] ✅ GameMode 발견: %s"), *GameMode->GetClass()->GetName());
+					
+					ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession);
+					if (!GameSession)
+					{
+						UE_LOG(LogTemp, Error, TEXT("[GameInstance] ❌ GameSession을 찾을 수 없습니다. 재시도 중... (%d/%d)"), CurrentRetry, MaxRetries);
+						if (GameMode->GameSession)
+						{
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameMode->GameSession 타입: %s (ABRGameSession이 아님)"), 
+								*GameMode->GameSession->GetClass()->GetName());
 						}
 						else
 						{
-							UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameSession을 찾을 수 없습니다."));
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameMode->GameSession이 NULL입니다."));
 						}
+						if (CurrentRetry >= MaxRetries)
+						{
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] ❌ GameSession을 찾을 수 없습니다. 최대 재시도 횟수 초과."));
+							UE_LOG(LogTemp, Error, TEXT("[GameInstance] ⚠️ 블루프린트 GameMode에서 GameSessionClass가 ABRGameSession으로 설정되어 있는지 확인하세요."));
+							return;
+						}
+						return; // 타이머가 계속 실행됨
 					}
-					else
+					
+					// GameSession을 찾았으므로 세션 생성
+					UE_LOG(LogTemp, Error, TEXT("[GameInstance] ✅✅✅ GameSession 발견! ListenServer 모드에서 세션 재생성: %s"), *RoomNameToCreate);
+					GameSession->CreateRoomSession(RoomNameToCreate);
+					
+					// PendingRoomName 클리어 (재생성 완료)
+					if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 					{
-						UE_LOG(LogTemp, Error, TEXT("[GameInstance] GameMode를 찾을 수 없습니다."));
+						BRGI->ClearPendingRoomName();
 					}
-				}, 1.0f, false); // 1초 후 세션 재생성
+					
+					// 타이머 정리
+					W->GetTimerManager().ClearTimer(SessionRecreateTimer);
+				}, 1.0f, true); // 1초마다 반복
 			}
 		}
 		else
