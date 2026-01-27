@@ -894,7 +894,11 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 	// GitHub 예제 참고: Steam 세션 설정
 	// bUsesPresence = true는 Steam Lobby에 필수
 	SessionSettings->bUsesPresence = true;
-	SessionSettings->bShouldAdvertise = true;
+	SessionSettings->bShouldAdvertise = true; // Steam에서 세션을 검색 가능하게 함
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 생성] Steam 세션 설정: bUsesPresence=%s, bShouldAdvertise=%s"), 
+		SessionSettings->bUsesPresence ? TEXT("true") : TEXT("false"),
+		SessionSettings->bShouldAdvertise ? TEXT("true") : TEXT("false"));
 	
 	// Steam을 사용할 때 추가 설정 (GitHub 예제는 설정하지 않지만, 필요시 추가)
 	// SessionSettings->bAllowInvites = true;
@@ -1638,12 +1642,24 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 			{
 				if (Results.Num() == 0)
 				{
+					UE_LOG(LogTemp, Warning, TEXT("========================================"));
 					UE_LOG(LogTemp, Warning, TEXT("[방 찾기] Steam 세션을 찾지 못했습니다."));
 					UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 가능한 원인:"));
-					UE_LOG(LogTemp, Warning, TEXT("  1. 방이 아직 생성되지 않음"));
-					UE_LOG(LogTemp, Warning, TEXT("  2. 방 생성 시 bShouldAdvertise=false로 설정됨"));
-					UE_LOG(LogTemp, Warning, TEXT("  3. Steam 네트워크 문제"));
-					UE_LOG(LogTemp, Warning, TEXT("  4. 방 생성과 방 찾기의 세션 설정이 일치하지 않음"));
+					UE_LOG(LogTemp, Warning, TEXT("  1. 서버 PC에서 방이 아직 생성되지 않음"));
+					UE_LOG(LogTemp, Warning, TEXT("     → 서버 로그에서 '[방 생성] CreateSession 호출 성공' 확인"));
+					UE_LOG(LogTemp, Warning, TEXT("     → 서버 로그에서 '[방 생성] 성공: 세션 이름 = ...' 확인"));
+					UE_LOG(LogTemp, Warning, TEXT("  2. 서버 PC에서 bShouldAdvertise=false로 설정됨"));
+					UE_LOG(LogTemp, Warning, TEXT("  3. 서버와 클라이언트 모두 Steam에 로그인되어 있는지 확인"));
+					UE_LOG(LogTemp, Warning, TEXT("  4. Steam 네트워크 문제 (방화벽, NAT 등)"));
+					UE_LOG(LogTemp, Warning, TEXT("  5. 방 생성과 방 찾기의 세션 설정이 일치하지 않음"));
+					UE_LOG(LogTemp, Warning, TEXT("  6. Steam App ID가 서버와 클라이언트에서 동일한지 확인 (현재: 480)"));
+					UE_LOG(LogTemp, Warning, TEXT("========================================"));
+					
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Orange,
+							TEXT("[방 찾기] 방을 찾지 못했습니다.\n서버에서 방이 생성되었는지 확인하세요."));
+					}
 				}
 			}
 			
