@@ -28,9 +28,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void CreateRoomSession(const FString& RoomName);
 
-	// 방 생성 내부 함수 (기존 세션 체크 제외, DestroySession 완료 후 호출용)
-	void CreateRoomSessionInternal(const FString& RoomName);
-
 	// 방 찾기
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void FindSessions();
@@ -38,9 +35,6 @@ public:
 	// 방 참가 (인덱스로)
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void JoinSessionByIndex(int32 SessionIndex);
-
-	// 방 참가 (C++ 전용, Blueprint에서 사용 불가)
-	void JoinSession(const FOnlineSessionSearchResult& SessionResult);
 
 	// 찾은 세션 개수 가져오기
 	UFUNCTION(BlueprintCallable, Category = "Session")
@@ -91,19 +85,22 @@ protected:
 	FString PendingRoomName;
 	bool bPendingCreateSession;
 
-	// BeginPlay 중복 호출 방지 플래그
-	bool bBeginPlayInitialized;
+	/** NGDA 스타일: CreateSession 성공 후 StartSession → ServerTravel(TravelURL) 호출 시 사용 */
+	FString TravelURL;
 
-	// InitializeOnlineSubsystem 중복 호출 방지 플래그
-	bool bOnlineSubsystemInitialized;
+	// Online Subsystem 초기화
+	void InitializeOnlineSubsystem();
 
-	void FindSessionsInternal(bool bIsRetry);
-	void FindSessionsRetryCallback();
+	/** 방 생성 시 사용할 리슨 서버 URL 구성 (LobbyMapPath 또는 현재 맵 + ?listen) */
+	FString BuildTravelURL() const;
 
 	// 세션 생성 완료 콜백
 	void OnCreateSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful);
 
-	// 세션 제거 완료 콜백 (이전 코드처럼 기존 세션 제거 후 CreateSession 호출용)
+	/** NGDA 스타일: StartSession 완료 시 호출. 성공 시 ServerTravel(TravelURL) 실행 */
+	void OnStartSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful);
+
+	// 세션 제거 완료 콜백
 	void OnDestroySessionCompleteDelegate(FName InSessionName, bool bWasSuccessful);
 
 	// 세션 찾기 완료 콜백
@@ -112,13 +109,12 @@ protected:
 	// 세션 참가 완료 콜백
 	void OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinSessionCompleteResult::Type Result);
 
-	// Online Subsystem 초기화 (BeginPlay에서 호출)
-	void InitializeOnlineSubsystem();
+	// 방 참가 (C++ 전용)
+	void JoinSession(const FOnlineSessionSearchResult& SessionResult);
 
-	// NetDriver 상태 확인 (진단용)
-	void CheckNetDriverStatus(UWorld* World);
+	void FindSessionsInternal(bool bIsRetry);
+	void FindSessionsRetryCallback();
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 };
-
