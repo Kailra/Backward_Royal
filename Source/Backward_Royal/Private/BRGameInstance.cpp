@@ -73,11 +73,12 @@ void UBRGameInstance::OnStart()
 			NetMode == NM_Client ? TEXT("Client") :
 			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
 		
-		// Standalone 모드이면 자동으로 ListenServer 모드로 전환
-		// (처음부터 ListenServer로 시작하여 방 생성 시 맵 재로드 불필요)
-		if (NetMode == NM_Standalone)
+		// PendingRoomName이 있고 Standalone 모드이면 자동으로 ListenServer 모드로 전환
+		// (방 생성을 위해 서버가 필요하므로)
+		// PendingRoomName이 없으면 Standalone 유지 (클라이언트는 나중에 서버 IP로 연결)
+		if (NetMode == NM_Standalone && !PendingRoomName.IsEmpty())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Standalone 모드 감지 - 자동으로 ListenServer 모드로 전환합니다."));
+			UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Standalone 모드 + PendingRoomName 감지 - 자동으로 ListenServer 모드로 전환합니다."));
 			
 			// 현재 맵 경로 가져오기
 			FString CurrentMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
@@ -115,7 +116,7 @@ void UBRGameInstance::OnStart()
 			if (GEngine && World && IsValid(World))
 			{
 				FString DebugMsg = FString::Printf(
-					TEXT("[GameInstance] Standalone 모드 감지!\n")
+					TEXT("[GameInstance] Standalone 모드 + PendingRoomName 감지!\n")
 					TEXT("자동으로 ListenServer 모드로 전환합니다.\n")
 					TEXT("명령어: %s"),
 					*OpenCommand
@@ -154,6 +155,10 @@ void UBRGameInstance::OnStart()
 			
 			// ListenServer로 전환되면 함수 종료 (아래 PendingRoomName 로직은 ListenServer 모드에서 실행됨)
 			return;
+		}
+		else if (NetMode == NM_Standalone && PendingRoomName.IsEmpty())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Standalone 모드 유지 (클라이언트 모드 - 방 참가 대기 중)"));
 		}
 	}
 	
