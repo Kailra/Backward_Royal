@@ -10,6 +10,7 @@ class UNetDriver;
 class UNetConnection;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPawnChanged, APawn*, NewPawn);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSwitchOrbAnim);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABRPlayerController : public APlayerController
@@ -143,6 +144,10 @@ public:
 	// 위젯이 이 이벤트 감지
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnPawnChanged OnPawnChanged;
+
+	// SwitchOrb 획득 시 위젯 애니메이션 재생을 위한 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnSwitchOrbAnim OnSwitchOrbAnim;
 
 protected:
 	virtual void BeginPlay() override;

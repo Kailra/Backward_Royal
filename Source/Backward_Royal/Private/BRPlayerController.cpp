@@ -788,22 +788,16 @@ void ABRPlayerController::ClientNotifyGameStarting_Implementation()
 
 void ABRPlayerController::ClientPlayWidgetAnim_Implementation()
 {
-	if (MainScreenWidget && MainScreenWidget->IsValidLowLevel())
+	// 위젯에서 이 이벤트를 바인딩하여 애니메이션을 재생하도록 함
+	// MainScreenWidget이 직접 InGameScreen이 아닐 수 있으므로 델리게이트 방식 사용
+	if (OnSwitchOrbAnim.IsBound())
 	{
-		UFunction* AnimFunc = MainScreenWidget->FindFunction(FName("PlaywidgetAnim"));
-		if (AnimFunc)
-		{
-			MainScreenWidget->ProcessEvent(AnimFunc, nullptr);
-			UE_LOG(LogTemp, Log, TEXT("[BRPlayerController] PlaywidgetAnim executed on MainScreenWidget."));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[BRPlayerController] PlaywidgetAnim function not found on MainScreenWidget."));
-		}
+		UE_LOG(LogTemp, Log, TEXT("[BRPlayerController] SwitchOrb 획득 애니메이션 이벤트 브로드캐스트"));
+		OnSwitchOrbAnim.Broadcast();
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[BRPlayerController] MainScreenWidget is null or invalid. Cannot play PlaywidgetAnim."));
+		UE_LOG(LogTemp, Warning, TEXT("[BRPlayerController] OnSwitchOrbAnim 이벤트에 바인딩된 리스너가 없습니다."));
 	}
 }
 
