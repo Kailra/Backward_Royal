@@ -32,36 +32,57 @@ void ABRGameSession::BeginPlay()
 	
 	Super::BeginPlay();
 	
-	UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay"));
+	UE_LOG(LogTemp, Warning, TEXT("[GameSession] BeginPlay - NetMode: %s"), 
+		GetWorld() ? (GetWorld()->GetNetMode() == NM_Standalone ? TEXT("Standalone") :
+			GetWorld()->GetNetMode() == NM_ListenServer ? TEXT("ListenServer") :
+			GetWorld()->GetNetMode() == NM_Client ? TEXT("Client") : TEXT("Other")) : TEXT("NULL"));
 	
 	// Online Subsystem 초기화
 	InitializeOnlineSubsystem();
 	
-	// ListenServer 모드에서 PendingRoomName이 있으면 자동 방 생성
+	// GitHub 예제 방식: PendingRoomName이 있으면 자동 방 생성 (NetMode 체크 없음)
 	UWorld* World = GetWorld();
-	if (World && World->GetNetMode() == NM_ListenServer)
+	if (World)
 	{
 		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
 		{
 			FString RoomName = BRGI->GetPendingRoomName();
 			if (!RoomName.IsEmpty() && !HasActiveSession())
 			{
-				// 짧은 지연 후 방 생성
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] PendingRoomName 발견: %s"), *RoomName);
+				
+				// Online Subsystem이 준비될 때까지 대기 후 방 생성
 				FTimerHandle Timer;
 				World->GetTimerManager().SetTimer(Timer, [this, RoomName]()
 				{
-					if (IsValid(this) && !HasActiveSession())
+					if (!IsValid(this))
 					{
+						return;
+					}
+					
+					UWorld* W = GetWorld();
+					if (!W)
+					{
+						return;
+					}
+					
+					// SessionInterface가 준비되었는지 확인
+					if (!SessionInterface.IsValid())
+					{
+						InitializeOnlineSubsystem();
+					}
+					
+					// SessionInterface가 준비되었고 세션이 없으면 방 생성
+					if (SessionInterface.IsValid() && !HasActiveSession())
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[GameSession] 자동 방 생성 실행: %s"), *RoomName);
 						CreateRoomSession(RoomName);
-						if (UWorld* W = GetWorld())
+						if (UBRGameInstance* GI = Cast<UBRGameInstance>(W->GetGameInstance()))
 						{
-							if (UBRGameInstance* GI = Cast<UBRGameInstance>(W->GetGameInstance()))
-							{
-								GI->ClearPendingRoomName();
-							}
+							GI->ClearPendingRoomName();
 						}
 					}
-				}, 1.0f, false);
+				}, 1.0f, false); // 1초 지연 (Online Subsystem 초기화 대기)
 			}
 		}
 	}
@@ -190,65 +211,8 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 		return;
 	}
 	
-	ENetMode NetMode = World->GetNetMode();
-	
-	// Standalone 모드: 리슨 서버로 전환
-	if (NetMode == NM_Standalone)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[방 생성] Standalone 모드 - 리슨 서버로 전환"));
-		
-		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
-		{
-			BRGI->SetPendingRoomName(RoomName);
-		}
-		
-		// 맵 경로 가져오기
-		FString MapPath = UGameplayStatics::GetCurrentLevelName(World, true);
-		if (MapPath.IsEmpty())
-		{
-			MapPath = World->GetMapName();
-			MapPath.RemoveFromStart(World->StreamingLevelsPrefix);
-		}
-		
-		// 맵 경로 변환
-		if (!MapPath.Contains(TEXT("/")))
-		{
-			MapPath = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *MapPath, *MapPath);
-		}
-		else if (!MapPath.Contains(TEXT(".")))
-		{
-			FString MapName = FPaths::GetBaseFilename(MapPath);
-			MapPath = FString::Printf(TEXT("%s.%s"), *MapPath, *MapName);
-		}
-		
-		if (MapPath.IsEmpty())
-		{
-			UE_LOG(LogTemp, Error, TEXT("[방 생성] 맵 경로를 가져올 수 없습니다."));
-			OnCreateSessionComplete.Broadcast(false);
-			return;
-		}
-		
-		// 리슨 서버로 전환
-		FString OpenCommand = FString::Printf(TEXT("open %s?listen"), *MapPath);
-		if (APlayerController* PC = World->GetFirstPlayerController())
-		{
-			PC->ConsoleCommand(OpenCommand, false);
-		}
-		else if (GEngine)
-		{
-			GEngine->Exec(World, *OpenCommand);
-		}
-		
-		return;
-	}
-	
-	// ListenServer 모드에서만 CreateSession 호출
-	if (NetMode != NM_ListenServer)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] ListenServer 모드가 아닙니다: %d"), (int32)NetMode);
-		OnCreateSessionComplete.Broadcast(false);
-		return;
-	}
+	// GitHub 예제 방식: NetMode 체크 없이 바로 CreateSession 호출
+	// Steam OSS가 자동으로 ListenServer 처리
 	
 	// 세션 설정 생성
 	SessionSettings = MakeShareable(new FOnlineSessionSettings());
@@ -256,9 +220,11 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 	FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("NULL");
 	
+	// GitHub 예제 방식: bIsLANMatch 설정
 	SessionSettings->bIsLANMatch = (SubsystemName == TEXT("NULL"));
 	SessionSettings->bUsesPresence = true;
 	SessionSettings->bShouldAdvertise = true;
+	SessionSettings->bUseLobbiesIfAvailable = true; // GitHub 예제에서 사용
 	
 	// 플레이어 수 설정
 	int32 MaxPlayerCount = 8;
@@ -272,7 +238,7 @@ void ABRGameSession::CreateRoomSessionInternal(const FString& RoomName)
 	FString SessionNameStr = RoomName.IsEmpty() ? TEXT("이름 없는 방") : RoomName;
 	SessionSettings->Set(FName(TEXT("SESSION_NAME")), SessionNameStr, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
-	// CreateSession 호출
+	// GitHub 예제 방식: CreateSession 호출 (NetMode 체크 없음)
 	int32 LocalUserNum = 0;
 	bool bCreateResult = SessionInterface->CreateSession(LocalUserNum, NAME_GameSession, *SessionSettings);
 	
