@@ -921,6 +921,10 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 	{
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
 		BRGameState->AssignRandomTeams();
+		if (ABRGameMode* GM = GetWorld()->GetAuthGameMode<ABRGameMode>())
+		{
+			GM->ApplyRoleChangesForRandomTeams();
+		}
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
 	}
 	else
@@ -1022,6 +1026,10 @@ void ABRPlayerController::RequestRandomTeams()
 		{
 			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
 			BRGameState->AssignRandomTeams();
+			if (ABRGameMode* GM = World->GetAuthGameMode<ABRGameMode>())
+			{
+				GM->ApplyRoleChangesForRandomTeams();
+			}
 			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
 		}
 		else

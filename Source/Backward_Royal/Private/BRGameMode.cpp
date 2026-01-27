@@ -6,11 +6,14 @@
 #include "BRGameSession.h"
 #include "BRGameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "UpperBodyPawn.h"
 #include "PlayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "NavigationSystem.h"
+#include "Algo/Sort.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -268,7 +271,7 @@ void ABRGameMode::Logout(AController* Exiting)
 
 	Super::Logout(Exiting);
 
-	// 플레이어 목록 업데이트 및 역할 재할당
+	// 플레이어 목록 업데이트 (역할 재할당은 로비 퇴장 시에는 기존 순서 유지)
 	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
 	{
 		BRGameState->UpdatePlayerList();
@@ -302,6 +305,106 @@ void ABRGameMode::Logout(AController* Exiting)
 					}
 				}
 			}
+		}
+	}
+}
+
+void ABRGameMode::ApplyRoleChangesForRandomTeams()
+{
+	if (!HasAuthority() || !UpperBodyClass) return;
+
+	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (!BRGameState || BRGameState->PlayerArray.Num() < 2) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	// 팀 순서 + 팀 내 하체 먼저: (TeamNumber, bIsLowerBody?0:1) 으로 정렬
+	TArray<ABRPlayerState*> SortedByTeam;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+			SortedByTeam.Add(BRPS);
+	}
+	Algo::Sort(SortedByTeam, [](const ABRPlayerState* A, const ABRPlayerState* B)
+	{
+		if (A->TeamNumber != B->TeamNumber) return A->TeamNumber < B->TeamNumber;
+		return A->bIsLowerBody && !B->bIsLowerBody; // 하체 먼저
+	});
+
+	const int32 NumPlayers = SortedByTeam.Num();
+	const int32 NumTeams = NumPlayers / 2;
+	if (NumTeams < 1) return;
+
+	// 현재 월드에 있는 하체(APlayerCharacter) Pawn 수집 (순서 = PlayerArray 순)
+	TArray<APlayerCharacter*> AllLowerChars;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		APlayerController* PC = Cast<APlayerController>(PS->GetOwner());
+		if (!PC) continue;
+		APawn* P = PC->GetPawn();
+		if (APlayerCharacter* LC = Cast<APlayerCharacter>(P))
+			AllLowerChars.Add(LC);
+	}
+	if (AllLowerChars.Num() != NumTeams)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 수(%d)와 팀 수(%d) 불일치"), AllLowerChars.Num(), NumTeams);
+		return;
+	}
+
+	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
+	{
+		ABRPlayerState* LowerPS = SortedByTeam[2 * TeamIndex];
+		ABRPlayerState* UpperPS = SortedByTeam[2 * TeamIndex + 1];
+		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwner());
+		APlayerController* UpperPC = Cast<APlayerController>(UpperPS->GetOwner());
+		if (!LowerPC || !UpperPC) continue;
+
+		APlayerCharacter* LowerChar = AllLowerChars[TeamIndex];
+		if (!LowerChar) continue;
+
+		// 하체가 해당 LowerChar를 소유하도록
+		if (LowerPC->GetPawn() != LowerChar)
+		{
+			LowerPC->UnPossess();
+			LowerPC->Possess(LowerChar);
+		}
+
+		// 상체가 갖고 있던 기존 Pawn 제거
+		APawn* OldUpperPawn = UpperPC->GetPawn();
+		UpperPC->UnPossess();
+		if (OldUpperPawn)
+			OldUpperPawn->Destroy();
+
+		// 이 하체에 붙어 있던 기존 상체 Pawn 제거 (이터레이터 중 Destroy 방지를 위해 수집 후 제거)
+		AUpperBodyPawn* OldUpperOnLower = nullptr;
+		for (TActorIterator<AUpperBodyPawn> It(World); It; ++It)
+		{
+			if (It->ParentBodyCharacter == LowerChar)
+			{
+				OldUpperOnLower = *It;
+				break;
+			}
+		}
+		if (OldUpperOnLower)
+			OldUpperOnLower->Destroy();
+
+		// 상체 Pawn 스폰 및 부착·빙의
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = UpperPC;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+		AUpperBodyPawn* NewUpper = World->SpawnActor<AUpperBodyPawn>(
+			UpperBodyClass, LowerChar->GetActorLocation(), LowerChar->GetActorRotation(), SpawnParams);
+		if (NewUpper)
+		{
+			NewUpper->AttachToComponent(
+				LowerChar->HeadMountPoint,
+				FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+			NewUpper->ParentBodyCharacter = LowerChar;
+			LowerChar->SetUpperBodyPawn(NewUpper);
+			UpperPC->Possess(NewUpper);
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 팀 %d: %s 상체 스폰 후 빙의"), TeamIndex + 1, *UpperPS->GetPlayerName());
 		}
 	}
 }
