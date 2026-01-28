@@ -17,6 +17,7 @@
 #include "BaseWeapon.h"
 #include "GlobalBalanceData.h"
 #include "UObject/Package.h"
+#include "UObject/UnrealType.h"
 #include "PlayerCharacter.h"
 #include "StaminaComponent.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -44,6 +45,9 @@ void UBRGameInstance::Init()
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 네트워크 모드: %s"), 
 		bUseLANOnly ? TEXT("LAN 전용") : TEXT("인터넷 매칭 (Steam)"));
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 모드 변경: 콘솔에서 'SetLANOnly 1' (LAN) 또는 'SetLANOnly 0' (인터넷)"));
+	
+	// S_UserInfo 에셋에서 PlayerName 로드
+	LoadPlayerNameFromUserInfo();
 	
 	// PIE 월드 클린업이 엔진의 '월드 참조 검사'보다 먼저 일어나게 등록. Shutdown에서 Remove.
 	TWeakObjectPtr<UBRGameInstance> Self(this);
@@ -889,4 +893,68 @@ void UBRGameInstance::Shutdown()
 	}
 	
 	Super::Shutdown();
+}
+
+void UBRGameInstance::LoadPlayerNameFromUserInfo()
+{
+	// S_UserInfo 에셋에서 PlayerName 로드 시도
+	// 에셋 경로: /Game/Main/Data/S_UserInfo
+	const FString AssetPath = TEXT("/Game/Main/Data/S_UserInfo.S_UserInfo");
+	
+	UObject* LoadedAsset = StaticLoadObject(UObject::StaticClass(), nullptr, *AssetPath);
+	if (LoadedAsset)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[GameInstance] S_UserInfo 에셋 로드됨. 클래스: %s"), *LoadedAsset->GetClass()->GetName());
+		
+		// 에셋의 모든 속성 나열 (디버그용)
+		for (TFieldIterator<FProperty> PropIt(LoadedAsset->GetClass()); PropIt; ++PropIt)
+		{
+			FProperty* Property = *PropIt;
+			UE_LOG(LogTemp, Log, TEXT("[GameInstance] 속성 발견: %s (타입: %s)"), *Property->GetName(), *Property->GetCPPType());
+		}
+		
+		// PlayerName 속성 찾기 (다양한 이름 시도)
+		TArray<FName> PossibleNames = { FName("PlayerName"), FName("Name"), FName("UserName"), FName("DisplayName") };
+		
+		for (const FName& PropName : PossibleNames)
+		{
+			FProperty* NameProperty = LoadedAsset->GetClass()->FindPropertyByName(PropName);
+			if (NameProperty)
+			{
+				FString LoadedName;
+				if (FStrProperty* StrProp = CastField<FStrProperty>(NameProperty))
+				{
+					LoadedName = StrProp->GetPropertyValue_InContainer(LoadedAsset);
+				}
+				else if (FTextProperty* TextProp = CastField<FTextProperty>(NameProperty))
+				{
+					LoadedName = TextProp->GetPropertyValue_InContainer(LoadedAsset).ToString();
+				}
+				else if (FNameProperty* FNameProp = CastField<FNameProperty>(NameProperty))
+				{
+					LoadedName = FNameProp->GetPropertyValue_InContainer(LoadedAsset).ToString();
+				}
+				
+				if (!LoadedName.IsEmpty())
+				{
+					PlayerName = LoadedName;
+					UE_LOG(LogTemp, Log, TEXT("[GameInstance] S_UserInfo에서 %s 로드 성공: %s"), *PropName.ToString(), *PlayerName);
+					return;
+				}
+			}
+		}
+		
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] S_UserInfo 에셋에서 이름 속성을 찾을 수 없습니다."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] S_UserInfo 에셋을 로드할 수 없습니다. 경로: %s"), *AssetPath);
+	}
+	
+	// 기본 플레이어 이름 설정 (에셋 로드 실패 시)
+	if (PlayerName.IsEmpty())
+	{
+		PlayerName = FString::Printf(TEXT("Player_%d"), FMath::RandRange(1000, 9999));
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 기본 PlayerName 설정: %s"), *PlayerName);
+	}
 }

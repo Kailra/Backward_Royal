@@ -79,6 +79,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Player")
 	void SetPlayerName(const FString& NewPlayerName) { PlayerName = NewPlayerName; }
 
+	/** S_UserInfo 에셋에서 PlayerName 로드 */
+	void LoadPlayerNameFromUserInfo();
+
 	// LAN 전용(true) / 인터넷(Steam) 매칭(false). 방 생성·방 찾기 시 사용.
 	// 기본값: false (인터넷 매칭) - Steam을 통한 인터넷 매칭 사용
 	// 콘솔 명령어: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷 매칭)
