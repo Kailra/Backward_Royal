@@ -916,11 +916,16 @@ void ABRPlayerController::ServerToggleReady_Implementation()
 
 void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 {
-	// 서버에서 직접 팀 배정 실행
+	// 서버에서 직접 팀 배정 실행 (역할/팀 번호만 설정, 상체 스폰·빙의는 게임 맵 로드 후 적용)
 	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
 	{
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
 		BRGameState->AssignRandomTeams();
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetWorld()->GetGameInstance()))
+		{
+			GI->SetPendingApplyRandomTeamRoles(true);
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 게임 맵 이동 시 상체/하체 Pawn 적용 예약됨"));
+		}
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
 	}
 	else
@@ -1015,13 +1020,18 @@ void ABRPlayerController::RequestRandomTeams()
 		return;
 	}
 	
-	// 서버에서 직접 실행
+	// 서버에서 직접 실행 (역할/팀 번호만 설정, 상체 스폰·빙의는 게임 맵 로드 후 적용)
 	if (HasAuthority())
 	{
 		if (ABRGameState* BRGameState = World->GetGameState<ABRGameState>())
 		{
 			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
 			BRGameState->AssignRandomTeams();
+			if (UBRGameInstance* GI = Cast<UBRGameInstance>(World->GetGameInstance()))
+			{
+				GI->SetPendingApplyRandomTeamRoles(true);
+				UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 게임 맵 이동 시 상체/하체 Pawn 적용 예약됨"));
+			}
 			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
 		}
 		else
