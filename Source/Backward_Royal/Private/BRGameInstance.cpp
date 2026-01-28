@@ -68,22 +68,28 @@ void UBRGameInstance::OnStart()
 {
 	Super::OnStart();
 	
-	UE_LOG(LogTemp, Error, TEXT("========================================"));
-	UE_LOG(LogTemp, Error, TEXT("[GameInstance] OnStart 호출 - 첫 번째 World 생성 완료"));
-	UE_LOG(LogTemp, Error, TEXT("========================================"));
-	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] PendingRoomName 상태 확인: %s"), 
-		PendingRoomName.IsEmpty() ? TEXT("비어있음") : *PendingRoomName);
-	
 	UWorld* World = GetWorld();
-	if (World)
+	if (!World) return;
+
+	ENetMode NetMode = World->GetNetMode();
+
+	// 방 생성 흐름(복구)이 아닐 때는 로그 생략 — 일반 시작에서는 OnStart 로그 없음
+	if (PendingRoomName.IsEmpty())
 	{
-		ENetMode NetMode = World->GetNetMode();
-		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] OnStart 시점 NetMode: %s"), 
+		// 상세 로그는 아래 PendingRoomName 분기(방 생성 복구)에서만 출력
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] OnStart — PendingRoomName 감지(방 생성 복구): %s"), *PendingRoomName);
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] OnStart 시점 NetMode: %s"),
 			NetMode == NM_Standalone ? TEXT("Standalone") :
 			NetMode == NM_ListenServer ? TEXT("ListenServer") :
 			NetMode == NM_Client ? TEXT("Client") :
 			NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : TEXT("Unknown"));
-		
+	}
+	
+	if (World)
+	{
 		// PendingRoomName이 있고 Standalone 모드이면 자동으로 ListenServer 모드로 전환
 		// (방 생성을 위해 서버가 필요하므로)
 		// PendingRoomName이 없으면 Standalone 유지 (클라이언트는 나중에 서버 IP로 연결)
@@ -167,10 +173,7 @@ void UBRGameInstance::OnStart()
 			// ListenServer로 전환되면 함수 종료 (아래 PendingRoomName 로직은 ListenServer 모드에서 실행됨)
 			return;
 		}
-		else if (NetMode == NM_Standalone && PendingRoomName.IsEmpty())
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameInstance] Standalone 모드 유지 (클라이언트 모드 - 방 참가 대기 중)"));
-		}
+		// Standalone + PendingRoomName 비어있음 → 위에서 이미 한 줄 로그로 처리, 중복 로그 생략
 	}
 	
 	// PendingRoomName이 있으면 자동으로 세션 생성 시도 (ListenServer 모드에서)
@@ -182,7 +185,7 @@ void UBRGameInstance::OnStart()
 		// 위에서 이미 World 변수를 선언했으므로 재사용
 		if (World)
 		{
-			ENetMode NetMode = World->GetNetMode();
+			NetMode = World->GetNetMode();
 			UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 현재 NetMode: %s"), 
 				NetMode == NM_Standalone ? TEXT("Standalone") :
 				NetMode == NM_ListenServer ? TEXT("ListenServer") :
@@ -827,7 +830,21 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 	}
 	GI_LOG(Warning, TEXT("PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"));
 	
-	// SessionInterface→GameSession→World 참조 끊기
+	// 0) 위젯 먼저 정리 — WBP_MainScreen·WBP_EntranceMenu 등이 GetBRPlayerController 반환값 사용 시 "Accessed None" 나지 않도록
+	if (APlayerController* PC = World->GetFirstPlayerController())
+	{
+		if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+		{
+			BRPC->ClearUIForShutdown();
+		}
+	}
+	
+	// 1) 타이머를 먼저 정리 — 콜백이 월드/세션을 잡고 있지 않도록
+	World->GetTimerManager().ClearTimer(ListenServerTimerHandle);
+	World->GetTimerManager().ClearTimer(SessionRecreateTimerHandle);
+	World->GetTimerManager().ClearAllTimersForObject(this);
+	
+	// 2) SessionInterface→GameSession→World 참조 끊기 (PIE 월드 GC 방지)
 	if (AGameModeBase* GameMode = World->GetAuthGameMode())
 	{
 		if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
@@ -836,10 +853,7 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 		}
 	}
 	
-	World->GetTimerManager().ClearTimer(ListenServerTimerHandle);
-	World->GetTimerManager().ClearTimer(SessionRecreateTimerHandle);
-	World->GetTimerManager().ClearAllTimersForObject(this);
-	
+	// 3) NavigationSystem 정리 (월드 파괴 직전 호출 시 크래시 가능성 있음 — 마지막에 수행)
 	if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
 	{
 		NavSys->CleanUp();
@@ -848,11 +862,24 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 
 void UBRGameInstance::Shutdown()
 {
-	// OnWorldCleanup은 해제하지 않음(FDelegateHandle/헤더 경로 이슈 회피). Shutdown 시점에 한 번 더 정리.
-	UWorld* World = GetWorld();
-	if (World && World->IsPlayInEditor())
+	// PIE 종료 시 모든 PIE 월드에 대해 정리 (GetWorld()만 쓰면 맵 이동 후 null/다른 월드일 수 있음)
+	if (GEngine)
 	{
-		DoPIEExitCleanup(World);
+		const auto& Contexts = GEngine->GetWorldContexts();
+		for (const FWorldContext& Context : Contexts)
+		{
+			UWorld* World = Context.World();
+			if (World && World->IsPlayInEditor() && Context.OwningGameInstance == this)
+			{
+				DoPIEExitCleanup(World);
+			}
+		}
+	}
+	// 위에서 한 번 정리했어도, 현재 월드가 아직 올라와 있을 수 있으므로 한 번 더
+	UWorld* CurrentWorld = GetWorld();
+	if (CurrentWorld && CurrentWorld->IsPlayInEditor())
+	{
+		DoPIEExitCleanup(CurrentWorld);
 	}
 	
 	Super::Shutdown();

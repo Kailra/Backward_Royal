@@ -388,8 +388,44 @@ void ABRPlayerController::OnRep_Pawn()
 	}
 }
 
+void ABRPlayerController::ClearUIForShutdown()
+{
+	// PIE 종료 시 월드 참조 잔류 방지: GEngine/GameSession 델리게이트를 먼저 끊는다.
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->OnCreateSessionComplete.RemoveAll(this);
+			}
+		}
+	}
+	if (GEngine)
+	{
+		GEngine->OnNetworkFailure().RemoveAll(this);
+	}
+
+	if (MainScreenWidget && IsValid(MainScreenWidget))
+	{
+		MainScreenWidget->RemoveFromParent();
+		MainScreenWidget = nullptr;
+	}
+	if (CurrentMenuWidget && IsValid(CurrentMenuWidget))
+	{
+		CurrentMenuWidget->RemoveFromParent();
+		CurrentMenuWidget = nullptr;
+	}
+}
+
 void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// PIE/서버 종료 시 위젯을 먼저 정리 — WBP_MainScreen·WBP_EntranceMenu 등이
+	// GetBRPlayerController → SetMainScreenWidget/CreateRoomWithPlayerName 호출 시
+	// PC가 이미 None이 되어 "Accessed None" 크래시가 나는 것을 줄이기 위함
+	ClearUIForShutdown();
+
 	// BeginPlay UI 타이머 해제 (open ?listen 맵 전환 시 파괴 후 콜백 크래시 방지)
 	if (UWorld* World = GetWorld())
 	{
@@ -412,13 +448,6 @@ void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 				GameSession->OnCreateSessionComplete.RemoveAll(this);
 			}
 		}
-	}
-
-	// 현재 위젯 정리
-	if (CurrentMenuWidget)
-	{
-		CurrentMenuWidget->RemoveFromParent();
-		CurrentMenuWidget = nullptr;
 	}
 	
 	Super::EndPlay(EndPlayReason);
