@@ -672,6 +672,28 @@ FString ABRGameSession::GetSessionName(int32 SessionIndex) const
 	return TEXT("(이름 없음)");
 }
 
+int32 ABRGameSession::GetSessionMaxPlayers(int32 SessionIndex) const
+{
+	if (!SessionSearch.IsValid() || SessionIndex < 0 || SessionIndex >= SessionSearch->SearchResults.Num())
+	{
+		return 0;
+	}
+	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
+	return Result.Session.SessionSettings.NumPublicConnections;
+}
+
+int32 ABRGameSession::GetSessionCurrentPlayers(int32 SessionIndex) const
+{
+	if (!SessionSearch.IsValid() || SessionIndex < 0 || SessionIndex >= SessionSearch->SearchResults.Num())
+	{
+		return 0;
+	}
+	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
+	int32 Max = Result.Session.SessionSettings.NumPublicConnections;
+	int32 Open = Result.Session.NumOpenPublicConnections;
+	return FMath::Max(0, Max - Open);
+}
+
 bool ABRGameSession::HasActiveSession() const
 {
 	if (SessionInterface.IsValid())

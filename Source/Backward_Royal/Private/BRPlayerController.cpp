@@ -569,6 +569,14 @@ void ABRPlayerController::CreateRoomWithPlayerName(const FString& RoomName, cons
 	UE_LOG(LogTemp, Error, TEXT("[방 생성] 방 이름: %s, 플레이어 이름: %s"), *RoomName, *PlayerName);
 	UE_LOG(LogTemp, Error, TEXT("========================================"));
 	
+	// GameInstance에 이름 저장 (ServerTravel 후 PostLogin에서 적용 → UserInfo/로비 UI에 정상 반영)
+	if (UWorld* World = GetWorld())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+		{
+			BRGI->SetPlayerName(PlayerName);
+		}
+	}
 	// 먼저 플레이어 이름 설정
 	SetPlayerName(PlayerName);
 	// 그 다음 방 생성
@@ -720,6 +728,14 @@ void ABRPlayerController::JoinRoomWithPlayerName(int32 SessionIndex, const FStri
 		UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
 	}
 	
+	// GameInstance에 이름 저장 (참가 후 PostLogin에서 적용 → UserInfo/로비 UI에 정상 반영)
+	if (UWorld* World = GetWorld())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+		{
+			BRGI->SetPlayerName(PlayerName);
+		}
+	}
 	// 먼저 플레이어 이름 설정
 	SetPlayerName(PlayerName);
 	// 그 다음 방 참가
