@@ -45,10 +45,9 @@ void UBRGameInstance::Init()
 		bUseLANOnly ? TEXT("LAN 전용") : TEXT("인터넷 매칭 (Steam)"));
 	UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 모드 변경: 콘솔에서 'SetLANOnly 1' (LAN) 또는 'SetLANOnly 0' (인터넷)"));
 	
-	// PIE 월드 클린업이 엔진의 '월드 참조 검사'보다 먼저 일어나게 등록.
-	// FDelegateHandle/Delegate 헤더 경로 이슈를 피하기 위해 해제하지 않고, 콜백에서 TWeakObjectPtr로만 판별.
+	// PIE 월드 클린업이 엔진의 '월드 참조 검사'보다 먼저 일어나게 등록. Shutdown에서 Remove.
 	TWeakObjectPtr<UBRGameInstance> Self(this);
-	FWorldDelegates::OnWorldCleanup.AddLambda([Self](UWorld* InWorld, bool bSessionEnding, bool bCleanupResources)
+	OnWorldCleanupHandle = FWorldDelegates::OnWorldCleanup.AddLambda([Self](UWorld* InWorld, bool bSessionEnding, bool bCleanupResources)
 	{
 		if (InWorld && InWorld->IsPlayInEditor() && Self.IsValid() && InWorld->GetGameInstance() == Self.Get())
 		{
@@ -829,22 +828,8 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 		return;
 	}
 	GI_LOG(Warning, TEXT("PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"));
-	
-	// 0) 위젯 먼저 정리 — WBP_MainScreen·WBP_EntranceMenu 등이 GetBRPlayerController 반환값 사용 시 "Accessed None" 나지 않도록
-	if (APlayerController* PC = World->GetFirstPlayerController())
-	{
-		if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
-		{
-			BRPC->ClearUIForShutdown();
-		}
-	}
-	
-	// 1) 타이머를 먼저 정리 — 콜백이 월드/세션을 잡고 있지 않도록
-	World->GetTimerManager().ClearTimer(ListenServerTimerHandle);
-	World->GetTimerManager().ClearTimer(SessionRecreateTimerHandle);
-	World->GetTimerManager().ClearAllTimersForObject(this);
-	
-	// 2) SessionInterface→GameSession→World 참조 끊기 (PIE 월드 GC 방지)
+
+	// 1) SessionInterface→GameSession→World 참조를 가장 먼저 끊음 (UnrealEdEngine 경로의 참조 원인 제거)
 	if (AGameModeBase* GameMode = World->GetAuthGameMode())
 	{
 		if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
@@ -852,8 +837,22 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 			GameSession->UnbindSessionDelegatesForPIEExit();
 		}
 	}
-	
-	// 3) NavigationSystem 정리 (월드 파괴 직전 호출 시 크래시 가능성 있음 — 마지막에 수행)
+
+	// 2) GEngine/GameSession 델리게이트·위젯 정리 — PC가 월드를 잡지 않도록
+	if (APlayerController* PC = World->GetFirstPlayerController())
+	{
+		if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+		{
+			BRPC->ClearUIForShutdown();
+		}
+	}
+
+	// 3) 타이머 정리 — 콜백이 월드/세션을 잡고 있지 않도록
+	World->GetTimerManager().ClearTimer(ListenServerTimerHandle);
+	World->GetTimerManager().ClearTimer(SessionRecreateTimerHandle);
+	World->GetTimerManager().ClearAllTimersForObject(this);
+
+	// 4) NavigationSystem 정리 (월드 파괴 직전 호출 시 크래시 가능성 있음 — 마지막에 수행)
 	if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
 	{
 		NavSys->CleanUp();
@@ -862,6 +861,13 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 
 void UBRGameInstance::Shutdown()
 {
+	// 전역 델리게이트 등록 해제 — 해제되지 않으면 엔진이 우리 콜백을 들고 있어 월드 참조 사슬이 남을 수 있음
+	if (OnWorldCleanupHandle.IsValid())
+	{
+		FWorldDelegates::OnWorldCleanup.Remove(OnWorldCleanupHandle);
+		OnWorldCleanupHandle.Reset();
+	}
+
 	// PIE 종료 시 모든 PIE 월드에 대해 정리 (GetWorld()만 쓰면 맵 이동 후 null/다른 월드일 수 있음)
 	if (GEngine)
 	{
