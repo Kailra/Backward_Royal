@@ -70,8 +70,12 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
 		}
 
-		// GameInstance에서 플레이어 이름 가져오기
-		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+		// GameInstance 이름은 이 머신의 로컬 플레이어(호스트/Standalone)일 때만 적용.
+		// 클라이언트 입장 시 서버의 GI는 호스트 이름이므로, 원격 클라이언트에 호스트 이름을 덮어쓰지 않음.
+		UWorld* WorldForCheck = GetWorld();
+		const bool bIsLocalPlayer = WorldForCheck && (WorldForCheck->GetNetMode() == NM_Standalone || NewPlayer->IsLocalController());
+		UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+		if (bIsLocalPlayer && GI)
 		{
 			FString SavedPlayerName = GI->GetPlayerName();
 			if (!SavedPlayerName.IsEmpty())
@@ -82,7 +86,7 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 		}
 
 		// UserUID 설정 (GameInstance에서 가져오거나 생성)
-		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+		if (GI)
 		{
 			// UserUID가 비어있으면 자동 생성 (예: Steam ID, 계정 ID 등)
 			FString UserUID = FString::Printf(TEXT("Player_%d_%s"), 

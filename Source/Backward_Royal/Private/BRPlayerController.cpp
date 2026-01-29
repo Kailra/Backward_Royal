@@ -1024,6 +1024,10 @@ void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewP
 	{
 		BRPS->SetPlayerNameString(NewPlayerName);
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] 서버에서 설정: %s"), *NewPlayerName);
+		if (ABRGameState* GS = GetWorld()->GetGameState<ABRGameState>())
+		{
+			GS->UpdatePlayerList(); // 복제 목록 갱신 → 모든 클라이언트에 새 이름 반영
+		}
 	}
 }
 
