@@ -1,6 +1,8 @@
 #include "BaseWeapon.h"
 #include "BaseCharacter.h"
 #include "BRGameInstance.h"
+#include "GeometryCollection/GeometryCollectionActor.h"
+#include "GeometryCollection/GeometryCollectionComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 // 로그 매크로
@@ -141,15 +143,114 @@ void ABaseWeapon::OnEquipped()
 
 void ABaseWeapon::OnDropped()
 {
-    // 버릴 때 다시 물리 켜기
     if (WeaponMesh)
     {
+        // 1. 장착 해제 플래그를 가장 먼저 설정하여 공격 컴포넌트의 접근을 차단
+        bIsEquipped = false;
+
         FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
         DetachFromActor(DetachRules);
 
-        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        // 2. 물리 및 충돌 강제 초기화
         WeaponMesh->SetSimulatePhysics(true);
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+        // 3. 상호작용 채널(Visibility)을 포함한 모든 채널 응답 복구
+        WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+        WeaponMesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+        WeaponMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
         WeaponMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-        bIsEquipped = false;
+
+        // 4. 남아있을지 모르는 델리게이트 정리
+        WeaponMesh->OnComponentHit.Clear();
+
+        LOG_WEAPON(Display, "Weapon [%s] dropped: Server-side collision reset complete.", *GetName());
     }
+}
+
+// 내구도 감소 로직 구현
+void ABaseWeapon::DecreaseDurability(float DamageAmount)
+{
+    if (CurrentWeaponData.Durability <= 0.0f) return;
+
+    // Version 2: 데미지 비례 (주석)
+    // float DurabilityToReduce = DamageAmount * 0.1f;
+
+    CurrentWeaponData.Durability = FMath::Clamp(CurrentWeaponData.Durability - DurabilityReduction, 0.0f, CurrentWeaponData.Durability);
+
+    LOG_WEAPON(Display, "Durability: %.1f / %.1f", CurrentWeaponData.Durability, 100.f);
+
+    // [추가됨] 내구도 0 도달 시 파괴 로직 실행
+    if (CurrentWeaponData.Durability <= 0.0f)
+    {
+        BreakWeapon();
+    }
+}
+
+void ABaseWeapon::BreakWeapon()
+{
+    // [2025-11-18] 커스텀 디버그 로그 매크로 사용
+    LOG_WEAPON(Warning, "Weapon [%s] has been BROKEN!", *WeaponRowName.ToString());
+
+    // 1. 시각적 처리: 원본 메시를 즉시 숨기고 충돌을 제거
+    // Destroy()는 프레임 끝에 수행되므로 시각적으로 즉시 사라지게 해야 겹쳐 보이지 않습니다.
+    if (WeaponMesh)
+    {
+        WeaponMesh->SetVisibility(false);
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        WeaponMesh->SetSimulatePhysics(false);
+    }
+
+    // 2. 소유자 참조 해제
+    ABaseCharacter* OwnerCharacter = Cast<ABaseCharacter>(GetOwner());
+    if (OwnerCharacter)
+    {
+        OwnerCharacter->HandleWeaponBroken();
+    }
+
+    //// 3. 장착 해제 및 물리적 분리
+    //FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
+    //DetachFromActor(DetachRules);
+    //bIsEquipped = false;
+
+    //// 4. Chaos Destruction 실행
+    //if (CurrentWeaponData.FracturedMesh)
+    //{
+    //    FTransform SpawnTransform = GetActorTransform();
+    //    FActorSpawnParameters SpawnParams;
+    //    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+    //    AGeometryCollectionActor* FracturedActor = GetWorld()->SpawnActor<AGeometryCollectionActor>(
+    //        AGeometryCollectionActor::StaticClass(),
+    //        SpawnTransform,
+    //        SpawnParams
+    //    );
+
+    //    if (FracturedActor)
+    //    {
+    //        UGeometryCollectionComponent* GCComp = FracturedActor->GetGeometryCollectionComponent();
+    //        if (GCComp)
+    //        {
+    //            // 데이터 테이블에서 가져온 파괴 에셋 설정
+    //            GCComp->SetRestCollection(CurrentWeaponData.FracturedMesh);
+
+    //            // [수정] 물리 시뮬레이션 활성화 및 히트 이벤트 설정
+    //            GCComp->SetSimulatePhysics(true);
+    //            GCComp->SetNotifyRigidBodyCollision(true);
+
+    //            // [추가] 조각들이 사방으로 흩어지도록 초기 충격을 가함
+    //            // 단순히 스폰만 하면 형태를 유지한 채 떨어질 수 있으므로 임펄스를 추가합니다.
+    //            GCComp->AddImpulse(FVector(0.f, 0.f, 50.f)); // 위쪽으로 살짝 튀게 함
+    //        }
+    //        FracturedActor->SetLifeSpan(10.0f);
+    //    }
+    //}
+    //else
+    //{
+    //    LOG_WEAPON(Error, "No FracturedMesh defined in DataTable for [%s]!", *WeaponRowName.ToString());
+    //    Destroy();
+    //}
+
+    // 5. 원본 액터 제거
+    Destroy();
 }

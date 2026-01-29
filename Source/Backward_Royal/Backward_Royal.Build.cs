@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using UnrealBuildTool.Rules;
 
 public class Backward_Royal : ModuleRules
 {
@@ -22,11 +23,12 @@ public class Backward_Royal : ModuleRules
             "Json",
             "JsonUtilities",
             "Niagara",
-			"NavigationSystem"
+            "GeometryCollectionEngine",
+            "ChaosSolverEngine",
+            "NavigationSystem"
         });
 		
-		// Online Subsystem 모듈 동적 로드
-		DynamicallyLoadedModuleNames.Add("OnlineSubsystemSteam");
+		// Standalone 모드에서 Null Online Subsystem을 사용하기 위해 동적 로드
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemNull");
 	}
 }
