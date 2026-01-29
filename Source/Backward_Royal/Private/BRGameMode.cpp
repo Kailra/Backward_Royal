@@ -379,6 +379,9 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	ABRGameState* BRGameState = GetGameState<ABRGameState>();
 	if (!BRGameState || BRGameState->PlayerArray.Num() < 2) return;
 
+	// Seamless Travel 후 PlayerState가 초기화될 수 있으므로, 저장해 둔 팀/역할을 복원
+	GI->RestorePendingRolesFromTravel(BRGameState);
+
 	UWorld* World = GetWorld();
 	if (!World) return;
 

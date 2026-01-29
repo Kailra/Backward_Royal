@@ -990,6 +990,7 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 		BRGameState->AssignRandomTeams();
 		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetWorld()->GetGameInstance()))
 		{
+			GI->SavePendingRolesForTravel(BRGameState);
 			GI->SetPendingApplyRandomTeamRoles(true);
 			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 게임 맵 이동 시 상체/하체 Pawn 적용 예약됨"));
 		}

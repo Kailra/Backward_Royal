@@ -1,6 +1,8 @@
 // BRGameInstance.cpp
 #include "BRGameInstance.h"
 #include "BRPlayerController.h"
+#include "BRGameState.h"
+#include "BRPlayerState.h"
 #include "BRGameSession.h"
 #include "BRGameMode.h"
 #include "GameFramework/GameModeBase.h"
@@ -536,6 +538,51 @@ void UBRGameInstance::ShowRoomInfo()
 			UE_LOG(LogTemp, Error, TEXT("[GameInstance] PlayerController를 찾을 수 없습니다. 게임이 시작되지 않았을 수 있습니다."));
 		}
 	}
+}
+
+void UBRGameInstance::SavePendingRolesForTravel(ABRGameState* GameState)
+{
+	if (!GameState) return;
+	PendingRoleRestoreByPlayerKey.Empty();
+	for (APlayerState* PS : GameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			FString Key = BRPS->GetUniqueId().ToString();
+			if (Key.IsEmpty() && !BRPS->UserUID.IsEmpty()) Key = BRPS->UserUID;
+			if (Key.IsEmpty()) Key = BRPS->GetPlayerName();
+			if (!Key.IsEmpty())
+			{
+				PendingRoleRestoreByPlayerKey.Add(Key, TTuple<int32, bool, int32>(
+					BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
+			}
+		}
+	}
+	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] Seamless Travel 전 역할 저장: %d명"), PendingRoleRestoreByPlayerKey.Num());
+}
+
+void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
+{
+	if (!GameState || PendingRoleRestoreByPlayerKey.Num() == 0) return;
+	int32 Restored = 0;
+	for (APlayerState* PS : GameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			FString Key = BRPS->GetUniqueId().ToString();
+			if (Key.IsEmpty() && !BRPS->UserUID.IsEmpty()) Key = BRPS->UserUID;
+			if (Key.IsEmpty()) Key = BRPS->GetPlayerName();
+			const TTuple<int32, bool, int32>* Found = PendingRoleRestoreByPlayerKey.Find(Key);
+			if (Found)
+			{
+				BRPS->SetTeamNumber(Found->Get<0>());
+				BRPS->SetPlayerRole(Found->Get<1>(), Found->Get<2>());
+				Restored++;
+			}
+		}
+	}
+	PendingRoleRestoreByPlayerKey.Empty();
+	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명"), Restored);
 }
 
 /** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */

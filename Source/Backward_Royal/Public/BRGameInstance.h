@@ -140,6 +140,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session|Match")
 	void ClearPendingApplyRandomTeamRoles() { bPendingApplyRandomTeamRoles = false; }
 
+	/** Seamless Travel 전에 호출: 현재 GameState의 팀/역할을 저장 (Travel 후 PlayerState가 초기화되므로 복원용) */
+	void SavePendingRolesForTravel(class ABRGameState* GameState);
+
+	/** 게임 맵 로드 후 ApplyRoleChangesForRandomTeams 내부에서 호출: 저장된 팀/역할을 PlayerState에 복원 */
+	void RestorePendingRolesFromTravel(class ABRGameState* GameState);
+
 	// 전역 변수 설정을 위한 함수
 	void ApplyGlobalMultipliers();
 		
@@ -163,6 +169,9 @@ protected:
 
 	/** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출 대기 */
 	bool bPendingApplyRandomTeamRoles = false;
+
+	/** Seamless Travel 후 역할 복원용 (키: GetUniqueId().ToString() 또는 UserUID), 값: (TeamNumber, bIsLowerBody, ConnectedPlayerIndex) */
+	TMap<FString, TTuple<int32, bool, int32>> PendingRoleRestoreByPlayerKey;
 
 	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
 	FTimerHandle ListenServerTimerHandle;
