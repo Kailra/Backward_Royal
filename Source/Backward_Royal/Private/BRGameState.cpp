@@ -3,6 +3,26 @@
 #include "BRPlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/PlayerState.h"
+#include "Misc/Char.h"
+
+namespace
+{
+	bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
+	{
+		if (PlayerName.IsEmpty()) return true;
+		if (PlayerName == UserUID) return true;
+		if (!PlayerName.StartsWith(TEXT("Player_"))) return false;
+		const FString Suffix = PlayerName.Mid(7);
+		if (Suffix.IsEmpty()) return true;
+		if (Suffix.Contains(TEXT("_"))) return true;
+		if (Suffix.Len() == 4)
+		{
+			for (int32 i = 0; i < 4; i++) { if (!FChar::IsDigit(Suffix[i])) return false; }
+			return true;
+		}
+		return false;
+	}
+}
 
 ABRGameState::ABRGameState()
 {
@@ -43,6 +63,10 @@ void ABRGameState::UpdatePlayerList()
 			{
 				FBRUserInfo Info = BRPS->GetUserInfo();
 				Info.PlayerIndex = i;
+				if (ShouldUseFallbackDisplayName(Info.PlayerName, Info.UserUID))
+				{
+					Info.PlayerName = FString::Printf(TEXT("Player %d"), i + 1);
+				}
 				PlayerListForDisplay.Add(Info);
 			}
 		}

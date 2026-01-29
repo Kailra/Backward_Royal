@@ -1,6 +1,29 @@
 // BR_LobbyEntryWidget.cpp
 #include "BR_LobbyEntryWidget.h"
 #include "Components/TextBlock.h"
+#include "Misc/Char.h"
+
+namespace
+{
+	/** PlayerName이 UID 또는 기본 ID(Player_1234, Player_1_날짜 등) 형식이면 true. 이럴 땐 "Player N"으로 표시 */
+	bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
+	{
+		if (PlayerName.IsEmpty()) return true;
+		if (PlayerName == UserUID) return true;
+		if (!PlayerName.StartsWith(TEXT("Player_"))) return false;
+		const FString Suffix = PlayerName.Mid(7);
+		if (Suffix.IsEmpty()) return true;
+		// "1_2025.01.29..." (UserUID 형식)
+		if (Suffix.Contains(TEXT("_"))) return true;
+		// "1234" (GI 기본 Player_1234)
+		if (Suffix.Len() == 4)
+		{
+			for (int32 i = 0; i < 4; i++) { if (!FChar::IsDigit(Suffix[i])) return false; }
+			return true;
+		}
+		return false;
+	}
+}
 
 void UBR_LobbyEntryWidget::NativeConstruct()
 {
@@ -29,14 +52,12 @@ void UBR_LobbyEntryWidget::UpdatePlayerNames(const TArray<FBRUserInfo>& PlayerIn
 		{
 			const FBRUserInfo& Info = PlayerInfoList[SlotIndex];
 			FString DisplayName = Info.PlayerName;
-			// 비어 있거나 UID와 같으면 표시용 이름으로 "Player N" 사용 (UID가 이름으로 나오지 않도록)
-			if (DisplayName.IsEmpty() || DisplayName == Info.UserUID)
+			if (ShouldUseFallbackDisplayName(DisplayName, Info.UserUID))
 			{
 				DisplayName = FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1);
 			}
 			UserNameSlot[SlotIndex]->SetText(FText::FromString(DisplayName));
 		}
-		// else: 슬롯은 이미 공란으로 초기화됨
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[LobbyEntry] 입장 순서 기준 %d슬롯 표시 (플레이어 %d명)"), UserNameSlot.Num(), PlayerInfoList.Num());
@@ -50,7 +71,7 @@ void UBR_LobbyEntryWidget::SetEntryInfo(const FBRUserInfo& Info)
 	}
 
 	FString DisplayName = Info.PlayerName;
-	if (DisplayName.IsEmpty() || DisplayName == Info.UserUID)
+	if (ShouldUseFallbackDisplayName(DisplayName, Info.UserUID))
 	{
 		DisplayName = Info.PlayerIndex >= 0
 			? FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1)
