@@ -58,9 +58,10 @@
 
 **로비 방 제목 표시 (○○'s Game, 입장 직후 즉시 표시):**
 - 로비에서 방 제목을 표시할 때는 **Get Room Title For Display** (BR Widget Function Library)를 사용하세요.
-- 클라이언트 입장 시 서버가 RPC로 방 제목을 먼저 보내고, **캐시**에 저장합니다. UI는 캐시를 우선 사용하므로 **방에 들어가자마자** "○○'s Game"이 표시됩니다 (복제 대기 없음).
+- **Join Menu**에서 방 선택 후 **Join Room** 호출 시, **참가 전에** 해당 방의 `Get Session Name`(방 찾기 결과)을 캐시에 저장합니다. 따라서 **서버 연결 전·연결 대기 없이** 로비에 들어가자마자 "○○'s Game"이 표시됩니다.
+- 보조로, 클라이언트 입장 시 서버 RPC로도 방 제목을 보내 캐시를 갱신합니다 (연결 후 일치 확인용).
 - 예: `Get Room Title For Display (Self)` → `Conv_StringToText` → 방 제목 TextBlock `Set Text`
-- **RPC 수신 시 갱신:** GameInstance의 **On Room Title Received** 이벤트에 바인딩해서, RPC가 도착했을 때 위와 동일하게 제목을 다시 설정하면, PreConstruct 이후에 RPC가 온 경우에도 즉시 반영됩니다.
+- **RPC 수신 시 갱신:** GameInstance의 **On Room Title Received** 이벤트에 바인딩해, RPC 도착 시 제목을 다시 설정하면 PreConstruct 이후 도착한 경우에도 즉시 반영됩니다.
 
 #### 3. 이벤트 바인딩
 

@@ -143,6 +143,21 @@ void UBRWidgetFunctionLibrary::JoinRoom(const UObject* WorldContextObject, int32
 		return;
 	}
 
+	// Join Menu에서 선택한 방 이름을 미리 캐시 → 로비 진입 시 연결 대기 없이 "○○'s Game" 즉시 표시
+	ABRGameSession* Session = GetBRGameSession(WorldContextObject);
+	if (Session && BRPC->GetGameInstance())
+	{
+		FString RoomName = Session->GetSessionName(SessionIndex);
+		if (!RoomName.IsEmpty())
+		{
+			if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(BRPC->GetGameInstance()))
+			{
+				BRGI->SetCachedRoomTitle(RoomName);
+				UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] Join Menu 방 이름 캐시: %s"), *RoomName);
+			}
+		}
+	}
+
 	// Game Instance에서 Player Name 조회 (블루프린트 Cast/Get Game Instance 불필요)
 	FString PlayerName;
 	if (UGameInstance* GI = BRPC->GetGameInstance())
