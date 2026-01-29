@@ -136,6 +136,25 @@ void ABRPlayerState::OnRep_PlayerRole()
 	// UI 업데이트를 위한 이벤트 발생 가능
 }
 
+void ABRPlayerState::CopyProperties(APlayerState* PlayerState)
+{
+	Super::CopyProperties(PlayerState);
+
+	// Seamless Travel 시 새 PlayerState가 생성되면 bIsLowerBody/TeamNumber 등이 기본값이 됨 → 로비에서 설정한 역할/팀 복사
+	ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerState);
+	if (BRPS)
+	{
+		BRPS->TeamNumber = TeamNumber;
+		BRPS->bIsHost = bIsHost;
+		BRPS->bIsReady = bIsReady;
+		BRPS->bIsLowerBody = bIsLowerBody;
+		BRPS->ConnectedPlayerIndex = ConnectedPlayerIndex;
+		BRPS->UserUID = UserUID;
+		UE_LOG(LogTemp, Log, TEXT("[Seamless Travel] PlayerState 복사: %s -> 팀 %d, %s"),
+			*GetPlayerName(), TeamNumber, bIsLowerBody ? TEXT("하체") : TEXT("상체"));
+	}
+}
+
 void ABRPlayerState::SwapControlWithPartner()
 {
 	if (!HasAuthority()) return;

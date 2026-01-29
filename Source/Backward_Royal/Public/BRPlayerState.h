@@ -102,6 +102,9 @@ public:
 
 	void SwapControlWithPartner();
 
+	// Seamless Travel 시 새 PlayerState로 역할/팀 등 복사 (하체·상체 역할 유지)
+	virtual void CopyProperties(APlayerState* PlayerState) override;
+
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;

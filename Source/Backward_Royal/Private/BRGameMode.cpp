@@ -399,6 +399,18 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	const int32 NumTeams = NumPlayers / 2;
 	if (NumTeams < 1) return;
 
+	// Seamless Travel 후 bIsLowerBody가 복사되지 않으면 전부 하체(true)가 됨 → 역할 불일치로 스킵됨. CopyProperties에서 복사 필요.
+	int32 LowerCount = 0;
+	for (const ABRPlayerState* PS : SortedByTeam)
+	{
+		if (PS && PS->bIsLowerBody) LowerCount++;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 플레이어 %d명 중 하체 역할 %d명 (상체 %d명)"), NumPlayers, LowerCount, NumPlayers - LowerCount);
+	if (LowerCount == NumPlayers)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 모든 플레이어가 하체로 인식됨 - Seamless Travel 시 PlayerState CopyProperties에서 bIsLowerBody 복사 확인 필요"));
+	}
+
 	// 상체로 지정된 플레이어들의 기존(하체) Pawn만 먼저 제거 → 팀당 1개 하체 몸통만 남김
 	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
 	{
