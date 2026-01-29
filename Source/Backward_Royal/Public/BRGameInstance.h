@@ -10,6 +10,7 @@
 #include "BRGameInstance.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogBRGameInstance, Log, All);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoomTitleReceived);
 
 UCLASS()
 class BACKWARD_ROYAL_API UBRGameInstance : public UGameInstance
@@ -115,6 +116,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session|Match")
 	void ClearPendingRoomName() { PendingRoomName.Empty(); }
 
+	/** 클라이언트 입장 시 RPC로 받은 방 제목 캐시. "○○'s Game" 즉시 표시용 */
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void SetCachedRoomTitle(const FString& Title) { CachedRoomTitle = Title; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	FString GetCachedRoomTitle() const { return CachedRoomTitle; }
+
+	UFUNCTION(BlueprintCallable, Category = "Session|Match")
+	void ClearCachedRoomTitle() { CachedRoomTitle.Empty(); }
+
+	/** RPC로 방 제목 수신 시 브로드캐스트 (로비 UI에서 바인딩해 제목 즉시 갱신) */
+	UPROPERTY(BlueprintAssignable, Category = "Session|Match")
+	FOnRoomTitleReceived OnRoomTitleReceived;
+
 	/** 로비에서 랜덤 팀 배정 후, 게임 맵 로드 시 상체/하체 Pawn 적용 대기 플래그 */
 	UFUNCTION(BlueprintCallable, Category = "Session|Match")
 	void SetPendingApplyRandomTeamRoles(bool b) { bPendingApplyRandomTeamRoles = b; }
@@ -142,6 +157,9 @@ protected:
 
 	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
 	FString PendingRoomName;
+
+	/** 클라이언트 입장 시 RPC로 받은 방 제목 캐시 */
+	FString CachedRoomTitle;
 
 	/** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출 대기 */
 	bool bPendingApplyRandomTeamRoles = false;

@@ -1054,6 +1054,28 @@ void ABRPlayerController::ClientNotifyGameStarting_Implementation()
 	// 클라이언트에서 입력을 일시적으로 중지 (선택사항)
 	// 실제로는 ServerTravel이 자동으로 클라이언트를 따라오므로 특별한 처리가 필요하지 않을 수 있습니다
 	// 하지만 로그를 남겨서 알림이 도착했는지 확인할 수 있습니다
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(World->GetGameInstance()))
+		{
+			GI->ClearCachedRoomTitle();
+		}
+	}
+}
+
+void ABRPlayerController::ClientReceiveRoomTitle_Implementation(const FString& RoomTitle)
+{
+	UE_LOG(LogTemp, Log, TEXT("[방 제목] 클라이언트 수신: %s"), *RoomTitle);
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(World->GetGameInstance()))
+		{
+			GI->SetCachedRoomTitle(RoomTitle);
+			GI->OnRoomTitleReceived.Broadcast();
+		}
+	}
 }
 
 void ABRPlayerController::RequestRandomTeams()

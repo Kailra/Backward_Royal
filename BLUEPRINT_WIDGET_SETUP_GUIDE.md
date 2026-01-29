@@ -51,14 +51,16 @@
 - `Get BR Player Controller` - PlayerController 가져오기
 - `Get BR Game Session` - GameSession 가져오기
 - `Get BR Game State` - GameState 가져오기
+- `Get Room Title For Display` - 로비 방 제목 "○○'s Game" (캐시 우선, 입장 직후 즉시 표시)
 - `Get BR Player State` - PlayerState 가져오기
 - `Is Host` - 방장 여부 확인
 - `Is Ready` - 준비 상태 확인
 
-**로비 방 제목 표시 (○○'s Game):**
-- 로비에서 방 제목을 표시할 때는 **GameState → Get Room Title Display**를 사용하세요.
-- 서버에서 설정·복제된 `RoomTitle`을 사용하므로, 방에 입장한 클라이언트도 방장 이름이 포함된 "○○'s Game"을 동일하게 볼 수 있습니다.
-- 예: `Get BR Game State (Self)` → `Get Room Title Display` → 결과를 방 제목 TextBlock에 설정
+**로비 방 제목 표시 (○○'s Game, 입장 직후 즉시 표시):**
+- 로비에서 방 제목을 표시할 때는 **Get Room Title For Display** (BR Widget Function Library)를 사용하세요.
+- 클라이언트 입장 시 서버가 RPC로 방 제목을 먼저 보내고, **캐시**에 저장합니다. UI는 캐시를 우선 사용하므로 **방에 들어가자마자** "○○'s Game"이 표시됩니다 (복제 대기 없음).
+- 예: `Get Room Title For Display (Self)` → `Conv_StringToText` → 방 제목 TextBlock `Set Text`
+- **RPC 수신 시 갱신:** GameInstance의 **On Room Title Received** 이벤트에 바인딩해서, RPC가 도착했을 때 위와 동일하게 제목을 다시 설정하면, PreConstruct 이후에 RPC가 온 경우에도 즉시 반영됩니다.
 
 #### 3. 이벤트 바인딩
 

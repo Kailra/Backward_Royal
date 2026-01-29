@@ -276,6 +276,37 @@ ABRGameState* UBRWidgetFunctionLibrary::GetBRGameState(const UObject* WorldConte
 	return World->GetGameState<ABRGameState>();
 }
 
+FString UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(const UObject* WorldContextObject)
+{
+	if (!WorldContextObject || !GEngine)
+	{
+		return TEXT("Host's Game");
+	}
+
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	if (!World)
+	{
+		return TEXT("Host's Game");
+	}
+
+	UGameInstance* GI = World->GetGameInstance();
+	if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(GI))
+	{
+		FString Cached = BRGI->GetCachedRoomTitle();
+		if (!Cached.IsEmpty())
+		{
+			return Cached;
+		}
+	}
+
+	if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+	{
+		return GS->GetRoomTitleDisplay();
+	}
+
+	return TEXT("Host's Game");
+}
+
 ABRPlayerState* UBRWidgetFunctionLibrary::GetBRPlayerState(const UObject* WorldContextObject)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))

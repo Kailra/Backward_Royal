@@ -131,6 +131,21 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			FString RoomTitleStr = PlayerName.IsEmpty() ? FString(TEXT("Host's Game")) : (PlayerName + TEXT("'s Game"));
 			BRGameState->SetRoomTitle(RoomTitleStr);
 		}
+		else if (BRGameState->PlayerArray.Num() > 1 && (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer))
+		{
+			// 입장한 클라이언트에게 RPC로 방 제목 즉시 전달 (복제 대기 없이 "○○'s Game" 표시)
+			FString RoomTitleStr = BRGameState->RoomTitle.IsEmpty()
+				? (BRGameState->GetHostPlayerName() + TEXT("'s Game"))
+				: BRGameState->RoomTitle;
+			if (RoomTitleStr.IsEmpty() || RoomTitleStr == TEXT("'s Game"))
+			{
+				RoomTitleStr = TEXT("Host's Game");
+			}
+			if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(NewPlayer))
+			{
+				BRPC->ClientReceiveRoomTitle(RoomTitleStr);
+			}
+		}
 		else if (BRGameState->PlayerArray.Num() == 1 && NetMode == NM_Standalone)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] Standalone 모드 — 방 생성 버튼을 누르면 방장이 됩니다."));

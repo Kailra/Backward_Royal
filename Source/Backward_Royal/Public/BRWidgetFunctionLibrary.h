@@ -87,6 +87,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameState", meta = (WorldContext = "WorldContextObject"))
 	static ABRGameState* GetBRGameState(const UObject* WorldContextObject);
 
+	/** 로비 방 제목 "○○'s Game" 표시용. 캐시(RPC) 우선, 없으면 GameState (입장 직후 즉시 표시) */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameState", meta = (WorldContext = "WorldContextObject"))
+	static FString GetRoomTitleForDisplay(const UObject* WorldContextObject);
+
 	// ============================================
 	// PlayerState 관련 함수들
 	// ============================================

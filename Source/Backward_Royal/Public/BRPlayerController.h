@@ -76,6 +76,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientNotifyGameStarting();
 
+	/** 입장 직후 방 제목 전달 (복제 대기 없이 "○○'s Game" 즉시 표시) */
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveRoomTitle(const FString& RoomTitle);
+
 	// 역할에 따른 입력 매핑 교체 함수
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	void SetupRoleInput(bool bIsLower);
