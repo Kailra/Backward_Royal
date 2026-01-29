@@ -203,6 +203,300 @@ for (const FBRUserInfo& Info : PlayerInfoList)
 }
 ```
 
+### WBP_Entry (로비 엔트리) – 입장 순서대로 이름 표시
+
+로비에서 **WBP_Entry** (부모: `BR_LobbyEntryWidget`)를 사용할 때:
+
+- `GetAllPlayerUserInfo()`로 받은 목록을 **UpdatePlayerNames**에 넘기면, **들어온 순서(0번, 1번, …)**대로 `UserNameSlot`에 플레이어 이름이 채워집니다.
+- 해당 인덱스에 플레이어가 없으면 **빈 슬롯은 공란**으로 둡니다.
+- 블루프린트에서 `UserNameSlot` 배열에 TextBlock을 **0번 슬롯, 1번 슬롯, …** 순서로 넣어두면 됩니다.
+
+### WBP_LobbyMenu에서 WBP_Entry 갱신 (플레이어 목록 표시)
+
+**WBP_LobbyMenu**에서 `WBP_Entry`에 입장 순서대로 이름을 넣으려면:
+
+1. **Event Construct** (또는 **Pre Construct**)에서:
+   - **Get BR Game State** (World Context Object = **self**, 즉 이 위젯)
+   - **Is Valid** (반환된 Game State) → **False**면 아무 것도 하지 않고 종료
+   - **True**면:
+     - **Add Dynamic** (Target = Game State, **On Player List Changed** → **Custom Event `OnPlayerListUpdated`**)
+     - 그다음 **Get BR Game State** → **Get All Player User Info** → **Update Player Names** (Target = **WBP_Entry**, Player Info List = 반환 배열)
+
+2. **Custom Event `OnPlayerListUpdated`** (플레이어 목록 변경 시마다 호출):
+   - **Get BR Game State** (World Context = **self**) → **Is Valid** → **False**면 종료
+   - **True**면 **Get All Player User Info** → **Update Player Names** (Target = **WBP_Entry**, Player Info List)
+
+3. **Event Destruct**에서:
+   - **Get BR Game State** (World Context = **self**) → **Is Valid** → **True**면  
+     **Remove Dynamic** (Target = Game State, **On Player List Changed** → **OnPlayerListUpdated**)
+
+4. **World Context Object**: `Get BR Game State` 호출 시 **self** (WBP_LobbyMenu 위젯)를 넘기세요.  
+   (블루프린트에서 World Context 핀이 숨겨져 있으면, 해당 노드에 **self** 연결이 가능한지 확인)
+
+5. **WBP_Entry** 변수는 로비 메뉴 위젯 계층에서 실제 **WBP_Entry** 자식 위젯을 참조해야 합니다.
+
+**ErrorType=1**이 **Add Delegate** / **Get All Player User Info** 쪽에 나오면,  
+Game State가 `null`인 경우(디자인 타임, 맵 로드 직후 등)가 많습니다. 위처럼 **Is Valid (Game State)** 분기로 방어하면 됩니다.
+
+---
+
+## LobbyMenu · Entry 블루프린트 흐름표
+
+아래는 **WBP_LobbyMenu**와 **WBP_Entry** 블루프린트에서 **플레이어 이름 표시**가 이뤄지는 전체 흐름입니다.  
+`→` 는 실행/데이터 연결, `├─` / `└─` 는 분기, `[ ]` 는 노드/이벤트 이름입니다.
+
+---
+
+### 1. WBP_Entry 블루프린트 흐름
+
+**역할:** 로비 엔트리 위젯. `UserNameSlot`(TextBlock 배열)을 0~7번 슬롯으로 세팅하고,  
+나중에 **Update Player Names** 호출 시 **들어온 순서대로 이름**을 채움. 빈 슬롯은 공란.
+
+#### 1-1. Pre Construct (위젯 생성/리빌드 시 1회)
+
+```
+[Event Pre Construct]
+    │
+    │  IsDesignTime ──────────────────────┐
+    │                                     │
+    ▼                                     ▼
+[Call Parent Function · Pre Construct]    (Parent에 전달)
+    │
+    │  then (exec)
+    ▼
+[Kismet Array Library · Array Clear]
+    │  · Target Array ← UserNameSlot (Variable Get)
+    │
+    │  then (exec)
+    ▼
+[Variable Set · UserNameSlot]
+    │  · UserNameSlot ← [Make Array] 결과
+    │
+    ▼
+[Make Array] (8 elements)
+    ├─ [0] ← TextBlock_Entry00  (Variable Get)
+    ├─ [1] ← TextBlock_Entry01
+    ├─ [2] ← TextBlock_Entry02
+    ├─ [3] ← TextBlock_Entry03
+    ├─ [4] ← TextBlock_Entry04
+    ├─ [5] ← TextBlock_Entry05
+    ├─ [6] ← TextBlock_Entry06
+    └─ [7] ← TextBlock_Entry07
+```
+
+**정리:**  
+Pre Construct → 부모 Pre Construct 호출 → **UserNameSlot** 초기화(Array Clear) →  
+**Make Array**로 TextBlock_Entry00~07을 **0~7 순서**로 넣어 **UserNameSlot**에 Set.
+
+#### 1-2. Update Player Names 호출 시 (C++ / LobbyMenu에서 호출)
+
+```
+[Update Player Names] (BR_LobbyEntryWidget)
+    │  · self = WBP_Entry 인스턴스
+    │  · Player Info List = GameState → GetAllPlayerUserInfo()
+    │
+    ▼
+(C++ BR_LobbyEntryWidget::UpdatePlayerNames)
+    │
+    ├─ 1) 모든 UserNameSlot[i] → SetText("")  (공란)
+    │
+    └─ 2) for SlotIndex = 0 .. UserNameSlot.Num()-1:
+             ├─ SlotIndex < PlayerInfoList.Num() ?
+             │     ├─ Yes → UserNameSlot[SlotIndex] ← 이름 표시
+             │     │         (비어 있으면 "Player N")
+             │     └─ No  → 그대로 공란 유지
+             └─ 다음 슬롯
+```
+
+**정리:**  
+0번 슬롯 = 0번째로 들어온 플레이어, 1번 = 1번째, … 없으면 공란.
+
+---
+
+### 2. WBP_LobbyMenu 블루프린트 흐름
+
+**역할:** 로비 메뉴 위젯. GameState **On Player List Changed**에 **OnPlayerListUpdated**를 바인딩하고,  
+진입 시·플레이어 증감 시 **Get All Player User Info** → **Update Player Names(WBP_Entry)** 로 엔트리 갱신.
+
+#### 2-1. 초기 설정 (Construct 시 1회) — CustomEvent 트리거 필수
+
+```
+[Event Construct]  (또는 Pre Construct)
+    │
+    │  then (exec)
+    ▼
+[Custom Event "CustomEvent"]  ← 반드시 여기서 호출되도록 연결
+    │
+    │  then (exec)
+    ▼
+[Get BR Game State] (BR Widget Function Library)
+    │  · World Context Object = self (WBP_LobbyMenu) 권장
+    │  · Return Value → GameState
+    │
+    │  then (exec)
+    ▼
+[Is Valid] (GameState)
+    │
+    ├─ False ──→ (종료, 바인딩/갱신 안 함)
+    │
+    └─ True
+         │
+         │  then (exec)
+         ▼
+    [Add Dynamic] (Target = GameState)
+         │  · Event: On Player List Changed
+         │  · Delegate → Custom Event "OnPlayerListUpdated"
+         │
+         │  then (exec)
+         ▼
+    [Get BR Game State] (동일, World Context = self)
+         │  · Return Value → GameState
+         │
+         │  then (exec)
+         ▼
+    [Get All Player User Info] (BRGameState)
+         │  · self = GameState
+         │  · Return Value → Player Info List (Array of FBRUserInfo)
+         │
+         │  (exec는 Get BR Game State 쪽 then에서 직통)
+         ▼
+    [Update Player Names] (BR_LobbyEntryWidget)
+         │  · self = WBP_Entry (Variable Get)
+         │  · Player Info List ← 위 배열
+         │
+         └─ (완료)
+```
+
+**정리:**  
+Construct → CustomEvent → **Get BR Game State** → **Is Valid** → True일 때만  
+**Add Dynamic(On Player List Changed → OnPlayerListUpdated)** 후  
+**Get Game State → Get All Player User Info → Update Player Names(WBP_Entry)** 로 최초 1회 갱신.
+
+#### 2-2. 플레이어 목록 변경 시 (On Player List Changed 발생할 때마다)
+
+```
+[GameState · On Player List Changed]  (브로드캐스트)
+    │
+    │  (Add Dynamic으로 연결됨)
+    ▼
+[Custom Event "OnPlayerListUpdated"]
+    │
+    │  then (exec)
+    ▼
+[Get BR Game State] (World Context = self)
+    │  · Return Value → GameState
+    │
+    │  then (exec)
+    ▼
+[Is Valid] (GameState)
+    │
+    ├─ False ──→ (종료)
+    │
+    └─ True
+         │
+         │  then (exec)
+         ▼
+    [Get All Player User Info] (GameState)
+         │  · Return Value → Player Info List
+         │
+         ▼
+    [Update Player Names] (Target = WBP_Entry, Player Info List)
+         │
+         └─ (완료)
+```
+
+**정리:**  
+로비 인원 변경 시 **OnPlayerListUpdated** 실행 → **Get Game State** → **Is Valid** →  
+True면 **Get All Player User Info** → **Update Player Names(WBP_Entry)** 로 다시 갱신.
+
+#### 2-3. 로비 메뉴 제거 시 (Destruct)
+
+```
+[Event Destruct]
+    │
+    │  then (exec)
+    ▼
+[Get BR Game State] (World Context = self)
+    │  · Return Value → GameState
+    │
+    │  then (exec)
+    ▼
+[Is Valid] (GameState)
+    │
+    ├─ False ──→ (종료)
+    │
+    └─ True
+         │
+         │  then (exec)
+         ▼
+    [Remove Dynamic] (Target = GameState)
+         │  · Event: On Player List Changed
+         │  · Delegate → Custom Event "OnPlayerListUpdated"
+         │
+         └─ (바인딩 해제 완료)
+```
+
+**정리:**  
+Destruct 시 **Remove Dynamic**으로 **On Player List Changed → OnPlayerListUpdated** 바인딩 해제.
+
+---
+
+### 3. 전체 연동 흐름 (요약)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_Entry (Pre Construct)                                               │
+│    UserNameSlot = [TextBlock_Entry00 .. 07]  (0~7번 슬롯 고정)            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │  WBP_Entry는 WBP_LobbyMenu 자식으로 배치
+                                      │  WBP_LobbyMenu 변수 "WBP_Entry"로 참조
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_LobbyMenu (Construct)                                               │
+│    CustomEvent → Get Game State → Is Valid?                              │
+│      → Add Dynamic(On Player List Changed → OnPlayerListUpdated)         │
+│      → Get Game State → Get All Player User Info                         │
+│      → Update Player Names(WBP_Entry, Player Info List)  [최초 1회]      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │  플레이어 입장/퇴장 시 GameState가
+                                      │  On Player List Changed 브로드캐스트
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  OnPlayerListUpdated (Custom Event)                                      │
+│    Get Game State → Is Valid?                                            │
+│      → Get All Player User Info → Update Player Names(WBP_Entry, List)   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │  Update Player Names 내부 (C++)
+                                      │  SlotIndex 0~7 ↔ PlayerInfoList[0~7]
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_Entry · UserNameSlot                                                │
+│    [0] 1번째 입장자 이름  [1] 2번째  …  [7] 8번째  /  없으면 공란          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_LobbyMenu (Destruct)                                                │
+│    Get Game State → Is Valid? → Remove Dynamic(On Player List Changed)   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 4. 블루프린트에서 확인할 것
+
+| 항목 | 확인 내용 |
+|------|-----------|
+| **CustomEvent 트리거** | Event Construct(또는 Pre Construct)에서 CustomEvent 호출되는지 |
+| **World Context Object** | Get BR Game State에 **self**(WBP_LobbyMenu) 연결 여부 |
+| **Is Valid 분기** | Get BR Game State 직후 **Is Valid**로 null 체크 후 분기하는지 |
+| **WBP_Entry 참조** | Update Player Names의 Target이 실제 **WBP_Entry** 자식 위젯인지 |
+| **Remove Dynamic** | Event Destruct에서 **On Player List Changed** 바인딩 해제하는지 |
+
+---
+
 ## 주의사항
 
 1. **컴파일 필요**: C++ 클래스를 생성했으므로 언리얼 엔진에서 프로젝트를 다시 컴파일해야 합니다.
