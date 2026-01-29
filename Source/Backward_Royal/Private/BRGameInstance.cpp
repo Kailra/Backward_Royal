@@ -548,8 +548,8 @@ void UBRGameInstance::SavePendingRolesForTravel(ABRGameState* GameState)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
 		{
-			FString Key = BRPS->GetUniqueId().ToString();
-			if (Key.IsEmpty() && !BRPS->UserUID.IsEmpty()) Key = BRPS->UserUID;
+			// FUniqueNetIdWrapper::ToString() 링크 이슈 회피: UserUID/PlayerName만 사용
+			FString Key = BRPS->UserUID;
 			if (Key.IsEmpty()) Key = BRPS->GetPlayerName();
 			if (!Key.IsEmpty())
 			{
@@ -569,8 +569,8 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
 		{
-			FString Key = BRPS->GetUniqueId().ToString();
-			if (Key.IsEmpty() && !BRPS->UserUID.IsEmpty()) Key = BRPS->UserUID;
+			// FUniqueNetIdWrapper::ToString() 링크 이슈 회피: UserUID/PlayerName만 사용
+			FString Key = BRPS->UserUID;
 			if (Key.IsEmpty()) Key = BRPS->GetPlayerName();
 			const TTuple<int32, bool, int32>* Found = PendingRoleRestoreByPlayerKey.Find(Key);
 			if (Found)
