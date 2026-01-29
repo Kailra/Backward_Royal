@@ -370,11 +370,12 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 {
 	if (!HasAuthority() || !UpperBodyClass) return;
 
-	// Seamless Travel 시 게임 맵에서 BeginPlay가 호출되지 않을 수 있어, 중복 실행 방지 및 플래그는 여기서만 클리어
 	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
 	if (!GI || !GI->GetPendingApplyRandomTeamRoles())
 		return;
 	GI->ClearPendingApplyRandomTeamRoles();
+
+	UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] ApplyRoleChangesForRandomTeams 진입 (1.5초 타이머)"));
 
 	ABRGameState* BRGameState = GetGameState<ABRGameState>();
 	if (!BRGameState || BRGameState->PlayerArray.Num() < 2) return;
@@ -573,6 +574,16 @@ void ABRGameMode::StartGame()
 	{
 		UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: World를 찾을 수 없습니다."));
 		return;
+	}
+	
+	// Travel 직전에 역할 저장 (PC 쪽 저장이 실패해도 여기서 한 번 더 저장, PIE/멀티 프로세스 대응)
+	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+	{
+		if (ABRGameState* GS = GetGameState<ABRGameState>())
+		{
+			GI->SavePendingRolesForTravel(GS);
+			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] Travel 직전 역할 저장 완료 (GameMode)"));
+		}
 	}
 	
 	// PIE(Play In Editor) 환경 감지

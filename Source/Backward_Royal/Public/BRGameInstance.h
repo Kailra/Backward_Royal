@@ -170,8 +170,10 @@ protected:
 	/** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출 대기 */
 	bool bPendingApplyRandomTeamRoles = false;
 
-	/** Seamless Travel 후 역할 복원용 (키: UserUID 또는 PlayerName), 값: (TeamNumber, bIsLowerBody, ConnectedPlayerIndex) */
-	TMap<FString, TTuple<int32, bool, int32>> PendingRoleRestoreByPlayerKey;
+	/** Seamless Travel 후 역할 복원용. PlayerName으로 매칭 (Travel 후에도 동일한 이름 유지 가정) */
+	TMap<FString, TTuple<int32, bool, int32>> PendingRoleRestoreByName;
+	/** 인덱스 폴백용 (PlayerName 매칭 실패 시 사용) */
+	TArray<TTuple<int32, bool, int32>> PendingRoleRestoreByIndex;
 
 	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
 	FTimerHandle ListenServerTimerHandle;

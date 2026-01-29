@@ -540,39 +540,67 @@ void UBRGameInstance::ShowRoomInfo()
 	}
 }
 
+// Seamless Travel 시 GameInstance가 달라질 수 있어, 프로세스 정적 저장소에 백업 (복원 시 사용)
+namespace
+{
+	TMap<FString, TTuple<int32, bool, int32>> G_PendingRoleByName;
+	TArray<TTuple<int32, bool, int32>> G_PendingRoleByIndex;
+}
+
 void UBRGameInstance::SavePendingRolesForTravel(ABRGameState* GameState)
 {
 	if (!GameState) return;
-	PendingRoleRestoreByPlayerKey.Empty();
+	PendingRoleRestoreByName.Empty();
+	PendingRoleRestoreByIndex.Empty();
+	G_PendingRoleByName.Empty();
+	G_PendingRoleByIndex.Empty();
 	for (APlayerState* PS : GameState->PlayerArray)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
 		{
-			// FUniqueNetIdWrapper::ToString() 링크 이슈 회피: UserUID/PlayerName만 사용
-			FString Key = BRPS->UserUID;
-			if (Key.IsEmpty()) Key = BRPS->GetPlayerName();
+			FString Key = BRPS->GetPlayerName();
+			if (Key.IsEmpty()) Key = BRPS->UserUID;
 			if (!Key.IsEmpty())
 			{
-				PendingRoleRestoreByPlayerKey.Add(Key, TTuple<int32, bool, int32>(
-					BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
+				TTuple<int32, bool, int32> Data(BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex);
+				PendingRoleRestoreByName.Add(Key, Data);
+				G_PendingRoleByName.Add(Key, Data);
 			}
+			G_PendingRoleByIndex.Add(TTuple<int32, bool, int32>(
+				BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
+			PendingRoleRestoreByIndex.Add(TTuple<int32, bool, int32>(
+				BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
 		}
 	}
-	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] Seamless Travel 전 역할 저장: %d명"), PendingRoleRestoreByPlayerKey.Num());
+	UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] Seamless Travel 전 역할 저장: %d명 (정적+GI)"), G_PendingRoleByIndex.Num());
 }
 
 void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
 {
-	if (!GameState || PendingRoleRestoreByPlayerKey.Num() == 0) return;
+	if (!GameState)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 역할 복원 스킵: GameState 없음"));
+		return;
+	}
+	// GameInstance 데이터가 비어 있으면 정적 백업 사용 (멀티 PIE 등에서 GI가 달라질 수 있음)
+	bool bUseStatic = (PendingRoleRestoreByName.Num() == 0 && PendingRoleRestoreByIndex.Num() == 0);
+	if (bUseStatic && G_PendingRoleByIndex.Num() == 0 && G_PendingRoleByName.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 역할 복원 스킵: 저장된 역할 없음 (GI=%d, 정적=%d)"),
+			PendingRoleRestoreByIndex.Num(), G_PendingRoleByIndex.Num());
+		return;
+	}
 	int32 Restored = 0;
+	auto& NameMap = bUseStatic ? G_PendingRoleByName : PendingRoleRestoreByName;
+	auto& IndexArr = bUseStatic ? G_PendingRoleByIndex : PendingRoleRestoreByIndex;
+	// 1) PlayerName으로 복원 시도
 	for (APlayerState* PS : GameState->PlayerArray)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
 		{
-			// FUniqueNetIdWrapper::ToString() 링크 이슈 회피: UserUID/PlayerName만 사용
-			FString Key = BRPS->UserUID;
-			if (Key.IsEmpty()) Key = BRPS->GetPlayerName();
-			const TTuple<int32, bool, int32>* Found = PendingRoleRestoreByPlayerKey.Find(Key);
+			FString Key = BRPS->GetPlayerName();
+			if (Key.IsEmpty()) Key = BRPS->UserUID;
+			const TTuple<int32, bool, int32>* Found = NameMap.Find(Key);
 			if (Found)
 			{
 				BRPS->SetTeamNumber(Found->Get<0>());
@@ -581,8 +609,30 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
 			}
 		}
 	}
-	PendingRoleRestoreByPlayerKey.Empty();
-	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명"), Restored);
+	// 2) 이름 매칭 실패 시 인덱스로 폴백
+	if (Restored == 0 && IndexArr.Num() > 0)
+	{
+		const int32 N = FMath::Min(IndexArr.Num(), GameState->PlayerArray.Num());
+		for (int32 i = 0; i < N; i++)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(GameState->PlayerArray[i]))
+			{
+				const TTuple<int32, bool, int32>& Data = IndexArr[i];
+				BRPS->SetTeamNumber(Data.Get<0>());
+				BRPS->SetPlayerRole(Data.Get<1>(), Data.Get<2>());
+				Restored++;
+			}
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명 (인덱스 폴백%s)"), Restored, bUseStatic ? TEXT(", 정적") : TEXT(""));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명 (이름 매칭%s)"), Restored, bUseStatic ? TEXT(", 정적") : TEXT(""));
+	}
+	PendingRoleRestoreByName.Empty();
+	PendingRoleRestoreByIndex.Empty();
+	G_PendingRoleByName.Empty();
+	G_PendingRoleByIndex.Empty();
 }
 
 /** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */

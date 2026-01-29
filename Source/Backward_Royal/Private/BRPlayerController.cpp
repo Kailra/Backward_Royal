@@ -988,11 +988,16 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 	{
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
 		BRGameState->AssignRandomTeams();
-		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetWorld()->GetGameInstance()))
+		UBRGameInstance* GI = GetWorld() ? Cast<UBRGameInstance>(GetWorld()->GetGameInstance()) : nullptr;
+		if (GI)
 		{
 			GI->SavePendingRolesForTravel(BRGameState);
 			GI->SetPendingApplyRandomTeamRoles(true);
-			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 게임 맵 이동 시 상체/하체 Pawn 적용 예약됨"));
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 배정] 역할 저장 완료, 게임 맵 이동 시 상체/하체 Pawn 적용 예약"));
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 배정] GameInstance 없음 - 역할 저장 스킵, 상체/하체 복원 실패 가능"));
 		}
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 완료"));
 	}
