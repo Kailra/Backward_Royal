@@ -15,6 +15,7 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ABRGameState, PlayerCount);
+	DOREPLIFETIME(ABRGameState, PlayerListForDisplay);
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
 	DOREPLIFETIME(ABRGameState, RoomTitle);
 }
@@ -33,6 +34,17 @@ void ABRGameState::UpdatePlayerList()
 		if (OldCount != PlayerCount)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 목록] 업데이트: %d -> %d명"), OldCount, PlayerCount);
+		}
+		// 서버가 플레이어 목록을 채워 복제 → 클라이언트도 동일 목록으로 UI 표시
+		PlayerListForDisplay.Empty();
+		for (int32 i = 0; i < PlayerArray.Num(); i++)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerArray[i]))
+			{
+				FBRUserInfo Info = BRPS->GetUserInfo();
+				Info.PlayerIndex = i;
+				PlayerListForDisplay.Add(Info);
+			}
 		}
 		OnRep_PlayerCount();
 		CheckCanStartGame();
@@ -202,6 +214,12 @@ void ABRGameState::OnRep_PlayerCount()
 	OnPlayerListChanged.Broadcast();
 }
 
+void ABRGameState::OnRep_PlayerListForDisplay()
+{
+	// 클라이언트: 복제된 목록 수신 시 UI 갱신
+	OnPlayerListChanged.Broadcast();
+}
+
 void ABRGameState::OnRep_CanStartGame()
 {
 	// UI 업데이트를 위한 이벤트 발생 가능
@@ -209,18 +227,22 @@ void ABRGameState::OnRep_CanStartGame()
 
 TArray<FBRUserInfo> ABRGameState::GetAllPlayerUserInfo() const
 {
+	// 서버가 채운 PlayerListForDisplay가 복제되므로, 서버·클라이언트 모두 이 배열로 UI 표시
+	if (PlayerListForDisplay.Num() > 0)
+	{
+		return PlayerListForDisplay;
+	}
+	// 폴백: 아직 한 번도 UpdatePlayerList가 호출되지 않은 경우(초기 등)
 	TArray<FBRUserInfo> UserInfoArray;
-	
 	for (int32 i = 0; i < PlayerArray.Num(); i++)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerArray[i]))
 		{
 			FBRUserInfo UserInfo = BRPS->GetUserInfo();
-			UserInfo.PlayerIndex = i; // PlayerArray에서의 인덱스 설정
+			UserInfo.PlayerIndex = i;
 			UserInfoArray.Add(UserInfo);
 		}
 	}
-	
 	return UserInfoArray;
 }
 

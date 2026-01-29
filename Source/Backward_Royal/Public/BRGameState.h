@@ -29,6 +29,10 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_PlayerCount, BlueprintReadOnly, Category = "Room")
 	int32 PlayerCount;
 
+	/** 서버가 채운 플레이어 목록(이름 등). 복제되어 클라이언트도 동일 목록으로 UI 표시 */
+	UPROPERTY(ReplicatedUsing = OnRep_PlayerListForDisplay, BlueprintReadOnly, Category = "Room")
+	TArray<FBRUserInfo> PlayerListForDisplay;
+
 	// 게임 시작 가능 여부
 	UPROPERTY(ReplicatedUsing = OnRep_CanStartGame, BlueprintReadOnly, Category = "Room")
 	bool bCanStartGame;
@@ -87,6 +91,10 @@ public:
 	// 플레이어 수 변경 시 호출
 	UFUNCTION()
 	void OnRep_PlayerCount();
+
+	// 복제된 플레이어 목록 수신 시 호출 (클라이언트 UI 갱신용)
+	UFUNCTION()
+	void OnRep_PlayerListForDisplay();
 
 	// 게임 시작 가능 여부 변경 시 호출
 	UFUNCTION()
