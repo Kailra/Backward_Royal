@@ -312,38 +312,42 @@ void ABRGameMode::Logout(AController* Exiting)
 
 	// PlayerArray에서 퇴장한 PlayerState 제거는 엔진이 다음 틱에 처리하므로,
 	// 플레이어 목록 업데이트를 다음 틱으로 미뤄야 남은 사람 UI에서 나간 이름이 사라짐
+	// 람다에서는 this를 캡처하지 않고 World만 캡처 (다음 틱에 GameMode가 유효하지 않을 수 있음)
 	UWorld* World = GetWorld();
 	if (World)
 	{
-		World->GetTimerManager().SetTimerForNextTick([this]()
+		World->GetTimerManager().SetTimerForNextTick([World]()
 		{
-			if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
-			{
-				BRGameState->UpdatePlayerList();
+			if (!IsValid(World)) return;
+			AGameModeBase* GM = World->GetAuthGameMode();
+			if (!GM) return;
+			ABRGameState* BRGameState = GM->GetGameState<ABRGameState>();
+			if (!BRGameState) return;
 
-				// 남은 플레이어들의 역할 재할당 (순서대로)
-				for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
+			BRGameState->UpdatePlayerList();
+
+			// 남은 플레이어들의 역할 재할당 (순서대로)
+			for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
+			{
+				if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
 				{
-					if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
+					if (i == 0)
 					{
-						if (i == 0)
+						BRPS->SetPlayerRole(true, -1);
+					}
+					else if (i % 2 == 0)
+					{
+						BRPS->SetPlayerRole(true, -1);
+					}
+					else
+					{
+						int32 LowerBodyPlayerIndex = i - 1;
+						if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
 						{
-							BRPS->SetPlayerRole(true, -1);
-						}
-						else if (i % 2 == 0)
-						{
-							BRPS->SetPlayerRole(true, -1);
-						}
-						else
-						{
-							int32 LowerBodyPlayerIndex = i - 1;
-							if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
+							if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
 							{
-								if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
-								{
-									BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
-									LowerBodyPS->SetPlayerRole(true, i);
-								}
+								BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
+								LowerBodyPS->SetPlayerRole(true, i);
 							}
 						}
 					}
