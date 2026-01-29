@@ -2,12 +2,6 @@
 #include "BR_LobbyEntryWidget.h"
 #include "Components/TextBlock.h"
 
-/** 로비 표시용: PlayerName만 사용. 비어 있거나 UserUID와 같으면 "Player N" 사용. UserUID는 절대 표시하지 않음. */
-static bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
-{
-	return PlayerName.IsEmpty() || PlayerName == UserUID;
-}
-
 void UBR_LobbyEntryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();

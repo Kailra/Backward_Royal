@@ -16,6 +16,7 @@ ABRGameSession::ABRGameSession()
 	, FindSessionsRetryCount(0)
 	, PendingRoomName(TEXT(""))
 	, bPendingCreateSession(false)
+	, bReturnToMainMenuAfterDestroy(false)
 {
 }
 
@@ -586,6 +587,22 @@ void ABRGameSession::OnStartSessionCompleteDelegate(FName InSessionName, bool bW
 void ABRGameSession::OnDestroySessionCompleteDelegate(FName InSessionName, bool bWasSuccessful)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 제거 완료: %s"), bWasSuccessful ? TEXT("성공") : TEXT("실패"));
+
+	// 방 나가기(호스트): 메인 맵으로 이동
+	if (bReturnToMainMenuAfterDestroy)
+	{
+		bReturnToMainMenuAfterDestroy = false;
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			// 프로젝트 설정의 Game Default Map과 동일한 경로 사용 (DefaultEngine.ini)
+			FString DefaultMap = TEXT("/Game/Main/Level/Main_Scene.Main_Scene");
+			FString MapURL = DefaultMap + TEXT("?listen");
+			World->ServerTravel(MapURL, true);
+			UE_LOG(LogTemp, Log, TEXT("[방 나가기] 호스트: 메인 맵으로 이동: %s"), *MapURL);
+		}
+		return;
+	}
 	
 	if (bPendingCreateSession && !PendingRoomName.IsEmpty())
 	{
@@ -724,4 +741,21 @@ bool ABRGameSession::HasActiveSession() const
 		return Session != nullptr;
 	}
 	return false;
+}
+
+void ABRGameSession::DestroySessionAndReturnToMainMenu()
+{
+	if (!SessionInterface.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 나가기] SessionInterface가 없습니다."));
+		return;
+	}
+	if (SessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[방 나가기] 활성 세션이 없습니다."));
+		return;
+	}
+	bReturnToMainMenuAfterDestroy = true;
+	SessionInterface->DestroySession(NAME_GameSession);
+	UE_LOG(LogTemp, Log, TEXT("[방 나가기] 호스트: 세션 종료 요청 (완료 시 메인 맵으로 이동)"));
 }

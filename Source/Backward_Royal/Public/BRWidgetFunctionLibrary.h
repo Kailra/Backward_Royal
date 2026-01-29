@@ -49,6 +49,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void JoinRoom(const UObject* WorldContextObject, int32 SessionIndex);
 
+	/** 로비에서 방 나가기. 클라이언트는 서버 연결을 끊고, 호스트는 세션 종료 후 메인 맵으로 이동합니다. */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
+	static void LeaveRoom(const UObject* WorldContextObject);
+
 	/** LAN 전용(true) / 인터넷 매칭(false). 방 만들기·방 찾기 전에 설정. */
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void SetUseLANOnly(const UObject* WorldContextObject, bool bLAN);

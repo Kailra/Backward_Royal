@@ -176,6 +176,19 @@ void UBRWidgetFunctionLibrary::JoinRoom(const UObject* WorldContextObject, int32
 	BRPC->JoinRoomWithPlayerName(SessionIndex, PlayerName);
 }
 
+void UBRWidgetFunctionLibrary::LeaveRoom(const UObject* WorldContextObject)
+{
+	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] 방 나가기 요청"));
+		BRPC->LeaveRoom();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[WidgetFunctionLibrary] PlayerController를 찾을 수 없습니다."));
+	}
+}
+
 void UBRWidgetFunctionLibrary::SetUseLANOnly(const UObject* WorldContextObject, bool bLAN)
 {
 	if (!WorldContextObject || !GEngine) return;

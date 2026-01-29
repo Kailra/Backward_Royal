@@ -512,6 +512,29 @@ Destruct 시 **Remove Dynamic**으로 **On Player List Changed → OnPlayerListU
 
 ---
 
+### 6. 방 나가기: 반드시 LeaveRoom 사용 (서버 연결 해제)
+
+클라이언트가 **방 나가기** 버튼을 눌렀을 때, **UI만 전환(ShowEntranceMenu 등)하고 연결을 끊지 않으면** 서버는 해당 플레이어를 여전히 방에 있는 것으로 인식합니다.  
+**반드시** 아래처럼 **Leave Room**(BR Widget Function Library)을 호출해야 합니다.
+
+- **클라이언트:** `Leave Room` 호출 시 서버와의 연결이 끊어지고, 서버의 `Logout(Exiting)`이 호출되어 `PlayerArray`에서 제거됩니다.
+- **호스트:** `Leave Room` 호출 시 세션이 종료되고 메인 맵으로 이동합니다(모든 클라이언트도 함께 이동).
+
+**블루프린트 연결 예시 (WBP_LobbyMenu 등):**
+
+```
+[방 나가기 버튼 · On Clicked]
+    │
+    ▼
+[Leave Room] (BR Widget Function Library)
+    · World Context Object = self (또는 Get Player Controller → Get World 등)
+```
+
+- **잘못된 예:** 방 나가기 버튼에서 **Show Entrance Menu** / **Set Main Screen To Entrance Menu** 만 호출 → 클라이언트는 여전히 서버에 연결된 상태로 남아 서버에서는 방에 있는 것으로 표시됨.
+- **올바른 예:** 방 나가기 버튼에서 **Leave Room** 호출 → 클라이언트는 `disconnect`로 연결이 끊어지고, 서버에서 플레이어가 제거됨.
+
+---
+
 ## 주의사항
 
 1. **컴파일 필요**: C++ 클래스를 생성했으므로 언리얼 엔진에서 프로젝트를 다시 컴파일해야 합니다.

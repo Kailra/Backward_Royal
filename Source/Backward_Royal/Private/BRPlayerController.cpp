@@ -1694,6 +1694,49 @@ void ABRPlayerController::HideCurrentMenu()
 	}
 }
 
+void ABRPlayerController::LeaveRoom()
+{
+	UWorld* World = GetWorld();
+	if (!World || !IsLocalController())
+	{
+		return;
+	}
+
+	ENetMode NetMode = World->GetNetMode();
+
+	// 클라이언트: 서버 연결을 끊으면 서버에서 Logout(Exiting)이 호출되어 PlayerArray에서 제거됨
+	if (NetMode == NM_Client)
+	{
+		ConsoleCommand(TEXT("disconnect"));
+		UE_LOG(LogTemp, Log, TEXT("[방 나가기] 클라이언트: 서버 연결 종료 요청"));
+		return;
+	}
+
+	// 호스트(ListenServer): 세션을 종료하고 메인 맵으로 이동 (모든 클라이언트도 함께 이동)
+	if (NetMode == NM_ListenServer)
+	{
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->DestroySessionAndReturnToMainMenu();
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 나가기] 호스트: BRGameSession을 찾을 수 없습니다."));
+			}
+		}
+		return;
+	}
+
+	// Standalone: UI만 전환 (연결 없음)
+	if (NetMode == NM_Standalone)
+	{
+		SetMainScreenToEntranceMenu();
+		UE_LOG(LogTemp, Log, TEXT("[방 나가기] Standalone: 입장 메뉴로 전환"));
+	}
+}
+
 void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)
 {
 	// 클라이언트에서만 실행

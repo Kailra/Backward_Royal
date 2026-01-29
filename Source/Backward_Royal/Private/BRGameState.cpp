@@ -5,7 +5,7 @@
 #include "GameFramework/PlayerState.h"
 
 /** 로비 표시용: 비어 있거나 UserUID와 같으면 "Player N"으로 저장. 패턴 없음. */
-static bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
+bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
 {
 	return PlayerName.IsEmpty() || PlayerName == UserUID;
 }

@@ -40,6 +40,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void JoinRoomWithPlayerName(int32 SessionIndex, const FString& PlayerName);
 
+	/** 로비에서 방 나가기. 클라이언트는 서버 연결을 끊고, 호스트는 세션을 종료한 뒤 메인 맵으로 이동합니다. */
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	void LeaveRoom();
+
 	// 준비 상태 토글
 	UFUNCTION(BlueprintCallable, Exec, Category = "Room")
 	void ToggleReady();
