@@ -40,11 +40,11 @@ void ABRGameMode::BeginPlay()
 	}
 
 	// 로비에서 랜덤 팀 배정 후 예약된 경우: 게임 맵 로드 후 플레이어 스폰이 끝날 때까지 지연 후 적용
+	// 플래그는 ApplyRoleChangesForRandomTeams에서만 클리어 (여기서 지우면 1.5초 후 타이머에서 진입 시 플래그가 false라 적용이 스킵됨)
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
 	{
 		if (GI->GetPendingApplyRandomTeamRoles())
 		{
-			GI->ClearPendingApplyRandomTeamRoles();
 			FTimerHandle H;
 			GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
 			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 게임 맵 로드됨 - 1.5초 후 상체/하체 Pawn 적용 예정"));
