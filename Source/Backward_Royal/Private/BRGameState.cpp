@@ -16,6 +16,7 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 
 	DOREPLIFETIME(ABRGameState, PlayerCount);
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
+	DOREPLIFETIME(ABRGameState, RoomTitle);
 }
 
 void ABRGameState::BeginPlay()
@@ -253,4 +254,33 @@ FString ABRGameState::GetHostPlayerName() const
 		}
 	}
 	return FString();
+}
+
+void ABRGameState::SetRoomTitle(const FString& InRoomTitle)
+{
+	if (HasAuthority())
+	{
+		RoomTitle = InRoomTitle;
+		UE_LOG(LogTemp, Log, TEXT("[방 제목] 서버 설정: %s"), *RoomTitle);
+		OnRep_RoomTitle();
+	}
+}
+
+void ABRGameState::OnRep_RoomTitle()
+{
+	// UI 갱신 시 활용 가능
+}
+
+FString ABRGameState::GetRoomTitleDisplay() const
+{
+	if (!RoomTitle.IsEmpty())
+	{
+		return RoomTitle;
+	}
+	FString HostName = GetHostPlayerName();
+	if (HostName.IsEmpty())
+	{
+		return FString(TEXT("Host's Game"));
+	}
+	return HostName + TEXT("'s Game");
 }

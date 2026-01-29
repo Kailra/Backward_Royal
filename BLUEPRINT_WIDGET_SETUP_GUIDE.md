@@ -55,6 +55,11 @@
 - `Is Host` - 방장 여부 확인
 - `Is Ready` - 준비 상태 확인
 
+**로비 방 제목 표시 (○○'s Game):**
+- 로비에서 방 제목을 표시할 때는 **GameState → Get Room Title Display**를 사용하세요.
+- 서버에서 설정·복제된 `RoomTitle`을 사용하므로, 방에 입장한 클라이언트도 방장 이름이 포함된 "○○'s Game"을 동일하게 볼 수 있습니다.
+- 예: `Get BR Game State (Self)` → `Get Room Title Display` → 결과를 방 제목 TextBlock에 설정
+
 #### 3. 이벤트 바인딩
 
 GameSession의 이벤트를 블루프린트에서 직접 바인딩할 수 있습니다:

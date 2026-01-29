@@ -127,6 +127,9 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 		{
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 첫 번째 플레이어이므로 방장으로 설정됩니다."));
 			BRPS->SetIsHost(true);
+			// 방 제목을 서버에서 설정·복제하여 입장한 클라이언트도 "○○'s Game"으로 동일하게 표시
+			FString RoomTitleStr = PlayerName.IsEmpty() ? FString(TEXT("Host's Game")) : (PlayerName + TEXT("'s Game"));
+			BRGameState->SetRoomTitle(RoomTitleStr);
 		}
 		else if (BRGameState->PlayerArray.Num() == 1 && NetMode == NM_Standalone)
 		{
