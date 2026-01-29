@@ -9,7 +9,7 @@ void UBR_LobbyEntryWidget::NativeConstruct()
 
 void UBR_LobbyEntryWidget::UpdatePlayerNames(const TArray<FBRUserInfo>& PlayerInfoList)
 {
-	// 1. 모든 슬롯 초기화 (빈 텍스트로 설정)
+	// 1. 모든 슬롯 초기화 (빈 텍스트 = 공란)
 	for (UTextBlock* TextSlot : UserNameSlot)
 	{
 		if (TextSlot)
@@ -18,26 +18,32 @@ void UBR_LobbyEntryWidget::UpdatePlayerNames(const TArray<FBRUserInfo>& PlayerIn
 		}
 	}
 
-	// 2. TeamID가 0인 플레이어만 필터링하여 순서대로 슬롯에 표시
-	int32 SlotIndex = 0;
-	for (const FBRUserInfo& Info : PlayerInfoList)
+	// 2. 들어온 순서(PlayerIndex 0, 1, 2, …)대로 슬롯에 이름 표시. 해당 인덱스에 플레이어 없으면 공란 유지
+	for (int32 SlotIndex = 0; SlotIndex < UserNameSlot.Num(); ++SlotIndex)
 	{
-		if (Info.TeamID == 0)
+		if (!UserNameSlot[SlotIndex])
 		{
-			if (SlotIndex < UserNameSlot.Num() && UserNameSlot[SlotIndex])
+			continue;
+		}
+		if (SlotIndex < PlayerInfoList.Num())
+		{
+			const FBRUserInfo& Info = PlayerInfoList[SlotIndex];
+			// 빈 슬롯(PlayerIndex < 0) 또는 이름 미설정 → 공란. 플레이어가 있으면 PlayerName만 표시
+			FString DisplayName;
+			if (Info.PlayerIndex < 0)
 			{
-				FString DisplayName = Info.PlayerName;
-				if (DisplayName.IsEmpty())
-				{
-					DisplayName = FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1);
-				}
-				UserNameSlot[SlotIndex]->SetText(FText::FromString(DisplayName));
-				SlotIndex++;
+				DisplayName = FString();
 			}
+			else if (!Info.PlayerName.IsEmpty() && Info.PlayerName != Info.UserUID)
+			{
+				DisplayName = Info.PlayerName;
+			}
+			// else: 이름 없음 → 공란 유지
+			UserNameSlot[SlotIndex]->SetText(FText::FromString(DisplayName));
 		}
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[LobbyEntry] TeamID 0 플레이어 %d명 표시"), SlotIndex);
+	UE_LOG(LogTemp, Log, TEXT("[LobbyEntry] 입장 순서 기준 %d슬롯 표시 (플레이어 %d명)"), UserNameSlot.Num(), PlayerInfoList.Num());
 }
 
 void UBR_LobbyEntryWidget::SetEntryInfo(const FBRUserInfo& Info)
@@ -47,19 +53,11 @@ void UBR_LobbyEntryWidget::SetEntryInfo(const FBRUserInfo& Info)
 		return;
 	}
 
-	if (Info.TeamID == 0)
+	// 빈 슬롯 또는 이름 미설정 → 공란. 플레이어가 있으면 PlayerName만 표시
+	FString DisplayName;
+	if (Info.PlayerIndex >= 0 && !Info.PlayerName.IsEmpty() && Info.PlayerName != Info.UserUID)
 	{
-		FString DisplayName = Info.PlayerName;
-		if (DisplayName.IsEmpty())
-		{
-			DisplayName = FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1);
-		}
-		NameText->SetText(FText::FromString(DisplayName));
-		NameText->SetVisibility(ESlateVisibility::HitTestInvisible);
+		DisplayName = Info.PlayerName;
 	}
-	else
-	{
-		NameText->SetText(FText::FromString(TEXT("")));
-		NameText->SetVisibility(ESlateVisibility::Collapsed);
-	}
+	NameText->SetText(FText::FromString(DisplayName));
 }
