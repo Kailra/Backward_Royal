@@ -357,11 +357,10 @@ Pre Construct → 부모 Pre Construct 호출 → **UserNameSlot** 초기화(Arr
          │
          │  then (exec)
          ▼
-    [Get All Player User Info] (BRGameState)
-         │  · self = GameState
-         │  · Return Value → Player Info List (Array of FBRUserInfo)
+    [Get Lobby Entry Display List] (BRGameState, self = GameState)  ← Entry↔SelectTeam 이동 반영 시 사용
+         │  · Return Value → Player Info List (Array of FBRUserInfo, 8슬롯, 빈 슬롯은 빈 FBRUserInfo)
+         │  (입장 순서만 표시할 때는 [Get All Player User Info] 사용)
          │
-         │  (exec는 Get BR Game State 쪽 then에서 직통)
          ▼
     [Update Player Names] (BR_LobbyEntryWidget)
          │  · self = WBP_Entry (Variable Get)
@@ -373,7 +372,8 @@ Pre Construct → 부모 Pre Construct 호출 → **UserNameSlot** 초기화(Arr
 **정리:**  
 Construct → CustomEvent → **Get BR Game State** → **Is Valid** → True일 때만  
 **Add Dynamic(On Player List Changed → OnPlayerListUpdated)** 후  
-**Get Game State → Get All Player User Info → Update Player Names(WBP_Entry)** 로 최초 1회 갱신.
+**Get Game State → Get Lobby Entry Display List** (또는 Get All Player User Info) → **Update Player Names(WBP_Entry)** 로 최초 1회 갱신.  
+**Entry↔SelectTeam 이동**을 쓰려면 반드시 **Get Lobby Entry Display List**를 사용하세요.
 
 #### 2-2. 플레이어 목록 변경 시 (On Player List Changed 발생할 때마다)
 
@@ -399,18 +399,21 @@ Construct → CustomEvent → **Get BR Game State** → **Is Valid** → True일
          │
          │  then (exec)
          ▼
-    [Get All Player User Info] (GameState)
-         │  · Return Value → Player Info List
+    [Get Lobby Entry Display List] (GameState)  ← Entry↔SelectTeam 반영 시
+         │  · Return Value → Player Info List (8슬롯)
          │
          ▼
     [Update Player Names] (Target = WBP_Entry, Player Info List)
+         │
+         ▼
+    (선택) WBP_SelectTeam 1~4 각각 [Update Slot Display] 호출  ← SelectTeam 텍스트 갱신
          │
          └─ (완료)
 ```
 
 **정리:**  
 로비 인원 변경 시 **OnPlayerListUpdated** 실행 → **Get Game State** → **Is Valid** →  
-True면 **Get All Player User Info** → **Update Player Names(WBP_Entry)** 로 다시 갱신.
+True면 **Get Lobby Entry Display List** → **Update Player Names(WBP_Entry)** + (선택) 각 WBP_SelectTeam **Update Slot Display** 로 다시 갱신.
 
 #### 2-3. 로비 메뉴 제거 시 (Destruct)
 
@@ -441,6 +444,38 @@ True면 **Get All Player User Info** → **Update Player Names(WBP_Entry)** 로 
 
 **정리:**  
 Destruct 시 **Remove Dynamic**으로 **On Player List Changed → OnPlayerListUpdated** 바인딩 해제.
+
+---
+
+### 2-4. Entry ↔ SelectTeam 로비 슬롯 (서버 복제)
+
+**목적:** Entry(대기열 8슬롯)와 SelectTeam(팀1~4, 각 1Player/2Player) 간 이동을 **서버에서 처리·복제**하여 모든 클라이언트가 동일한 화면을 보도록 합니다.
+
+**데이터:**  
+- **Host / Client 모두** 플레이어 이름은 **GameState → PlayerState** 복제로 동일하게 가져옵니다. (Host는 GameInstance에 저장된 이름이 PostLogin 시 PlayerState에 반영됨.)  
+- **Entry 슬롯·SelectTeam 슬롯** 배치는 **GameState::LobbyEntrySlots / LobbyTeamSlots** 에서 서버가 관리하고 복제합니다.
+
+**Entry 표시:**  
+- **Get All Player User Info** → 입장 순서만 표시(이동 없음).  
+- **Get Lobby Entry Display List** → Entry↔SelectTeam 이동 반영(빈 자리·팀 배치 반영). **이동 기능을 쓸 때는 이걸 사용하세요.**
+
+**SelectTeam 표시:**  
+- WBP_SelectTeam의 Parent Class를 **BR_SelectTeamWidget**으로 설정.  
+- 각 WBP_SelectTeam 인스턴스에 **Team Index** 설정: 팀1=0, 팀2=1, 팀3=2, 팀4=3.  
+- 1Player/2Player 이름용 TextBlock은 **Player Name Slot0** / **Player Name Slot1** (또는 BindWidgetOptional 이름에 맞게) 연결.  
+- **OnPlayerListUpdated** 시 각 WBP_SelectTeam에 **Update Slot Display** 호출.
+
+**버튼 바인딩:**  
+- **1Player 버튼 (SelectTeam N):** On Clicked → **Request Assign To Lobby Team** (BR Widget Function Library)  
+  - World Context Object = self, **Team Index** = N-1 (팀1=0 … 팀4=3), **Slot Index** = 0  
+- **2Player 버튼 (SelectTeam N):** On Clicked → **Request Assign To Lobby Team**  
+  - **Team Index** = N-1, **Slot Index** = 1  
+- **Entry 버튼 (SelectTeam N의 특정 슬롯에서 “대기열로 돌아가기”):** On Clicked → **Request Move To Lobby Entry**  
+  - **Team Index** = N-1, **Slot Index** = 0 또는 1 (해당 슬롯)
+
+**주의:**  
+- Entry → SelectTeam로 이동 시 **해당 Entry 슬롯은 비워지고**, SelectTeam → Entry로 이동 시 **해당 팀 슬롯은 비워집니다.** (서버에서 처리)  
+- 리슨 서버이므로 **모두 같은 화면**을 보려면 위 RPC(Request Assign To Lobby Team / Request Move To Lobby Entry)로 서버에만 요청하고, UI는 **On Player List Changed → Get Lobby Entry Display List / Update Slot Display** 로 갱신하면 됩니다.
 
 ---
 

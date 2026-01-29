@@ -232,6 +232,12 @@ FBRUserInfo ABRPlayerState::GetUserInfo() const
 	
 	// PlayerIndex: 0=하체, 1=상체 (bIsLowerBody를 기반으로 변환)
 	UserInfo.PlayerIndex = bIsLowerBody ? 0 : 1;
+
+	if (UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] GetUserInfo | PlayerName 비어있거나 UID와 동일 → UI에 UID/빈값 나올 수 있음 | PlayerName='%s' UserUID='%s'"),
+			*UserInfo.PlayerName, *UserInfo.UserUID);
+	}
 	
 	return UserInfo;
 }

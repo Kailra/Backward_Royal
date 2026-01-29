@@ -33,6 +33,14 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_PlayerListForDisplay, BlueprintReadOnly, Category = "Room")
 	TArray<FBRUserInfo> PlayerListForDisplay;
 
+	/** 로비 Entry 슬롯(0~7). 각 요소 = PlayerArray 인덱스 또는 -1(빈 슬롯). 서버에서만 수정, 복제됨 */
+	UPROPERTY(ReplicatedUsing = OnRep_LobbySlots, BlueprintReadOnly, Category = "Lobby")
+	TArray<int32> LobbyEntrySlots;
+
+	/** 로비 SelectTeam 슬롯 [팀1~4][1Player/2Player]. 인덱스 = TeamIndex*2 + SlotIndex(0=1Player,1=2Player). 값 = PlayerArray 인덱스 또는 -1 */
+	UPROPERTY(ReplicatedUsing = OnRep_LobbySlots, BlueprintReadOnly, Category = "Lobby")
+	TArray<int32> LobbyTeamSlots;
+
 	// 게임 시작 가능 여부
 	UPROPERTY(ReplicatedUsing = OnRep_CanStartGame, BlueprintReadOnly, Category = "Room")
 	bool bCanStartGame;
@@ -56,6 +64,19 @@ public:
 	// 특정 플레이어의 UserInfo 가져오기
 	UFUNCTION(BlueprintCallable, Category = "Room")
 	FBRUserInfo GetPlayerUserInfo(int32 PlayerIndex) const;
+
+	/** 로비 Entry 표시용: 8슬롯. 빈 슬롯은 PlayerName 빈 FBRUserInfo. GetAllPlayerUserInfo 대신 로비 UI에서는 이걸 사용 권장 */
+	UFUNCTION(BlueprintCallable, Category = "Lobby")
+	TArray<FBRUserInfo> GetLobbyEntryDisplayList() const;
+
+	/** 로비 SelectTeam 팀별 슬롯 표시용. TeamIndex 0~3 = 팀1~4, SlotIndex 0=1Player 1=2Player. 빈 슬롯은 PlayerName 빈 FBRUserInfo */
+	UFUNCTION(BlueprintCallable, Category = "Lobby")
+	FBRUserInfo GetLobbyTeamSlotInfo(int32 TeamIndex, int32 SlotIndex) const;
+
+	/** [서버 전용] 해당 플레이어를 Entry에서 제거하고 SelectTeam 슬롯에 배치. 성공 시 true */
+	bool AssignPlayerToLobbyTeam(int32 PlayerIndex, int32 TeamIndex, int32 SlotIndex);
+	/** [서버 전용] SelectTeam 슬롯의 플레이어를 Entry 첫 빈 자리로 이동. 성공 시 true */
+	bool MovePlayerToLobbyEntry(int32 TeamIndex, int32 SlotIndex);
 
 	/** 방장(호스트) 플레이어 이름 가져오기. "○○'s Game" 표시용 */
 	UFUNCTION(BlueprintCallable, Category = "Room", meta = (DisplayName = "Get Host Player Name"))
@@ -95,6 +116,10 @@ public:
 	// 복제된 플레이어 목록 수신 시 호출 (클라이언트 UI 갱신용)
 	UFUNCTION()
 	void OnRep_PlayerListForDisplay();
+
+	// 로비 Entry/SelectTeam 슬롯 복제 수신 시 호출
+	UFUNCTION()
+	void OnRep_LobbySlots();
 
 	// 게임 시작 가능 여부 변경 시 호출
 	UFUNCTION()

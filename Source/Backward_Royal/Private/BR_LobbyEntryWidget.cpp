@@ -29,10 +29,13 @@ void UBR_LobbyEntryWidget::UpdatePlayerNames(const TArray<FBRUserInfo>& PlayerIn
 		{
 			const FBRUserInfo& Info = PlayerInfoList[SlotIndex];
 			FString DisplayName = Info.PlayerName;
-			if (ShouldUseFallbackDisplayName(DisplayName, Info.UserUID))
+			bool bUseFallback = ShouldUseFallbackDisplayName(DisplayName, Info.UserUID);
+			if (bUseFallback)
 			{
 				DisplayName = FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1);
 			}
+			UE_LOG(LogTemp, Warning, TEXT("[로비이름] UpdatePlayerNames 슬롯[%d] | PlayerName='%s' UserUID='%s' fallback=%d → 표시='%s'"),
+				SlotIndex, *Info.PlayerName, *Info.UserUID, bUseFallback ? 1 : 0, *DisplayName);
 			UserNameSlot[SlotIndex]->SetText(FText::FromString(DisplayName));
 		}
 	}

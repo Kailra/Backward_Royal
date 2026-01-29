@@ -254,6 +254,22 @@ void UBRWidgetFunctionLibrary::ChangeTeam(const UObject* WorldContextObject, int
 	}
 }
 
+void UBRWidgetFunctionLibrary::RequestAssignToLobbyTeam(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex)
+{
+	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
+	{
+		BRPC->RequestAssignToLobbyTeam(TeamIndex, SlotIndex);
+	}
+}
+
+void UBRWidgetFunctionLibrary::RequestMoveToLobbyEntry(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex)
+{
+	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
+	{
+		BRPC->RequestMoveToLobbyEntry(TeamIndex, SlotIndex);
+	}
+}
+
 void UBRWidgetFunctionLibrary::StartGame(const UObject* WorldContextObject)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
@@ -337,7 +353,10 @@ FString UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(const UObject* WorldCon
 
 FString UBRWidgetFunctionLibrary::GetDisplayNameForLobby(const FBRUserInfo& UserInfo)
 {
-	if (UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID)
+	bool bUseFallback = UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID;
+	UE_LOG(LogTemp, Warning, TEXT("[로비이름] GetDisplayNameForLobby | PlayerName='%s' UserUID='%s' (같거나 비면 fallback) → %s"),
+		*UserInfo.PlayerName, *UserInfo.UserUID, bUseFallback ? TEXT("Player N 사용") : TEXT("PlayerName 사용"));
+	if (bUseFallback)
 	{
 		return UserInfo.PlayerIndex >= 0
 			? FString::Printf(TEXT("Player %d"), UserInfo.PlayerIndex + 1)

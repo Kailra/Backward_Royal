@@ -72,6 +72,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Player Role")
 	void SetMyPlayerRole(bool bLowerBody);
 
+	/** 로비: Entry → SelectTeam 슬롯 배치 요청 (자신을 TeamIndex 팀의 SlotIndex 슬롯에 배치). TeamIndex 0~3=팀1~4, SlotIndex 0=1Player 1=2Player */
+	UFUNCTION(BlueprintCallable, Category = "Lobby")
+	void RequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex);
+
+	/** 로비: SelectTeam 슬롯 → Entry로 이동 요청 (해당 팀/슬롯의 플레이어를 Entry 첫 빈 자리로) */
+	UFUNCTION(BlueprintCallable, Category = "Lobby")
+	void RequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotIndex);
+
 	// 현재 상태 확인: ShowRoomInfo
 	UFUNCTION(Exec, Category = "Room")
 	void ShowRoomInfo();
@@ -198,6 +206,12 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetPlayerRole(bool bLowerBody);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotIndex);
 
 private:
 	// 내부 헬퍼 함수들

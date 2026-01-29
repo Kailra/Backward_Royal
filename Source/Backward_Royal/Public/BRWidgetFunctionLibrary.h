@@ -72,6 +72,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Team", meta = (WorldContext = "WorldContextObject"))
 	static void ChangeTeam(const UObject* WorldContextObject, int32 PlayerIndex, int32 TeamNumber);
 
+	/** 로비: 자신을 SelectTeam 슬롯에 배치 요청. TeamIndex 0~3=팀1~4, SlotIndex 0=1Player 1=2Player */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby", meta = (WorldContext = "WorldContextObject"))
+	static void RequestAssignToLobbyTeam(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex);
+
+	/** 로비: SelectTeam 슬롯의 플레이어를 Entry로 이동 요청 */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby", meta = (WorldContext = "WorldContextObject"))
+	static void RequestMoveToLobbyEntry(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex);
+
 	// 게임 시작 (방장만)
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Game", meta = (WorldContext = "WorldContextObject"))
 	static void StartGame(const UObject* WorldContextObject);

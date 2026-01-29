@@ -1020,10 +1020,13 @@ void ABRPlayerController::ServerRequestStartGame_Implementation()
 
 void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewPlayerName)
 {
+	UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 수신 | NewPlayerName='%s' | HasAuthority=%d"), *NewPlayerName, HasAuthority() ? 1 : 0);
 	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
 	{
+		FString OldName = BRPS->GetPlayerName();
+		FString OldUID = BRPS->UserUID;
 		BRPS->SetPlayerNameString(NewPlayerName);
-		UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] 서버에서 설정: %s"), *NewPlayerName);
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 적용 | 이전 PlayerName='%s' UserUID='%s' → 새 PlayerName='%s'"), *OldName, *OldUID, *BRPS->GetPlayerName());
 		if (ABRGameState* GS = GetWorld()->GetGameState<ABRGameState>())
 		{
 			GS->UpdatePlayerList(); // 복제 목록 갱신 → 모든 클라이언트에 새 이름 반영
@@ -1048,6 +1051,60 @@ void ABRPlayerController::ServerSetPlayerRole_Implementation(bool bLowerBody)
 		BRPS->SetPlayerRole(bLowerBody, -1);
 		FString RoleName = bLowerBody ? TEXT("하체") : TEXT("상체");
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 역할 설정] 서버에서 설정: %s"), *RoleName);
+	}
+}
+
+void ABRPlayerController::RequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex)
+{
+	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
+	if (!GS) return;
+	if (HasAuthority())
+	{
+		APlayerState* PS = GetPlayerState<APlayerState>();
+		int32 PlayerIndex = PS ? GS->PlayerArray.Find(PS) : INDEX_NONE;
+		if (PlayerIndex != INDEX_NONE && GS->AssignPlayerToLobbyTeam(PlayerIndex, TeamIndex, SlotIndex))
+		{
+			UE_LOG(LogTemp, Log, TEXT("[로비] 플레이어 %d -> 팀 %d 슬롯 %d 배치"), PlayerIndex, TeamIndex + 1, SlotIndex + 1);
+		}
+		return;
+	}
+	ServerRequestAssignToLobbyTeam(TeamIndex, SlotIndex);
+}
+
+void ABRPlayerController::RequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotIndex)
+{
+	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
+	if (!GS) return;
+	if (HasAuthority())
+	{
+		if (GS->MovePlayerToLobbyEntry(TeamIndex, SlotIndex))
+		{
+			UE_LOG(LogTemp, Log, TEXT("[로비] 팀 %d 슬롯 %d -> Entry 이동"), TeamIndex + 1, SlotIndex + 1);
+		}
+		return;
+	}
+	ServerRequestMoveToLobbyEntry(TeamIndex, SlotIndex);
+}
+
+void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 TeamIndex, int32 SlotIndex)
+{
+	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
+	if (!GS || !HasAuthority()) return;
+	APlayerState* PS = GetPlayerState<APlayerState>();
+	int32 PlayerIndex = PS ? GS->PlayerArray.Find(PS) : INDEX_NONE;
+	if (PlayerIndex != INDEX_NONE && GS->AssignPlayerToLobbyTeam(PlayerIndex, TeamIndex, SlotIndex))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[로비] 서버: 플레이어 %d -> 팀 %d 슬롯 %d 배치"), PlayerIndex, TeamIndex + 1, SlotIndex + 1);
+	}
+}
+
+void ABRPlayerController::ServerRequestMoveToLobbyEntry_Implementation(int32 TeamIndex, int32 SlotIndex)
+{
+	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
+	if (!GS || !HasAuthority()) return;
+	if (GS->MovePlayerToLobbyEntry(TeamIndex, SlotIndex))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[로비] 서버: 팀 %d 슬롯 %d -> Entry 이동"), TeamIndex + 1, SlotIndex + 1);
 	}
 }
 
@@ -1173,6 +1230,7 @@ void ABRPlayerController::RequestChangePlayerTeam(int32 PlayerIndex, int32 NewTe
 
 void ABRPlayerController::SetPlayerName(const FString& NewPlayerName)
 {
+	UE_LOG(LogTemp, Warning, TEXT("[로비이름] SetPlayerName 호출 | NewPlayerName='%s' | HasAuthority=%d (0=클라이언트→서버 RPC 전송)"), *NewPlayerName, HasAuthority() ? 1 : 0);
 	if (HasAuthority())
 	{
 		if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())

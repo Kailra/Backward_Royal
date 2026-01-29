@@ -65,9 +65,12 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		// [보존] 플레이어 이름 설정 및 로그
 		FString PlayerName = BRPS->GetPlayerName();
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin 진입 | bIsLocalPlayer 판단 전 | GetPlayerName()='%s'"), *PlayerName);
+
 		if (PlayerName.IsEmpty())
 		{
 			PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
+			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | PlayerName 비어있어 기본값 사용: '%s'"), *PlayerName);
 		}
 
 		// GameInstance 이름은 이 머신의 로컬 플레이어(호스트/Standalone)일 때만 적용.
@@ -75,19 +78,29 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 		UWorld* WorldForCheck = GetWorld();
 		const bool bIsLocalPlayer = WorldForCheck && (WorldForCheck->GetNetMode() == NM_Standalone || NewPlayer->IsLocalController());
 		UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | bIsLocalPlayer=%d | NetMode=%d | IsLocalController=%d"),
+			bIsLocalPlayer ? 1 : 0, WorldForCheck ? (int32)WorldForCheck->GetNetMode() : -1, NewPlayer->IsLocalController() ? 1 : 0);
+
 		if (bIsLocalPlayer && GI)
 		{
 			FString SavedPlayerName = GI->GetPlayerName();
+			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 로컬 플레이어 → GI->GetPlayerName()='%s'"), *SavedPlayerName);
 			if (!SavedPlayerName.IsEmpty())
 			{
 				PlayerName = SavedPlayerName;
 				BRPS->SetPlayerName(PlayerName);
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 로컬: BRPS->SetPlayerName('%s') 적용"), *PlayerName);
 			}
 		}
 		// 원격 클라이언트: GI 미적용 시 "Player N" 기본 이름 설정 (UID가 이름으로 저장·표시되지 않도록)
 		if (!bIsLocalPlayer && BRPS->GetPlayerName().IsEmpty())
 		{
 			BRPS->SetPlayerName(PlayerName);
+			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName() 비어있음 → SetPlayerName('%s')"), *PlayerName);
+		}
+		else if (!bIsLocalPlayer)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName() 이미 있음 '%s' (SetPlayerName 호출 안 함)"), *BRPS->GetPlayerName());
 		}
 
 		// UserUID 설정 (GameInstance에서 가져오거나 생성)
@@ -98,6 +111,7 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 				BRGameState->PlayerArray.Num() - 1, 
 				*FDateTime::Now().ToString());
 			BRPS->SetUserUID(UserUID);
+			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | SetUserUID('%s') | 최종 PlayerName='%s'"), *UserUID, *BRPS->GetPlayerName());
 		}
 
 		// 클라이언트 연결 확인 — 방 생성(ListenServer/Dedicated) 시에만 상세 로그, Standalone은 최소 로그
