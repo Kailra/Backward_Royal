@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
+#include "BRUserInfo.h"
 #include "BRWidgetFunctionLibrary.generated.h"
 
 class ABRPlayerController;
@@ -90,6 +91,10 @@ public:
 	/** 로비 방 제목 "○○'s Game" 표시용. 캐시(RPC) 우선, 없으면 GameState (입장 직후 즉시 표시) */
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameState", meta = (WorldContext = "WorldContextObject"))
 	static FString GetRoomTitleForDisplay(const UObject* WorldContextObject);
+
+	/** 로비 플레이어 이름 표시용. PlayerName 사용, UserUID는 절대 반환하지 않음. 빈 문자열/UID와 같으면 "Player N". */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameState", meta = (DisplayName = "Get Display Name For Lobby"))
+	static FString GetDisplayNameForLobby(const FBRUserInfo& UserInfo);
 
 	// ============================================
 	// PlayerState 관련 함수들

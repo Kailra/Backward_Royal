@@ -3,25 +3,11 @@
 #include "BRPlayerState.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/PlayerState.h"
-#include "Misc/Char.h"
 
-namespace
+/** 로비 표시용: 비어 있거나 UserUID와 같으면 "Player N"으로 저장. 패턴 없음. */
+static bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
 {
-	bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
-	{
-		if (PlayerName.IsEmpty()) return true;
-		if (PlayerName == UserUID) return true;
-		if (!PlayerName.StartsWith(TEXT("Player_"))) return false;
-		const FString Suffix = PlayerName.Mid(7);
-		if (Suffix.IsEmpty()) return true;
-		if (Suffix.Contains(TEXT("_"))) return true;
-		if (Suffix.Len() == 4)
-		{
-			for (int32 i = 0; i < 4; i++) { if (!FChar::IsDigit(Suffix[i])) return false; }
-			return true;
-		}
-		return false;
-	}
+	return PlayerName.IsEmpty() || PlayerName == UserUID;
 }
 
 ABRGameState::ABRGameState()

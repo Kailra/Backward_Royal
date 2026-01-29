@@ -253,9 +253,15 @@ void ABRPlayerState::OnRep_UserUID()
 
 void ABRPlayerState::SetPlayerNameString(const FString& NewPlayerName)
 {
-	if (HasAuthority())
+	if (!HasAuthority()) return;
+
+	// UID를 이름으로 저장하지 않음. 표시용은 "Player N" 등으로 대체됨.
+	FString NameToSet = NewPlayerName;
+	if (!NameToSet.IsEmpty() && NameToSet == UserUID)
 	{
-		SetPlayerName(NewPlayerName);
-		UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] %s"), *NewPlayerName);
+		NameToSet = TEXT("Player");
+		UE_LOG(LogTemp, Log, TEXT("[플레이어 이름] UID와 동일하여 'Player'로 대체 저장"));
 	}
+	SetPlayerName(NameToSet);
+	UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] %s"), *NameToSet);
 }

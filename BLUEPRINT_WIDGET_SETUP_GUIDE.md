@@ -52,6 +52,7 @@
 - `Get BR Game Session` - GameSession 가져오기
 - `Get BR Game State` - GameState 가져오기
 - `Get Room Title For Display` - 로비 방 제목 "○○'s Game" (캐시 우선, 입장 직후 즉시 표시)
+- `Get Display Name For Lobby` - 로비 플레이어 이름 표시용. `FBRUserInfo` 입력 → 표시용 문자열 반환. **User UID는 반환하지 않음.** (5번 섹션 참고)
 - `Get BR Player State` - PlayerState 가져오기
 - `Is Host` - 방장 여부 확인
 - `Is Ready` - 준비 상태 확인
@@ -216,22 +217,24 @@ for (const FBRUserInfo& Info : PlayerInfoList)
 **WBP_LobbyMenu**에서 `WBP_Entry`에 입장 순서대로 이름을 넣으려면:
 
 1. **Event Construct** (또는 **Pre Construct**)에서:
-   - **Get BR Game State** (World Context Object = **self**, 즉 이 위젯)
+   - **Get BR Game State**
    - **Is Valid** (반환된 Game State) → **False**면 아무 것도 하지 않고 종료
    - **True**면:
      - **Add Dynamic** (Target = Game State, **On Player List Changed** → **Custom Event `OnPlayerListUpdated`**)
      - 그다음 **Get BR Game State** → **Get All Player User Info** → **Update Player Names** (Target = **WBP_Entry**, Player Info List = 반환 배열)
 
 2. **Custom Event `OnPlayerListUpdated`** (플레이어 목록 변경 시마다 호출):
-   - **Get BR Game State** (World Context = **self**) → **Is Valid** → **False**면 종료
+   - **Get BR Game State** → **Is Valid** → **False**면 종료
    - **True**면 **Get All Player User Info** → **Update Player Names** (Target = **WBP_Entry**, Player Info List)
 
 3. **Event Destruct**에서:
-   - **Get BR Game State** (World Context = **self**) → **Is Valid** → **True**면  
+   - **Get BR Game State** → **Is Valid** → **True**면  
      **Remove Dynamic** (Target = Game State, **On Player List Changed** → **OnPlayerListUpdated**)
 
-4. **World Context Object**: `Get BR Game State` 호출 시 **self** (WBP_LobbyMenu 위젯)를 넘기세요.  
-   (블루프린트에서 World Context 핀이 숨겨져 있으면, 해당 노드에 **self** 연결이 가능한지 확인)
+4. **Get BR Game State · World Context Object**:  
+   이 함수는 `WorldContext` 메타로 **World Context Object** 핀이 **숨겨져 있어서** 블루프린트에서 **self를 직접 연결할 수 없습니다**.  
+   **위젯 블루프린트**(WBP_LobbyMenu 등)의 그래프에서 호출하면, 엔진이 **자동으로 해당 위젯(self)** 을 context로 씁니다.  
+   따라서 **별도로 self 연결은 하지 않아도 되며**, 연결 불가한 것이 정상입니다.
 
 5. **WBP_Entry** 변수는 로비 메뉴 위젯 계층에서 실제 **WBP_Entry** 자식 위젯을 참조해야 합니다.
 
@@ -330,7 +333,7 @@ Pre Construct → 부모 Pre Construct 호출 → **UserNameSlot** 초기화(Arr
     │  then (exec)
     ▼
 [Get BR Game State] (BR Widget Function Library)
-    │  · World Context Object = self (WBP_LobbyMenu) 권장
+    │  · World Context = self 자동 (위젯 블루프린트 내 호출 시, 핀 연결 불필요)
     │  · Return Value → GameState
     │
     │  then (exec)
@@ -349,7 +352,7 @@ Pre Construct → 부모 Pre Construct 호출 → **UserNameSlot** 초기화(Arr
          │
          │  then (exec)
          ▼
-    [Get BR Game State] (동일, World Context = self)
+    [Get BR Game State] (동일, World Context 자동)
          │  · Return Value → GameState
          │
          │  then (exec)
@@ -383,7 +386,7 @@ Construct → CustomEvent → **Get BR Game State** → **Is Valid** → True일
     │
     │  then (exec)
     ▼
-[Get BR Game State] (World Context = self)
+[Get BR Game State] (World Context 자동)
     │  · Return Value → GameState
     │
     │  then (exec)
@@ -416,7 +419,7 @@ True면 **Get All Player User Info** → **Update Player Names(WBP_Entry)** 로 
     │
     │  then (exec)
     ▼
-[Get BR Game State] (World Context = self)
+[Get BR Game State] (World Context 자동)
     │  · Return Value → GameState
     │
     │  then (exec)
@@ -490,10 +493,22 @@ Destruct 시 **Remove Dynamic**으로 **On Player List Changed → OnPlayerListU
 | 항목 | 확인 내용 |
 |------|-----------|
 | **CustomEvent 트리거** | Event Construct(또는 Pre Construct)에서 CustomEvent 호출되는지 |
-| **World Context Object** | Get BR Game State에 **self**(WBP_LobbyMenu) 연결 여부 |
+| **Get BR Game State** | 위젯 블루프린트 내 호출 시 **World Context = self 자동 적용**. self 핀 연결 불가·불필요 |
 | **Is Valid 분기** | Get BR Game State 직후 **Is Valid**로 null 체크 후 분기하는지 |
 | **WBP_Entry 참조** | Update Player Names의 Target이 실제 **WBP_Entry** 자식 위젯인지 |
 | **Remove Dynamic** | Event Destruct에서 **On Player List Changed** 바인딩 해제하는지 |
+| **로비 이름 표시** | **Player Name**만 사용. **User UID**는 절대 표시하지 말 것. 아래 5번 참고. |
+
+---
+
+### 5. 로비 이름 표시: Player Name만, User UID 금지
+
+플레이어 이름이 **UID**로 나오는 경우, 다음을 확인하세요.
+
+- **로비 플레이어 이름은 반드시 `Player Name`만 사용**합니다. **`User UID`는 절대 표시하지 마세요.**
+- **권장:** `Get All Player User Info` → **Update Player Names**(Target = WBP_Entry)만 사용하면, C++에서 `Player Name` 기준으로 표시합니다. `User UID`는 사용하지 않습니다.
+- **직접 텍스트 설정 시:** `Get All Player User Info`로 배열을 받은 뒤, 각 `FBRUserInfo`에 대해 **Break BRUserInfo** → **User UID**가 아닌 **Player Name**을 TextBlock에 연결하세요.  
+  또는 **Get Display Name For Lobby**(BR Widget Function Library)에 `FBRUserInfo`를 넣어 **표시용 이름**을 받아 사용하세요. 이 함수는 `Player Name`이 비어 있거나 `User UID`와 같으면 `"Player N"`을 반환하고, **`User UID`는 절대 반환하지 않습니다.**
 
 ---
 

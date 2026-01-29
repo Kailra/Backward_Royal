@@ -322,6 +322,17 @@ FString UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(const UObject* WorldCon
 	return TEXT("Host's Game");
 }
 
+FString UBRWidgetFunctionLibrary::GetDisplayNameForLobby(const FBRUserInfo& UserInfo)
+{
+	if (UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID)
+	{
+		return UserInfo.PlayerIndex >= 0
+			? FString::Printf(TEXT("Player %d"), UserInfo.PlayerIndex + 1)
+			: FString();
+	}
+	return UserInfo.PlayerName;
+}
+
 ABRPlayerState* UBRWidgetFunctionLibrary::GetBRPlayerState(const UObject* WorldContextObject)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))

@@ -1,28 +1,11 @@
 // BR_LobbyEntryWidget.cpp
 #include "BR_LobbyEntryWidget.h"
 #include "Components/TextBlock.h"
-#include "Misc/Char.h"
 
-namespace
+/** 로비 표시용: PlayerName만 사용. 비어 있거나 UserUID와 같으면 "Player N" 사용. UserUID는 절대 표시하지 않음. */
+static bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
 {
-	/** PlayerName이 UID 또는 기본 ID(Player_1234, Player_1_날짜 등) 형식이면 true. 이럴 땐 "Player N"으로 표시 */
-	bool ShouldUseFallbackDisplayName(const FString& PlayerName, const FString& UserUID)
-	{
-		if (PlayerName.IsEmpty()) return true;
-		if (PlayerName == UserUID) return true;
-		if (!PlayerName.StartsWith(TEXT("Player_"))) return false;
-		const FString Suffix = PlayerName.Mid(7);
-		if (Suffix.IsEmpty()) return true;
-		// "1_2025.01.29..." (UserUID 형식)
-		if (Suffix.Contains(TEXT("_"))) return true;
-		// "1234" (GI 기본 Player_1234)
-		if (Suffix.Len() == 4)
-		{
-			for (int32 i = 0; i < 4; i++) { if (!FChar::IsDigit(Suffix[i])) return false; }
-			return true;
-		}
-		return false;
-	}
+	return PlayerName.IsEmpty() || PlayerName == UserUID;
 }
 
 void UBR_LobbyEntryWidget::NativeConstruct()
