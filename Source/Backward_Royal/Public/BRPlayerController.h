@@ -130,6 +130,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void SetMainScreenToLobbyMenu();
 
+	/** PIE/서버 종료 시 위젯 참조를 먼저 끊을 때 호출 (GameInstance DoPIEExitCleanup에서 호출) */
+	void ClearUIForShutdown();
+
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void HideCurrentMenu();
 

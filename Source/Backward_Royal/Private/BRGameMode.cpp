@@ -91,47 +91,46 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			BRPS->SetUserUID(UserUID);
 		}
 
-		// 클라이언트 연결 확인 (Standalone 모드에서도 확인 가능)
+		// 클라이언트 연결 확인 — 방 생성(ListenServer/Dedicated) 시에만 상세 로그, Standalone은 최소 로그
 		UWorld* World = GetWorld();
 		ENetMode NetMode = World ? World->GetNetMode() : NM_Standalone;
 		FString NetModeString = NetMode == NM_ListenServer ? TEXT("ListenServer") : 
 		                       NetMode == NM_DedicatedServer ? TEXT("DedicatedServer") : 
 		                       NetMode == NM_Client ? TEXT("Client") : TEXT("Standalone");
 		
-		UE_LOG(LogTemp, Warning, TEXT("========================================"));
-		UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트 입장 확인!"));
-		UE_LOG(LogTemp, Warning, TEXT("========================================"));
-		UE_LOG(LogTemp, Warning, TEXT("[서버] 플레이어 이름: %s"), *PlayerName);
-		UE_LOG(LogTemp, Warning, TEXT("[서버] 현재 인원: %d/%d"), BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
-		UE_LOG(LogTemp, Warning, TEXT("[서버] 네트워크 모드: %s"), *NetModeString);
-		
-		// 리슨 서버 모드 확인
-		if (NetMode == NM_ListenServer)
+		if (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트 입장 확인!"));
+			UE_LOG(LogTemp, Warning, TEXT("========================================"));
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 플레이어 이름: %s"), *PlayerName);
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 현재 인원: %d/%d"), BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
+			UE_LOG(LogTemp, Warning, TEXT("[서버] 네트워크 모드: %s"), *NetModeString);
 			UE_LOG(LogTemp, Warning, TEXT("[서버] ✅ 리슨 서버 모드로 정상 실행 중입니다!"));
 			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트 연결을 받을 수 있는 상태입니다."));
+			if (GEngine)
+			{
+				FString JoinMsg = FString::Printf(TEXT("[서버] %s 입장! (인원: %d/%d)"), 
+					*PlayerName, BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
+				GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, JoinMsg);
+			}
 		}
-		else if (NetMode == NM_Standalone)
+		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[서버] ⚠️ Standalone 모드입니다. 리슨 서버 모드가 아닙니다."));
-			UE_LOG(LogTemp, Warning, TEXT("[서버] 클라이언트가 접속할 수 없습니다. 리슨 서버로 전환하세요."));
+			// Standalone: 방 생성 전이므로 상세 로그 생략
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] %s (Standalone — 방 생성 버튼으로 세션 생성)"), *PlayerName);
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 참고: 실제 방(세션)을 만들려면 'CreateRoom [방이름]' 명령어 또는 방 생성 버튼을 사용하세요."));
 		}
-		
-		// 화면에 입장 메시지 표시
-		if (GEngine)
-		{
-			FString JoinMsg = FString::Printf(TEXT("[서버] %s 입장! (인원: %d/%d)"), 
-				*PlayerName, BRGameState->PlayerArray.Num(), BRGameState->MaxPlayers);
-			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, JoinMsg);
-		}
-		
-		UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 참고: 실제 방(세션)을 만들려면 'CreateRoom [방이름]' 명령어를 사용하세요."));
 
-		// [보존] 방장 설정
-		if (BRGameState->PlayerArray.Num() == 1)
+		// [보존] 방장 설정 — ListenServer/DedicatedServer에서만 적용 (Standalone은 방 생성 버튼 누를 때만 방 생성)
+		if (BRGameState->PlayerArray.Num() == 1 && (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer))
 		{
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 첫 번째 플레이어이므로 방장으로 설정됩니다."));
 			BRPS->SetIsHost(true);
+		}
+		else if (BRGameState->PlayerArray.Num() == 1 && NetMode == NM_Standalone)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] Standalone 모드 — 방 생성 버튼을 누르면 방장이 됩니다."));
 		}
 
 		// [보존] 플레이어 역할 할당 로직

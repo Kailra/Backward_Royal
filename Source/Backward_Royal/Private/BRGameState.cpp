@@ -238,3 +238,19 @@ FBRUserInfo ABRGameState::GetPlayerUserInfo(int32 PlayerIndex) const
 	
 	return UserInfo;
 }
+
+FString ABRGameState::GetHostPlayerName() const
+{
+	for (int32 i = 0; i < PlayerArray.Num(); i++)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerArray[i]))
+		{
+			if (BRPS->bIsHost)
+			{
+				FString Name = BRPS->GetPlayerName();
+				return Name.IsEmpty() ? FString(TEXT("Host")) : Name;
+			}
+		}
+	}
+	return FString();
+}

@@ -53,6 +53,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Room")
 	FBRUserInfo GetPlayerUserInfo(int32 PlayerIndex) const;
 
+	/** 방장(호스트) 플레이어 이름 가져오기. "○○'s Game" 표시용 */
+	UFUNCTION(BlueprintCallable, Category = "Room", meta = (DisplayName = "Get Host Player Name"))
+	FString GetHostPlayerName() const;
+
 	// 게임 시작 가능 여부 확인
 	UFUNCTION(BlueprintCallable, Category = "Room")
 	void CheckCanStartGame();

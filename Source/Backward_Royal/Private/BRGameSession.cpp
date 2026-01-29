@@ -91,17 +91,27 @@ void ABRGameSession::InitializeOnlineSubsystem()
 	{
 		return;
 	}
+
+	// 방 생성 흐름(PendingRoomName 있음)일 때만 상세 로그 — 일반 시작 시 로그 최소화
+	UBRGameInstance* BRGI = Cast<UBRGameInstance>(GetWorld()->GetGameInstance());
+	const bool bRoomCreationFlow = BRGI && !BRGI->GetPendingRoomName().IsEmpty();
 	
 	// NGDA 스타일: 간단하게 Online Subsystem 가져오기
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 	if (!OnlineSubsystem)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[GameSession] Online Subsystem 초기화 실패"));
+		if (bRoomCreationFlow)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] Online Subsystem: NULL (방 생성 시에만 출력)"));
+		}
 		return;
 	}
 	
-	FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
-	UE_LOG(LogTemp, Warning, TEXT("[GameSession] Online Subsystem: %s"), *SubsystemName);
+	if (bRoomCreationFlow)
+	{
+		FString SubsystemName = OnlineSubsystem->GetSubsystemName().ToString();
+		UE_LOG(LogTemp, Warning, TEXT("[GameSession] Online Subsystem: %s"), *SubsystemName);
+	}
 	
 	// SessionInterface 가져오기
 	SessionInterface = OnlineSubsystem->GetSessionInterface();
@@ -115,9 +125,15 @@ void ABRGameSession::InitializeOnlineSubsystem()
 			SessionInterface->OnDestroySessionCompleteDelegates.AddUObject(this, &ABRGameSession::OnDestroySessionCompleteDelegate);
 			SessionInterface->OnFindSessionsCompleteDelegates.AddUObject(this, &ABRGameSession::OnFindSessionsCompleteDelegate);
 			SessionInterface->OnJoinSessionCompleteDelegates.AddUObject(this, &ABRGameSession::OnJoinSessionCompleteDelegate);
-			UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface 콜백 바인딩 완료"));
+			if (bRoomCreationFlow)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface 콜백 바인딩 완료"));
+			}
 		}
-		UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface 초기화 완료"));
+		if (bRoomCreationFlow)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameSession] SessionInterface 초기화 완료"));
+		}
 	}
 	else
 	{
@@ -157,14 +173,20 @@ void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ABRGameSession::UnbindSessionDelegatesForPIEExit()
 {
 	// SessionInterface가 GameSession(this)을 붙들고 있으면 UnrealEdEngine → OSS → SessionInterface → GameSession → World 참조 사슬로
-	// PIE 월드가 GC되지 않는다. PIE 종료 시 GameInstance::Shutdown에서 먼저 호출해 이 사슬을 끊는다.
+	// PIE 월드가 GC되지 않는다. PIE 종료 시 GameInstance::Shutdown/DoPIEExitCleanup에서 먼저 호출해 이 사슬을 끊는다.
 	if (SessionInterface.IsValid())
 	{
+		// 델리게이트를 먼저 제거해 콜백이 이 GameSession을 보지 않도록 함
 		SessionInterface->OnCreateSessionCompleteDelegates.RemoveAll(this);
 		SessionInterface->OnStartSessionCompleteDelegates.RemoveAll(this);
 		SessionInterface->OnDestroySessionCompleteDelegates.RemoveAll(this);
 		SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
 		SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
+		// PIE 종료 시 남아 있던 세션 파괴 (Unbind 후 호출 — 콜백이 이 객체를 참조하지 않음)
+		if (SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
+		{
+			SessionInterface->DestroySession(NAME_GameSession);
+		}
 	}
 	if (bIsSearchingSessions && SessionInterface.IsValid())
 	{
@@ -670,6 +692,28 @@ FString ABRGameSession::GetSessionName(int32 SessionIndex) const
 		return FoundSessionName;
 	}
 	return TEXT("(이름 없음)");
+}
+
+int32 ABRGameSession::GetSessionMaxPlayers(int32 SessionIndex) const
+{
+	if (!SessionSearch.IsValid() || SessionIndex < 0 || SessionIndex >= SessionSearch->SearchResults.Num())
+	{
+		return 0;
+	}
+	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
+	return Result.Session.SessionSettings.NumPublicConnections;
+}
+
+int32 ABRGameSession::GetSessionCurrentPlayers(int32 SessionIndex) const
+{
+	if (!SessionSearch.IsValid() || SessionIndex < 0 || SessionIndex >= SessionSearch->SearchResults.Num())
+	{
+		return 0;
+	}
+	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
+	int32 Max = Result.Session.SessionSettings.NumPublicConnections;
+	int32 Open = Result.Session.NumOpenPublicConnections;
+	return FMath::Max(0, Max - Open);
 }
 
 bool ABRGameSession::HasActiveSession() const

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Delegates/Delegate.h"
 #include "Engine/GameInstance.h"
 #include "TimerManager.h"
 #include "WeaponTypes.h"
@@ -78,6 +79,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Player")
 	void SetPlayerName(const FString& NewPlayerName) { PlayerName = NewPlayerName; }
 
+	/** S_UserInfo 에셋에서 PlayerName 로드 */
+	void LoadPlayerNameFromUserInfo();
+
 	// LAN 전용(true) / 인터넷(Steam) 매칭(false). 방 생성·방 찾기 시 사용.
 	// 기본값: false (인터넷 매칭) - Steam을 통한 인터넷 매칭 사용
 	// 콘솔 명령어: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷 매칭)
@@ -145,5 +149,8 @@ protected:
 	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
 	FTimerHandle ListenServerTimerHandle;
 	FTimerHandle SessionRecreateTimerHandle;
+
+	/** OnWorldCleanup 등록 해제용 (Shutdown에서 Remove) */
+	FDelegateHandle OnWorldCleanupHandle;
 };
 
