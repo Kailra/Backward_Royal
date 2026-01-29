@@ -308,52 +308,51 @@ void ABRGameMode::Logout(AController* Exiting)
 		}
 	}
 
+	// Super::Logout 전에 PlayerArray에서 퇴장한 PlayerState를 먼저 제거.
+	// 그래야 즉시 UpdatePlayerList()를 호출해도 나간 이름이 목록에서 빠짐.
+	// (타이머로 미루면 클라이언트 입장 시 등 다른 상황에서 크래시 가능)
+	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (BRGameState)
+	{
+		if (APlayerState* ExitingPS = Exiting->GetPlayerState<APlayerState>())
+		{
+			BRGameState->PlayerArray.Remove(ExitingPS);
+		}
+	}
+
 	Super::Logout(Exiting);
 
-	// PlayerArray에서 퇴장한 PlayerState 제거는 엔진이 다음 틱에 처리하므로,
-	// 플레이어 목록 업데이트를 다음 틱으로 미뤄야 남은 사람 UI에서 나간 이름이 사라짐
-	// 람다에서는 this를 캡처하지 않고 World만 캡처 (다음 틱에 GameMode가 유효하지 않을 수 있음)
-	UWorld* World = GetWorld();
-	if (World)
+	// 플레이어 목록 업데이트 및 역할 재할당 (즉시 실행, 타이머 없음)
+	if (BRGameState)
 	{
-		World->GetTimerManager().SetTimerForNextTick([World]()
+		BRGameState->UpdatePlayerList();
+
+		for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
 		{
-			if (!IsValid(World)) return;
-			AGameModeBase* GM = World->GetAuthGameMode();
-			if (!GM) return;
-			ABRGameState* BRGameState = GM->GetGameState<ABRGameState>();
-			if (!BRGameState) return;
-
-			BRGameState->UpdatePlayerList();
-
-			// 남은 플레이어들의 역할 재할당 (순서대로)
-			for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
 			{
-				if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
+				if (i == 0)
 				{
-					if (i == 0)
+					BRPS->SetPlayerRole(true, -1);
+				}
+				else if (i % 2 == 0)
+				{
+					BRPS->SetPlayerRole(true, -1);
+				}
+				else
+				{
+					int32 LowerBodyPlayerIndex = i - 1;
+					if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
 					{
-						BRPS->SetPlayerRole(true, -1);
-					}
-					else if (i % 2 == 0)
-					{
-						BRPS->SetPlayerRole(true, -1);
-					}
-					else
-					{
-						int32 LowerBodyPlayerIndex = i - 1;
-						if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
+						if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
 						{
-							if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
-							{
-								BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
-								LowerBodyPS->SetPlayerRole(true, i);
-							}
+							BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
+							LowerBodyPS->SetPlayerRole(true, i);
 						}
 					}
 				}
 			}
-		});
+		}
 	}
 }
 
