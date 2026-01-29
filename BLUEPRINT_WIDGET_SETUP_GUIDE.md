@@ -1,5 +1,20 @@
 # 블루프린트 위젯과 서버 코드 연결 가이드
 
+## 블루프린트에서 할 일 (체크리스트)
+
+| 메뉴 | 할 일 |
+|------|--------|
+| **WBP_EntranceMenu** | ① **방 생성 버튼** On Clicked → **Create Room With Player Name** (Room Name = 방 이름, **Player Name** = **EditableText_EditUserName · Get Text**) |
+| **WBP_EntranceMenu** | ①-2 **방 찾기/참가** 버튼(Join Menu로 넘어가는 버튼) On Clicked → **EditableText_EditUserName · Get Text** → **Get Game Instance** → **Cast to BR Game Instance** → **Set Player Name** → 그 다음 화면 전환(Join Menu 표시). (이름 입력란은 EntranceMenu에만 있으므로 여기서 저장) |
+| **WBP_JoinMenu** | ② **방 참가 버튼** On Clicked → **Join Room** (Session Index = 선택한 방 인덱스)만 호출. 이름은 EntranceMenu에서 방 찾기/참가 눌 때 이미 GameInstance에 저장됨. |
+| **WBP_LobbyMenu** | ③ **Event Construct** → CustomEvent → **Get BR Game State** → **Is Valid** → **Add Dynamic**(Target = GameState, **On Player List Changed** → **OnPlayerListUpdated**) → **Get Lobby Entry Display List**(GameState) → **Update Player Names**(Target = WBP_Entry, 위 배열) |
+| **WBP_LobbyMenu** | ④ **OnPlayerListUpdated** Custom Event → **Get BR Game State** → **Is Valid** → **Get Lobby Entry Display List** → **Update Player Names**(WBP_Entry) → (선택) WBP_SelectTeam 1~4 각각 **Update Slot Display** 호출 |
+| **WBP_LobbyMenu** | ⑤ **Event Destruct** → **Get BR Game State** → **Is Valid** → **Remove Dynamic**(On Player List Changed) |
+| **WBP_SelectTeam** (팀 1~4) | ⑥ Parent Class = **BR_SelectTeamWidget**, **Team Index** = 팀1→0, 팀2→1, 팀3→2, 팀4→3. 1Player/2Player TextBlock → **Player Name Slot0** / **Player Name Slot1** |
+| **WBP_SelectTeam** | ⑦ **1Player 버튼** On Clicked → **Request Assign To Lobby Team** (Team Index = N-1, **Slot Index = 0**). **2Player 버튼** → Slot Index = **1**. **Entry 버튼** → **Request Move To Lobby Entry** (Team Index, Slot Index) |
+
+---
+
 ## 개요
 서버 코드와 블루프린트 위젯을 연결하는 방법은 두 가지가 있습니다:
 
@@ -78,17 +93,29 @@ Event Construct
 
 ### 사용 예시
 
-**WBP_EntranceMenu1에서 방 생성:**
+**WBP_EntranceMenu1에서 방 생성 (EntranceMenu 입력 이름 → 리슨 서버 로비의 PlayerState에 반영):**
 ```
-[버튼 클릭 이벤트]
-  → Create Room (BR Widget Function Library)
+[방 생성 버튼 · On Clicked]
+  → Create Room With Player Name (BR Widget Function Library)  ← 이 함수 사용 시 이름이 PlayerState까지 반영됨
     - World Context Object: Self
-    - Room Name: "TestRoom"
+    - Room Name: (방 이름용 입력값)
+    - Player Name: EditableText_EditUserName · Get Text
 ```
+**Create Room With Player Name**이 내부에서 GameInstance에 이름을 넣고, ServerTravel 후 PostLogin에서 그 값을 PlayerState에 적용합니다.  
+(기존처럼 **Set Player Name** → **Create Room** 두 단계로 호출해도 동작합니다.)
 
-**WBP_JoinMenu1에서 방 참가:**
+**WBP_JoinMenu1에서 방 참가 (이름은 EntranceMenu에서만 입력 → Join Menu로 넘어갈 때 저장):**
+- **이름 입력란은 WBP_EntranceMenu에만 있습니다.** Join Menu에는 이름 입력이 없으므로, **EntranceMenu에서 "방 찾기" 또는 "참가" 버튼**을 눌러 Join Menu로 넘어가기 **직전에** 아래를 호출해 두세요.
 ```
-[방 선택 이벤트]
+[WBP_EntranceMenu · 방 찾기/참가 버튼 On Clicked]
+  → EditableText_EditUserName · Get Text
+  → Get Game Instance (World Context = Self) → Cast to BR Game Instance
+  → Set Player Name (위에서 나온 Text)
+  → (그 다음) 화면 전환: Join Menu 표시
+```
+그러면 Join Menu에서 **방 참가 버튼**을 눌 때는 **Join Room**만 호출하면 됩니다. Join Room은 내부에서 Game Instance의 **Get Player Name**을 읽어 서버로 보냅니다.
+```
+[WBP_JoinMenu · 방 참가 버튼 On Clicked]
   → Join Room (BR Widget Function Library)
     - World Context Object: Self
     - Session Index: (선택한 방의 인덱스)

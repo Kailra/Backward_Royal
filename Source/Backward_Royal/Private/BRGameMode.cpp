@@ -92,15 +92,22 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 로컬: BRPS->SetPlayerName('%s') 적용"), *PlayerName);
 			}
 		}
-		// 원격 클라이언트: GI 미적용 시 "Player N" 기본 이름 설정 (UID가 이름으로 저장·표시되지 않도록)
-		if (!bIsLocalPlayer && BRPS->GetPlayerName().IsEmpty())
+		// 원격 클라이언트: 빈 이름·PC 이름(엔진 기본값 DESKTOP-xxx)·UID와 같은 이름이면 "Player N"으로 덮어쓰기
+		if (!bIsLocalPlayer)
 		{
-			BRPS->SetPlayerName(PlayerName);
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName() 비어있음 → SetPlayerName('%s')"), *PlayerName);
-		}
-		else if (!bIsLocalPlayer)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName() 이미 있음 '%s' (SetPlayerName 호출 안 함)"), *BRPS->GetPlayerName());
+			const FString CurrentName = BRPS->GetPlayerName();
+			const bool bEmpty = CurrentName.IsEmpty();
+			const bool bMachineName = CurrentName.StartsWith(TEXT("DESKTOP-"), ESearchCase::IgnoreCase);
+			if (bEmpty || bMachineName)
+			{
+				PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
+				BRPS->SetPlayerName(PlayerName);
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: 빈이름=%d PC이름=%d → SetPlayerName('%s') (이전 '%s')"), bEmpty ? 1 : 0, bMachineName ? 1 : 0, *PlayerName, *CurrentName);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName() 유지 '%s'"), *CurrentName);
+			}
 		}
 
 		// UserUID 설정 (GameInstance에서 가져오거나 생성)

@@ -41,6 +41,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void CreateRoom(const UObject* WorldContextObject, const FString& RoomName);
 
+	/** 방 생성 + 플레이어 이름 설정. EntranceMenu의 EditableText 값을 PlayerName에 넣으면 로비/PlayerState에 반영됨 */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject", DisplayName = "Create Room With Player Name"))
+	static void CreateRoomWithPlayerName(const UObject* WorldContextObject, const FString& RoomName, const FString& PlayerName);
+
 	// 방 찾기
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void FindRooms(const UObject* WorldContextObject);

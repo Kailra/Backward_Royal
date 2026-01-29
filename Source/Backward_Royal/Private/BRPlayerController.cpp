@@ -1631,9 +1631,22 @@ void ABRPlayerController::SetMainScreenToEntranceMenu()
 
 void ABRPlayerController::SetMainScreenToLobbyMenu()
 {
+	UWorld* World = GetWorld();
+	// 클라이언트가 로비 맵에 도착한 뒤 한 번 더 이름 전송 → 서버에 ServerSetPlayerName 반영 (맵 이동 전 RPC 유실 대비)
+	if (World && World->GetNetMode() == NM_Client && IsLocalController())
+	{
+		if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(World->GetGameInstance()))
+		{
+			FString Name = BRGI->GetPlayerName();
+			if (!Name.IsEmpty())
+			{
+				SetPlayerName(Name);
+				UE_LOG(LogTemp, Log, TEXT("[로비이름] 클라이언트 로비 진입 시 이름 재전송: '%s'"), *Name);
+			}
+		}
+	}
 	// Standalone 모드에서는 일반적으로 LobbyMenu를 표시하지 않지만,
 	// 방 생성 후 ServerTravel로 인한 재로드인 경우는 예외
-	UWorld* World = GetWorld();
 	if (World && World->GetNetMode() == NM_Standalone)
 	{
 		// 방 생성 후 재로드 상태인지 확인

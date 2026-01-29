@@ -109,6 +109,23 @@ void UBRWidgetFunctionLibrary::CreateRoom(const UObject* WorldContextObject, con
 	}
 }
 
+void UBRWidgetFunctionLibrary::CreateRoomWithPlayerName(const UObject* WorldContextObject, const FString& RoomName, const FString& PlayerName)
+{
+	ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject);
+	if (!BRPC)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[WidgetFunctionLibrary] CreateRoomWithPlayerName: PlayerController를 찾을 수 없습니다."));
+		return;
+	}
+	// GameInstance에 이름 저장 (ServerTravel 후 PostLogin에서 적용)
+	if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(BRPC->GetGameInstance()))
+	{
+		BRGI->SetPlayerName(PlayerName);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] 방 생성 + 플레이어 이름: %s, 방이름: %s"), *PlayerName, *RoomName);
+	}
+	BRPC->CreateRoomWithPlayerName(RoomName, PlayerName);
+}
+
 void UBRWidgetFunctionLibrary::FindRooms(const UObject* WorldContextObject)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
