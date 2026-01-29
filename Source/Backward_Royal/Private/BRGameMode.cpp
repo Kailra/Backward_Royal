@@ -84,6 +84,11 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 				BRPS->SetPlayerName(PlayerName);
 			}
 		}
+		// 원격 클라이언트: GI 미적용 시 "Player N" 기본 이름 설정 (UID가 이름으로 저장·표시되지 않도록)
+		if (!bIsLocalPlayer && BRPS->GetPlayerName().IsEmpty())
+		{
+			BRPS->SetPlayerName(PlayerName);
+		}
 
 		// UserUID 설정 (GameInstance에서 가져오거나 생성)
 		if (GI)

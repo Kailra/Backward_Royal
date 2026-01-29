@@ -29,7 +29,8 @@ void UBR_LobbyEntryWidget::UpdatePlayerNames(const TArray<FBRUserInfo>& PlayerIn
 		{
 			const FBRUserInfo& Info = PlayerInfoList[SlotIndex];
 			FString DisplayName = Info.PlayerName;
-			if (DisplayName.IsEmpty())
+			// 비어 있거나 UID와 같으면 표시용 이름으로 "Player N" 사용 (UID가 이름으로 나오지 않도록)
+			if (DisplayName.IsEmpty() || DisplayName == Info.UserUID)
 			{
 				DisplayName = FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1);
 			}
@@ -49,7 +50,7 @@ void UBR_LobbyEntryWidget::SetEntryInfo(const FBRUserInfo& Info)
 	}
 
 	FString DisplayName = Info.PlayerName;
-	if (DisplayName.IsEmpty())
+	if (DisplayName.IsEmpty() || DisplayName == Info.UserUID)
 	{
 		DisplayName = Info.PlayerIndex >= 0
 			? FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1)
