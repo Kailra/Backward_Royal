@@ -9,6 +9,7 @@
 class ABRPlayerController;
 class ABRGameSession;
 class ABRGameState;
+class UBRGameInstance;
 class ABRPlayerState;
 class UUserWidget;
 class UVerticalBox;
@@ -95,6 +96,14 @@ public:
 	// GameSession 가져오기
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameSession", meta = (WorldContext = "WorldContextObject"))
 	static ABRGameSession* GetBRGameSession(const UObject* WorldContextObject);
+
+	// GameInstance 가져오기 (Cast 불필요, 블루프린트에서 바로 사용)
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameInstance", meta = (WorldContext = "WorldContextObject", DisplayName = "Get BR Game Instance"))
+	static class UBRGameInstance* GetBRGameInstance(const UObject* WorldContextObject);
+
+	/** 플레이어 이름 저장 (Join Menu로 넘어가기 전에 호출. Get Game Instance + Cast 없이 사용) */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameInstance", meta = (WorldContext = "WorldContextObject", DisplayName = "Set Player Name"))
+	static void SetPlayerName(const UObject* WorldContextObject, const FString& PlayerName);
 
 	// ============================================
 	// GameState 관련 함수들

@@ -321,6 +321,32 @@ ABRGameSession* UBRWidgetFunctionLibrary::GetBRGameSession(const UObject* WorldC
 	return nullptr;
 }
 
+UBRGameInstance* UBRWidgetFunctionLibrary::GetBRGameInstance(const UObject* WorldContextObject)
+{
+	if (!WorldContextObject || !GEngine)
+	{
+		return nullptr;
+	}
+
+	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	UGameInstance* GI = World->GetGameInstance();
+	return Cast<UBRGameInstance>(GI);
+}
+
+void UBRWidgetFunctionLibrary::SetPlayerName(const UObject* WorldContextObject, const FString& PlayerName)
+{
+	if (UBRGameInstance* BRGI = GetBRGameInstance(WorldContextObject))
+	{
+		BRGI->SetPlayerName(PlayerName);
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] Set Player Name: %s"), *PlayerName);
+	}
+}
+
 ABRGameState* UBRWidgetFunctionLibrary::GetBRGameState(const UObject* WorldContextObject)
 {
 	if (!WorldContextObject)
