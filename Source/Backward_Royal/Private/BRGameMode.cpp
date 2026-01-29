@@ -393,45 +393,45 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	const int32 NumTeams = NumPlayers / 2;
 	if (NumTeams < 1) return;
 
-	// 현재 월드에 있는 하체(APlayerCharacter) Pawn 수집 (순서 = PlayerArray 순)
-	// 로비에서 전원 하체로 스폰된 경우 N개가 되므로, 팀 수(NumTeams)만큼만 사용
-	TArray<APlayerCharacter*> AllLowerChars;
-	for (APlayerState* PS : BRGameState->PlayerArray)
+	// 상체로 지정된 플레이어들의 기존(하체) Pawn만 먼저 제거 → 팀당 1개 하체 몸통만 남김
+	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
 	{
-		APlayerController* PC = Cast<APlayerController>(PS->GetOwner());
-		if (!PC) continue;
-		APawn* P = PC->GetPawn();
-		if (APlayerCharacter* LC = Cast<APlayerCharacter>(P))
-			AllLowerChars.Add(LC);
-	}
-	if (AllLowerChars.Num() < NumTeams)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 수(%d)가 팀 수(%d)보다 적어 중단"), AllLowerChars.Num(), NumTeams);
-		return;
-	}
-	// 사용하지 않는 하체(AllLowerChars[NumTeams] 이상)는 먼저 제거 → 팀당 1개 몸통만 남김
-	for (int32 i = NumTeams; i < AllLowerChars.Num(); i++)
-	{
-		APlayerCharacter* ExtraLower = AllLowerChars[i];
-		if (!ExtraLower || !IsValid(ExtraLower)) continue;
-		AController* LowerController = ExtraLower->GetController();
-		if (LowerController)
+		ABRPlayerState* UpperPS = SortedByTeam[2 * TeamIndex + 1];
+		if (UpperPS && !UpperPS->bIsLowerBody) // 상체인 경우만
 		{
-			LowerController->UnPossess();
+			APlayerController* UpperPC = Cast<APlayerController>(UpperPS->GetOwner());
+			if (UpperPC)
+			{
+				APawn* OldPawn = UpperPC->GetPawn();
+				UpperPC->UnPossess();
+				if (OldPawn && IsValid(OldPawn))
+					OldPawn->Destroy();
+			}
 		}
-		ExtraLower->Destroy();
 	}
 
 	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
 	{
 		ABRPlayerState* LowerPS = SortedByTeam[2 * TeamIndex];
 		ABRPlayerState* UpperPS = SortedByTeam[2 * TeamIndex + 1];
+		// 역할이 서버에 올바르게 적용되었는지 확인 (하체→상체 순서)
+		if (LowerPS->bIsLowerBody == false || UpperPS->bIsLowerBody == true)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 역할 불일치 - 하체:%s 상체:%s, 스킵"), TeamIndex + 1,
+				LowerPS->bIsLowerBody ? TEXT("Y") : TEXT("N"), UpperPS->bIsLowerBody ? TEXT("Y") : TEXT("N"));
+			continue;
+		}
 		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwner());
 		APlayerController* UpperPC = Cast<APlayerController>(UpperPS->GetOwner());
 		if (!LowerPC || !UpperPC) continue;
 
-		APlayerCharacter* LowerChar = AllLowerChars[TeamIndex];
-		if (!LowerChar) continue;
+		// 하체 플레이어가 현재 소유한 Pawn 사용 (가입 순서가 아닌 역할 기준)
+		APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerPC->GetPawn());
+		if (!LowerChar || !IsValid(LowerChar))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 하체 플레이어 %s의 Pawn 없음, 스킵"), TeamIndex + 1, *LowerPS->GetPlayerName());
+			continue;
+		}
 
 		// 하체가 해당 LowerChar를 소유하도록
 		if (LowerPC->GetPawn() != LowerChar)
