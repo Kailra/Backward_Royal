@@ -43,7 +43,7 @@ void ABRGameState::UpdatePlayerList()
 		{
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 목록] 업데이트: %d -> %d명"), OldCount, PlayerCount);
 		}
-		// 서버가 플레이어 목록을 채워 복제 → 클라이언트도 동일 목록으로 UI 표시
+		// 서버가 플레이어 목록을 채워 복제 → 클라이언트도 동일 목록으로 UI 표시. "Player N" 폴백 없음 → 이름 없으면 공란, ServerSetPlayerName 도착 시 갱신
 		PlayerListForDisplay.Empty();
 		for (int32 i = 0; i < PlayerArray.Num(); i++)
 		{
@@ -51,13 +51,7 @@ void ABRGameState::UpdatePlayerList()
 			{
 				FBRUserInfo Info = BRPS->GetUserInfo();
 				Info.PlayerIndex = i;
-				bool bUseFallback = ShouldUseFallbackDisplayName(Info.PlayerName, Info.UserUID);
-				if (bUseFallback)
-				{
-					Info.PlayerName = FString::Printf(TEXT("Player %d"), i + 1);
-				}
-				UE_LOG(LogTemp, Warning, TEXT("[로비이름] UpdatePlayerList | [%d] 원본 PlayerName='%s' UserUID='%s' fallback=%d → 표시이름='%s'"),
-					i, *BRPS->GetPlayerName(), *Info.UserUID, bUseFallback ? 1 : 0, *Info.PlayerName);
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] UpdatePlayerList | [%d] PlayerName='%s' UserUID='%s'"), i, *Info.PlayerName, *Info.UserUID);
 				PlayerListForDisplay.Add(Info);
 			}
 		}
@@ -329,13 +323,19 @@ TArray<FBRUserInfo> ABRGameState::GetLobbyEntryDisplayList() const
 		int32 Pidx = LobbyEntrySlots[i];
 		if (Pidx >= 0 && Pidx < PlayerArray.Num())
 		{
-			Out[i] = GetPlayerUserInfo(Pidx);
-			if (ShouldUseFallbackDisplayName(Out[i].PlayerName, Out[i].UserUID))
+			// 서버가 채운 PlayerListForDisplay 우선 사용 → 클라이언트는 복제된 목록으로 올바른 이름 표시
+			if (Pidx < PlayerListForDisplay.Num())
 			{
-				Out[i].PlayerName = FString::Printf(TEXT("Player %d"), Pidx + 1);
+				Out[i] = PlayerListForDisplay[Pidx];
+				Out[i].PlayerIndex = Pidx;
 			}
+			else
+			{
+				Out[i] = GetPlayerUserInfo(Pidx);
+			}
+			// "Player N" 폴백 제거: 이름 없으면 공란으로 두고, ServerSetPlayerName 도착 시 갱신
 		}
-		// else 빈 슬롯은 기본 FBRUserInfo(PlayerName 등 빈)
+		// else 빈 슬롯은 기본 FBRUserInfo(PlayerIndex=-1, PlayerName 빈) → UI에서 공란 표시
 	}
 	return Out;
 }
@@ -348,10 +348,7 @@ FBRUserInfo ABRGameState::GetLobbyTeamSlotInfo(int32 TeamIndex, int32 SlotIndex)
 	int32 Pidx = LobbyTeamSlots[Idx];
 	if (Pidx < 0 || Pidx >= PlayerArray.Num()) return Empty;
 	FBRUserInfo Info = GetPlayerUserInfo(Pidx);
-	if (ShouldUseFallbackDisplayName(Info.PlayerName, Info.UserUID))
-	{
-		Info.PlayerName = FString::Printf(TEXT("Player %d"), Pidx + 1);
-	}
+	// "Player N" 폴백 제거: 이름 없으면 공란으로 UI에서 표시
 	return Info;
 }
 

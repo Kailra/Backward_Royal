@@ -28,14 +28,17 @@ void UBR_LobbyEntryWidget::UpdatePlayerNames(const TArray<FBRUserInfo>& PlayerIn
 		if (SlotIndex < PlayerInfoList.Num())
 		{
 			const FBRUserInfo& Info = PlayerInfoList[SlotIndex];
-			FString DisplayName = Info.PlayerName;
-			bool bUseFallback = ShouldUseFallbackDisplayName(DisplayName, Info.UserUID);
-			if (bUseFallback)
+			// 빈 슬롯(PlayerIndex < 0) 또는 이름 미설정 → 공란. 플레이어가 있으면 PlayerName만 표시
+			FString DisplayName;
+			if (Info.PlayerIndex < 0)
 			{
-				DisplayName = FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1);
+				DisplayName = FString();
 			}
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] UpdatePlayerNames 슬롯[%d] | PlayerName='%s' UserUID='%s' fallback=%d → 표시='%s'"),
-				SlotIndex, *Info.PlayerName, *Info.UserUID, bUseFallback ? 1 : 0, *DisplayName);
+			else if (!Info.PlayerName.IsEmpty() && Info.PlayerName != Info.UserUID)
+			{
+				DisplayName = Info.PlayerName;
+			}
+			// else: 이름 없음 → 공란 유지
 			UserNameSlot[SlotIndex]->SetText(FText::FromString(DisplayName));
 		}
 	}
@@ -50,12 +53,11 @@ void UBR_LobbyEntryWidget::SetEntryInfo(const FBRUserInfo& Info)
 		return;
 	}
 
-	FString DisplayName = Info.PlayerName;
-	if (ShouldUseFallbackDisplayName(DisplayName, Info.UserUID))
+	// 빈 슬롯 또는 이름 미설정 → 공란. 플레이어가 있으면 PlayerName만 표시
+	FString DisplayName;
+	if (Info.PlayerIndex >= 0 && !Info.PlayerName.IsEmpty() && Info.PlayerName != Info.UserUID)
 	{
-		DisplayName = Info.PlayerIndex >= 0
-			? FString::Printf(TEXT("Player %d"), Info.PlayerIndex + 1)
-			: FString();
+		DisplayName = Info.PlayerName;
 	}
 	NameText->SetText(FText::FromString(DisplayName));
 }

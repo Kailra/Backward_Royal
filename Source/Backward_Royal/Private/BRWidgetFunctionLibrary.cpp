@@ -396,14 +396,10 @@ FString UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(const UObject* WorldCon
 
 FString UBRWidgetFunctionLibrary::GetDisplayNameForLobby(const FBRUserInfo& UserInfo)
 {
-	bool bUseFallback = UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID;
-	UE_LOG(LogTemp, Warning, TEXT("[로비이름] GetDisplayNameForLobby | PlayerName='%s' UserUID='%s' (같거나 비면 fallback) → %s"),
-		*UserInfo.PlayerName, *UserInfo.UserUID, bUseFallback ? TEXT("Player N 사용") : TEXT("PlayerName 사용"));
-	if (bUseFallback)
+	// 빈 슬롯(PlayerIndex < 0) 또는 이름 미설정 → 공란. 플레이어가 있으면 PlayerName만 표시 ("Player N" 폴백 제거)
+	if (UserInfo.PlayerIndex < 0 || UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID)
 	{
-		return UserInfo.PlayerIndex >= 0
-			? FString::Printf(TEXT("Player %d"), UserInfo.PlayerIndex + 1)
-			: FString();
+		return FString();
 	}
 	return UserInfo.PlayerName;
 }
