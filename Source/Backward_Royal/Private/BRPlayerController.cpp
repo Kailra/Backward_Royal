@@ -371,6 +371,28 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 {
 	Super::OnPossess(aPawn);
 
+	// Seamless Travel 후 게임 맵에서 GameMode BeginPlay가 호출되지 않을 수 있음 → Possess 시점에 랜덤 팀 적용 예약 (폴백)
+	if (HasAuthority() && aPawn)
+	{
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+		{
+			if (GI->GetPendingApplyRandomTeamRoles())
+				{
+					ABRGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ABRGameMode>() : nullptr;
+					if (GM)
+					{
+						FTimerHandle H;
+						GetWorld()->GetTimerManager().SetTimer(H, GM, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
+						UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] OnPossess 폴백 - 1.5초 후 상체/하체 Pawn 적용 예정"));
+					}
+					else
+					{
+						UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 게임 맵 GameMode가 ABRGameMode가 아님 - 상체/하체 적용이 되지 않을 수 있습니다."));
+					}
+				}
+		}
+	}
+
 	if (OnPawnChanged.IsBound())
 	{
 		OnPawnChanged.Broadcast(aPawn);

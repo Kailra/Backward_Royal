@@ -370,6 +370,12 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 {
 	if (!HasAuthority() || !UpperBodyClass) return;
 
+	// Seamless Travel 시 게임 맵에서 BeginPlay가 호출되지 않을 수 있어, 중복 실행 방지 및 플래그는 여기서만 클리어
+	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+	if (!GI || !GI->GetPendingApplyRandomTeamRoles())
+		return;
+	GI->ClearPendingApplyRandomTeamRoles();
+
 	ABRGameState* BRGameState = GetGameState<ABRGameState>();
 	if (!BRGameState || BRGameState->PlayerArray.Num() < 2) return;
 
