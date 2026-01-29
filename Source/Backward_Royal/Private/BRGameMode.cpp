@@ -310,41 +310,46 @@ void ABRGameMode::Logout(AController* Exiting)
 
 	Super::Logout(Exiting);
 
-	// 플레이어 목록 업데이트 (역할 재할당은 로비 퇴장 시에는 기존 순서 유지)
-	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	// PlayerArray에서 퇴장한 PlayerState 제거는 엔진이 다음 틱에 처리하므로,
+	// 플레이어 목록 업데이트를 다음 틱으로 미뤄야 남은 사람 UI에서 나간 이름이 사라짐
+	UWorld* World = GetWorld();
+	if (World)
 	{
-		BRGameState->UpdatePlayerList();
-		
-		// 남은 플레이어들의 역할 재할당 (순서대로)
-		for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
+		World->GetTimerManager().SetTimerForNextTick([this]()
 		{
-			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
+			if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
 			{
-				if (i == 0)
+				BRGameState->UpdatePlayerList();
+
+				// 남은 플레이어들의 역할 재할당 (순서대로)
+				for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
 				{
-					// 첫 번째 플레이어 = 하체
-					BRPS->SetPlayerRole(true, -1);
-				}
-				else if (i % 2 == 0)
-				{
-					// 홀수 번째 플레이어 (인덱스가 짝수) = 하체
-					BRPS->SetPlayerRole(true, -1);
-				}
-				else
-				{
-					// 짝수 번째 플레이어 = 이전 플레이어의 상체
-					int32 LowerBodyPlayerIndex = i - 1;
-					if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
+					if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[i]))
 					{
-						if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
+						if (i == 0)
 						{
-							BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
-							LowerBodyPS->SetPlayerRole(true, i);
+							BRPS->SetPlayerRole(true, -1);
+						}
+						else if (i % 2 == 0)
+						{
+							BRPS->SetPlayerRole(true, -1);
+						}
+						else
+						{
+							int32 LowerBodyPlayerIndex = i - 1;
+							if (LowerBodyPlayerIndex >= 0 && LowerBodyPlayerIndex < BRGameState->PlayerArray.Num())
+							{
+								if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
+								{
+									BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
+									LowerBodyPS->SetPlayerRole(true, i);
+								}
+							}
 						}
 					}
 				}
 			}
-		}
+		});
 	}
 }
 
