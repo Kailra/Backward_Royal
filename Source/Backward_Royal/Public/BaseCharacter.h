@@ -28,9 +28,9 @@ protected:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual void Die();
 
-    // [유지] 사망 시 충격량(Impulse)과 위치(HitLocation)를 함께 전송
+    // 사망 시 충격량(Impulse)과 위치(HitLocation)를 함께 전송
     UFUNCTION(NetMulticast, Reliable)
-    void MulticastDie(FVector Impulse, FVector HitLocation);
+    void MulticastDie(FVector Impulse, FVector HitLocation, FVector ServerDieLocation, FRotator ServerDieRotation);
 
 public:
     // [변경] 단순히 사망 시 사용할 충격량을 저장만 하는 함수 (즉시 적용 X)
@@ -79,7 +79,10 @@ public:
 
     // --- Combat ---
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-    UAnimMontage* AttackMontage;
+    UAnimMontage* OneHandedAttackMontage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+    UAnimMontage* TwoHandedAttackMontage;
 
     UPROPERTY(EditAnywhere, Category = "Combat")
     UAnimMontage* PunchMontage_L;
@@ -93,7 +96,7 @@ public:
     void HandleWeaponBroken();
 
     UFUNCTION(NetMulticast, Reliable)
-    void MulticastPlayWeaponAttack(APawn* RequestingPawn);
+    void MulticastPlayWeaponAttack(UAnimMontage* MontageToPlay, APawn* RequestingPawn);
 
     UFUNCTION(NetMulticast, Reliable)
     void MulticastPlayPunch(UAnimMontage* TargetMontage);

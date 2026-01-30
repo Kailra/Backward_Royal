@@ -148,8 +148,7 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
 
     FVector FinalImpulseVector = ImpulseDir * FinalImpulsePower;
 
-    // [핵심] 대상이 캐릭터라면 충격량을 미리 저장 (사망 시 랙돌 날리기용)
-    // 살아있을 때의 넉백은 적용하지 않음 (SetLastHitInfo는 저장만 함)
+    // [충격량 저장] 대상이 캐릭터라면 충격량을 미리 저장
     if (ABaseCharacter* Victim = Cast<ABaseCharacter>(OtherActor))
     {
         Victim->SetLastHitInfo(FinalImpulseVector, Hit.ImpactPoint);
@@ -166,9 +165,17 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
         CalculatedDamage = ImpactForce * 0.001f;
     }
 
+    // [디버그 로그 추가] 화면에 데미지와 충격량 표시
+    if (GEngine)
+    {
+        FString DebugMsg = FString::Printf(TEXT("Hit: %s | Damage: %.1f | Impulse: %.1f"),
+            *OtherActor->GetName(), CalculatedDamage, FinalImpulsePower);
+
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, DebugMsg);
+    }
+
     if (CalculatedDamage >= 5.0f)
     {
-        // 여기서 Die가 호출되면 -> MulticastDie가 위에서 저장한 FinalImpulseVector를 사용해 날아감
         UGameplayStatics::ApplyDamage(OtherActor, CalculatedDamage, GetOwner()->GetInstigatorController(), GetOwner(), nullptr);
 
         if (MyWeapon)
@@ -177,7 +184,7 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
         }
     }
 
-    // 캐릭터가 아닌 물체에 대해서만 직접 힘을 가함
+    // [일반 물체 물리 적용]
     if (GetOwner()->HasAuthority() && OtherComp && OtherComp->IsSimulatingPhysics())
     {
         if (!Cast<ABaseCharacter>(OtherActor))
