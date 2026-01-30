@@ -262,25 +262,28 @@ float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 
 void ABaseCharacter::Die()
 {
-    // 이미 죽었으면 무시 (서버 기준)
     if (bIsDead) return;
 
-    MulticastDie();
+    // 죽는 순간 저장해둔 힘을 모든 클라이언트에 전송
+    MulticastDie(LastDeathImpulse, LastDeathHitLocation);
 }
 
-void ABaseCharacter::MulticastDie_Implementation()
+void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
 {
-    // 중복 실행 방지
+    LastDeathImpulse = Impulse;
+    LastDeathHitLocation = HitLocation;
+}
+
+// [핵심] 랙돌 활성화 직후 힘 적용
+void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLocation)
+{
     if (bIsDead) return;
     bIsDead = true;
 
-    CHAR_LOG(Warning, TEXT("Character Died (Multicast)."));
+    CHAR_LOG(Warning, TEXT("Character Died (Multicast) - Death Impulse: %s"), *Impulse.ToString());
 
-    // 1. 캡슐 충돌 끄기 (시체끼리 길막 방지)
+    // 1. 캡슐 및 이동 정지
     GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-    // 2. [중요] 이동 컴포넌트 비활성화
-    // 이걸 안 끄면 "물리 엔진" vs "이동 컴포넌트"가 싸워서 캐릭터가 부들거리거나 이상하게 날아갑니다.
     if (GetCharacterMovement())
     {
         GetCharacterMovement()->StopMovementImmediately();
@@ -291,25 +294,32 @@ void ABaseCharacter::MulticastDie_Implementation()
     UPhysicalAnimationComponent* PhysAnimComp = FindComponentByClass<UPhysicalAnimationComponent>();
     if (PhysAnimComp)
     {
-        // 1. 메쉬와의 연결을 끊거나
         PhysAnimComp->SetSkeletalMeshComponent(nullptr);
-
-        CHAR_LOG(Log, TEXT("Physical Animation Disabled for Ragdoll."));
     }
 
-    // 3. 메쉬 물리 시뮬레이션 (Ragdoll) 설정 수정
+    // 2. 랙돌 활성화
     if (GetMesh())
     {
-        // 충돌 프로필과 활성화 설정
         GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
         GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         GetMesh()->SetSimulatePhysics(true);
+
+        // [핵심] 랙돌이 켜진 직후, 클라이언트에서도 물리력을 가함
+        if (!Impulse.IsNearlyZero())
+        {
+            if (!HitLocation.IsNearlyZero())
+            {
+                GetMesh()->AddImpulseAtLocation(Impulse, HitLocation);
+            }
+            else
+            {
+                GetMesh()->AddImpulse(Impulse);
+            }
+        }
     }
 
-    // 4. 사망 이벤트 전파
     OnDeath.Broadcast();
 }
-
 void ABaseCharacter::UpdateHPUI()
 {
     if (OnHPChanged.IsBound())
