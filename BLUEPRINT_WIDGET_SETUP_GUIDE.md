@@ -1,5 +1,20 @@
 # 블루프린트 위젯과 서버 코드 연결 가이드
 
+## 블루프린트에서 할 일 (체크리스트)
+
+| 메뉴 | 할 일 |
+|------|--------|
+| **WBP_EntranceMenu** | ① **방 생성 버튼** On Clicked → **Create Room With Player Name** (Room Name = 방 이름, **Player Name** = **EditableText_EditUserName · Get Text**) |
+| **WBP_EntranceMenu** | ①-2 **방 찾기/참가** 버튼(Join Menu로 넘어가는 버튼) On Clicked → **Set Player Name** (BR Widget Function Library, World Context = **Self**, Player Name = **EditableText_EditUserName · Get Text**) → 그 다음 화면 전환(Join Menu 표시). (Cast 사용 금지: 위젯을 BR Game Instance로 캐스트하면 항상 실패) |
+| **WBP_JoinMenu** | ② **방 참가 버튼** On Clicked → **Join Room** (Session Index = 선택한 방 인덱스)만 호출. 이름은 EntranceMenu에서 방 찾기/참가 눌 때 이미 GameInstance에 저장됨. |
+| **WBP_LobbyMenu** | ③ **Event Construct** → CustomEvent → **Get BR Game State** → **Is Valid** → **Add Dynamic**(Target = GameState, **On Player List Changed** → **OnPlayerListUpdated**) → **Get Lobby Entry Display List**(GameState) → **Update Player Names**(Target = WBP_Entry, 위 배열) |
+| **WBP_LobbyMenu** | ④ **OnPlayerListUpdated** Custom Event → **Get BR Game State** → **Is Valid** → **Get Lobby Entry Display List** → **Update Player Names**(WBP_Entry) → (선택) WBP_SelectTeam 1~4 각각 **Update Slot Display** 호출 |
+| **WBP_LobbyMenu** | ⑤ **Event Destruct** → **Get BR Game State** → **Is Valid** → **Remove Dynamic**(On Player List Changed) |
+| **WBP_SelectTeam** (팀 1~4) | ⑥ Parent Class = **BR_SelectTeamWidget**, **Team Index** = 팀1→0, 팀2→1, 팀3→2, 팀4→3. 1Player/2Player TextBlock → **Player Name Slot0** / **Player Name Slot1** |
+| **WBP_SelectTeam** | ⑦ **1Player 버튼** On Clicked → **Request Assign To Lobby Team** (Team Index = N-1, **Slot Index = 0**). **2Player 버튼** → Slot Index = **1**. **Entry 버튼** → **Request Move To Lobby Entry** (Team Index, Slot Index) |
+
+---
+
 ## 개요
 서버 코드와 블루프린트 위젯을 연결하는 방법은 두 가지가 있습니다:
 
@@ -50,10 +65,21 @@
 **정보 가져오기:**
 - `Get BR Player Controller` - PlayerController 가져오기
 - `Get BR Game Session` - GameSession 가져오기
+- `Get BR Game Instance` - GameInstance 가져오기 (Cast 불필요)
 - `Get BR Game State` - GameState 가져오기
+- `Set Player Name` - 플레이어 이름 저장 (Join Menu로 넘어가기 전에 호출)
+- `Get Room Title For Display` - 로비 방 제목 "○○'s Game" (캐시 우선, 입장 직후 즉시 표시)
+- `Get Display Name For Lobby` - 로비 플레이어 이름 표시용. `FBRUserInfo` 입력 → 표시용 문자열 반환. **User UID는 반환하지 않음.** (5번 섹션 참고)
 - `Get BR Player State` - PlayerState 가져오기
 - `Is Host` - 방장 여부 확인
 - `Is Ready` - 준비 상태 확인
+
+**로비 방 제목 표시 (○○'s Game, 입장 직후 즉시 표시):**
+- 로비에서 방 제목을 표시할 때는 **Get Room Title For Display** (BR Widget Function Library)를 사용하세요.
+- **Join Menu**에서 방 선택 후 **Join Room** 호출 시, **참가 전에** 해당 방의 `Get Session Name`(방 찾기 결과)을 캐시에 저장합니다. 따라서 **서버 연결 전·연결 대기 없이** 로비에 들어가자마자 "○○'s Game"이 표시됩니다.
+- 보조로, 클라이언트 입장 시 서버 RPC로도 방 제목을 보내 캐시를 갱신합니다 (연결 후 일치 확인용).
+- 예: `Get Room Title For Display (Self)` → `Conv_StringToText` → 방 제목 TextBlock `Set Text`
+- **RPC 수신 시 갱신:** GameInstance의 **On Room Title Received** 이벤트에 바인딩해, RPC 도착 시 제목을 다시 설정하면 PreConstruct 이후 도착한 경우에도 즉시 반영됩니다.
 
 #### 3. 이벤트 바인딩
 
@@ -69,17 +95,30 @@ Event Construct
 
 ### 사용 예시
 
-**WBP_EntranceMenu1에서 방 생성:**
+**WBP_EntranceMenu1에서 방 생성 (EntranceMenu 입력 이름 → 리슨 서버 로비의 PlayerState에 반영):**
 ```
-[버튼 클릭 이벤트]
-  → Create Room (BR Widget Function Library)
+[방 생성 버튼 · On Clicked]
+  → Create Room With Player Name (BR Widget Function Library)  ← 이 함수 사용 시 이름이 PlayerState까지 반영됨
     - World Context Object: Self
-    - Room Name: "TestRoom"
+    - Room Name: (방 이름용 입력값)
+    - Player Name: EditableText_EditUserName · Get Text
 ```
+**Create Room With Player Name**이 내부에서 GameInstance에 이름을 넣고, ServerTravel 후 PostLogin에서 그 값을 PlayerState에 적용합니다.  
+(기존처럼 **Set Player Name** → **Create Room** 두 단계로 호출해도 동작합니다.)
 
-**WBP_JoinMenu1에서 방 참가:**
+**WBP_JoinMenu1에서 방 참가 (이름은 EntranceMenu에서만 입력 → Join Menu로 넘어갈 때 저장):**
+- **이름 입력란은 WBP_EntranceMenu에만 있습니다.** Join Menu에는 이름 입력이 없으므로, **EntranceMenu에서 "방 찾기" 또는 "참가" 버튼**을 눌러 Join Menu로 넘어가기 **직전에** 아래를 호출해 두세요.
+- **주의:** `Cast to BR Game Instance`에 **Self(위젯)**를 넣으면 안 됩니다. 위젯은 GameInstance가 아니므로 캐스트가 항상 실패합니다. **Set Player Name** (BR Widget Function Library)를 쓰면 Cast 없이 한 번에 처리됩니다.
 ```
-[방 선택 이벤트]
+[WBP_EntranceMenu · 방 찾기/참가 버튼 On Clicked]
+  → Set Player Name (BR Widget Function Library)
+    - World Context Object: Self
+    - Player Name: EditableText_EditUserName · Get Text
+  → (그 다음) 화면 전환: Join Menu 표시
+```
+그러면 Join Menu에서 **방 참가 버튼**을 눌 때는 **Join Room**만 호출하면 됩니다. Join Room은 내부에서 Game Instance의 **Get Player Name**을 읽어 서버로 보냅니다.
+```
+[WBP_JoinMenu · 방 참가 버튼 On Clicked]
   → Join Room (BR Widget Function Library)
     - World Context Object: Self
     - Session Index: (선택한 방의 인덱스)
@@ -194,6 +233,372 @@ for (const FBRUserInfo& Info : PlayerInfoList)
     // Info.PlayerIndex - 플레이어 인덱스
 }
 ```
+
+### WBP_Entry (로비 엔트리) – 입장 순서대로 이름 표시
+
+로비에서 **WBP_Entry** (부모: `BR_LobbyEntryWidget`)를 사용할 때:
+
+- `GetAllPlayerUserInfo()`로 받은 목록을 **UpdatePlayerNames**에 넘기면, **들어온 순서(0번, 1번, …)**대로 `UserNameSlot`에 플레이어 이름이 채워집니다.
+- 해당 인덱스에 플레이어가 없으면 **빈 슬롯은 공란**으로 둡니다.
+- 블루프린트에서 `UserNameSlot` 배열에 TextBlock을 **0번 슬롯, 1번 슬롯, …** 순서로 넣어두면 됩니다.
+
+### WBP_LobbyMenu에서 WBP_Entry 갱신 (플레이어 목록 표시)
+
+**WBP_LobbyMenu**에서 `WBP_Entry`에 입장 순서대로 이름을 넣으려면:
+
+1. **Event Construct** (또는 **Pre Construct**)에서:
+   - **Get BR Game State**
+   - **Is Valid** (반환된 Game State) → **False**면 아무 것도 하지 않고 종료
+   - **True**면:
+     - **Add Dynamic** (Target = Game State, **On Player List Changed** → **Custom Event `OnPlayerListUpdated`**)
+     - 그다음 **Get BR Game State** → **Get All Player User Info** → **Update Player Names** (Target = **WBP_Entry**, Player Info List = 반환 배열)
+
+2. **Custom Event `OnPlayerListUpdated`** (플레이어 목록 변경 시마다 호출):
+   - **Get BR Game State** → **Is Valid** → **False**면 종료
+   - **True**면 **Get All Player User Info** → **Update Player Names** (Target = **WBP_Entry**, Player Info List)
+
+3. **Event Destruct**에서:
+   - **Get BR Game State** → **Is Valid** → **True**면  
+     **Remove Dynamic** (Target = Game State, **On Player List Changed** → **OnPlayerListUpdated**)
+
+4. **Get BR Game State · World Context Object**:  
+   이 함수는 `WorldContext` 메타로 **World Context Object** 핀이 **숨겨져 있어서** 블루프린트에서 **self를 직접 연결할 수 없습니다**.  
+   **위젯 블루프린트**(WBP_LobbyMenu 등)의 그래프에서 호출하면, 엔진이 **자동으로 해당 위젯(self)** 을 context로 씁니다.  
+   따라서 **별도로 self 연결은 하지 않아도 되며**, 연결 불가한 것이 정상입니다.
+
+5. **WBP_Entry** 변수는 로비 메뉴 위젯 계층에서 실제 **WBP_Entry** 자식 위젯을 참조해야 합니다.
+
+**ErrorType=1**이 **Add Delegate** / **Get All Player User Info** 쪽에 나오면,  
+Game State가 `null`인 경우(디자인 타임, 맵 로드 직후 등)가 많습니다. 위처럼 **Is Valid (Game State)** 분기로 방어하면 됩니다.
+
+---
+
+## LobbyMenu · Entry 블루프린트 흐름표
+
+아래는 **WBP_LobbyMenu**와 **WBP_Entry** 블루프린트에서 **플레이어 이름 표시**가 이뤄지는 전체 흐름입니다.  
+`→` 는 실행/데이터 연결, `├─` / `└─` 는 분기, `[ ]` 는 노드/이벤트 이름입니다.
+
+---
+
+### 1. WBP_Entry 블루프린트 흐름
+
+**역할:** 로비 엔트리 위젯. `UserNameSlot`(TextBlock 배열)을 0~7번 슬롯으로 세팅하고,  
+나중에 **Update Player Names** 호출 시 **들어온 순서대로 이름**을 채움. 빈 슬롯은 공란.
+
+#### 1-1. Pre Construct (위젯 생성/리빌드 시 1회)
+
+```
+[Event Pre Construct]
+    │
+    │  IsDesignTime ──────────────────────┐
+    │                                     │
+    ▼                                     ▼
+[Call Parent Function · Pre Construct]    (Parent에 전달)
+    │
+    │  then (exec)
+    ▼
+[Kismet Array Library · Array Clear]
+    │  · Target Array ← UserNameSlot (Variable Get)
+    │
+    │  then (exec)
+    ▼
+[Variable Set · UserNameSlot]
+    │  · UserNameSlot ← [Make Array] 결과
+    │
+    ▼
+[Make Array] (8 elements)
+    ├─ [0] ← TextBlock_Entry00  (Variable Get)
+    ├─ [1] ← TextBlock_Entry01
+    ├─ [2] ← TextBlock_Entry02
+    ├─ [3] ← TextBlock_Entry03
+    ├─ [4] ← TextBlock_Entry04
+    ├─ [5] ← TextBlock_Entry05
+    ├─ [6] ← TextBlock_Entry06
+    └─ [7] ← TextBlock_Entry07
+```
+
+**정리:**  
+Pre Construct → 부모 Pre Construct 호출 → **UserNameSlot** 초기화(Array Clear) →  
+**Make Array**로 TextBlock_Entry00~07을 **0~7 순서**로 넣어 **UserNameSlot**에 Set.
+
+#### 1-2. Update Player Names 호출 시 (C++ / LobbyMenu에서 호출)
+
+```
+[Update Player Names] (BR_LobbyEntryWidget)
+    │  · self = WBP_Entry 인스턴스
+    │  · Player Info List = GameState → GetAllPlayerUserInfo()
+    │
+    ▼
+(C++ BR_LobbyEntryWidget::UpdatePlayerNames)
+    │
+    ├─ 1) 모든 UserNameSlot[i] → SetText("")  (공란)
+    │
+    └─ 2) for SlotIndex = 0 .. UserNameSlot.Num()-1:
+             ├─ SlotIndex < PlayerInfoList.Num() ?
+             │     ├─ Yes → UserNameSlot[SlotIndex] ← 이름 표시
+             │     │         (비어 있으면 "Player N")
+             │     └─ No  → 그대로 공란 유지
+             └─ 다음 슬롯
+```
+
+**정리:**  
+0번 슬롯 = 0번째로 들어온 플레이어, 1번 = 1번째, … 없으면 공란.
+
+---
+
+### 2. WBP_LobbyMenu 블루프린트 흐름
+
+**역할:** 로비 메뉴 위젯. GameState **On Player List Changed**에 **OnPlayerListUpdated**를 바인딩하고,  
+진입 시·플레이어 증감 시 **Get All Player User Info** → **Update Player Names(WBP_Entry)** 로 엔트리 갱신.
+
+#### 2-1. 초기 설정 (Construct 시 1회) — CustomEvent 트리거 필수
+
+```
+[Event Construct]  (또는 Pre Construct)
+    │
+    │  then (exec)
+    ▼
+[Custom Event "CustomEvent"]  ← 반드시 여기서 호출되도록 연결
+    │
+    │  then (exec)
+    ▼
+[Get BR Game State] (BR Widget Function Library)
+    │  · World Context = self 자동 (위젯 블루프린트 내 호출 시, 핀 연결 불필요)
+    │  · Return Value → GameState
+    │
+    │  then (exec)
+    ▼
+[Is Valid] (GameState)
+    │
+    ├─ False ──→ (종료, 바인딩/갱신 안 함)
+    │
+    └─ True
+         │
+         │  then (exec)
+         ▼
+    [Add Dynamic] (Target = GameState)
+         │  · Event: On Player List Changed
+         │  · Delegate → Custom Event "OnPlayerListUpdated"
+         │
+         │  then (exec)
+         ▼
+    [Get BR Game State] (동일, World Context 자동)
+         │  · Return Value → GameState
+         │
+         │  then (exec)
+         ▼
+    [Get Lobby Entry Display List] (BRGameState, self = GameState)  ← Entry↔SelectTeam 이동 반영 시 사용
+         │  · Return Value → Player Info List (Array of FBRUserInfo, 8슬롯, 빈 슬롯은 빈 FBRUserInfo)
+         │  (입장 순서만 표시할 때는 [Get All Player User Info] 사용)
+         │
+         ▼
+    [Update Player Names] (BR_LobbyEntryWidget)
+         │  · self = WBP_Entry (Variable Get)
+         │  · Player Info List ← 위 배열
+         │
+         └─ (완료)
+```
+
+**정리:**  
+Construct → CustomEvent → **Get BR Game State** → **Is Valid** → True일 때만  
+**Add Dynamic(On Player List Changed → OnPlayerListUpdated)** 후  
+**Get Game State → Get Lobby Entry Display List** (또는 Get All Player User Info) → **Update Player Names(WBP_Entry)** 로 최초 1회 갱신.  
+**Entry↔SelectTeam 이동**을 쓰려면 반드시 **Get Lobby Entry Display List**를 사용하세요.
+
+#### 2-2. 플레이어 목록 변경 시 (On Player List Changed 발생할 때마다)
+
+```
+[GameState · On Player List Changed]  (브로드캐스트)
+    │
+    │  (Add Dynamic으로 연결됨)
+    ▼
+[Custom Event "OnPlayerListUpdated"]
+    │
+    │  then (exec)
+    ▼
+[Get BR Game State] (World Context 자동)
+    │  · Return Value → GameState
+    │
+    │  then (exec)
+    ▼
+[Is Valid] (GameState)
+    │
+    ├─ False ──→ (종료)
+    │
+    └─ True
+         │
+         │  then (exec)
+         ▼
+    [Get Lobby Entry Display List] (GameState)  ← Entry↔SelectTeam 반영 시
+         │  · Return Value → Player Info List (8슬롯)
+         │
+         ▼
+    [Update Player Names] (Target = WBP_Entry, Player Info List)
+         │
+         ▼
+    (선택) WBP_SelectTeam 1~4 각각 [Update Slot Display] 호출  ← SelectTeam 텍스트 갱신
+         │
+         └─ (완료)
+```
+
+**정리:**  
+로비 인원 변경 시 **OnPlayerListUpdated** 실행 → **Get Game State** → **Is Valid** →  
+True면 **Get Lobby Entry Display List** → **Update Player Names(WBP_Entry)** + (선택) 각 WBP_SelectTeam **Update Slot Display** 로 다시 갱신.
+
+#### 2-3. 로비 메뉴 제거 시 (Destruct)
+
+```
+[Event Destruct]
+    │
+    │  then (exec)
+    ▼
+[Get BR Game State] (World Context 자동)
+    │  · Return Value → GameState
+    │
+    │  then (exec)
+    ▼
+[Is Valid] (GameState)
+    │
+    ├─ False ──→ (종료)
+    │
+    └─ True
+         │
+         │  then (exec)
+         ▼
+    [Remove Dynamic] (Target = GameState)
+         │  · Event: On Player List Changed
+         │  · Delegate → Custom Event "OnPlayerListUpdated"
+         │
+         └─ (바인딩 해제 완료)
+```
+
+**정리:**  
+Destruct 시 **Remove Dynamic**으로 **On Player List Changed → OnPlayerListUpdated** 바인딩 해제.
+
+---
+
+### 2-4. Entry ↔ SelectTeam 로비 슬롯 (서버 복제)
+
+**목적:** Entry(대기열 8슬롯)와 SelectTeam(팀1~4, 각 1Player/2Player) 간 이동을 **서버에서 처리·복제**하여 모든 클라이언트가 동일한 화면을 보도록 합니다.
+
+**데이터:**  
+- **Host / Client 모두** 플레이어 이름은 **GameState → PlayerState** 복제로 동일하게 가져옵니다. (Host는 GameInstance에 저장된 이름이 PostLogin 시 PlayerState에 반영됨.)  
+- **Entry 슬롯·SelectTeam 슬롯** 배치는 **GameState::LobbyEntrySlots / LobbyTeamSlots** 에서 서버가 관리하고 복제합니다.
+
+**Entry 표시:**  
+- **Get All Player User Info** → 입장 순서만 표시(이동 없음).  
+- **Get Lobby Entry Display List** → Entry↔SelectTeam 이동 반영(빈 자리·팀 배치 반영). **이동 기능을 쓸 때는 이걸 사용하세요.**
+
+**SelectTeam 표시:**  
+- WBP_SelectTeam의 Parent Class를 **BR_SelectTeamWidget**으로 설정.  
+- 각 WBP_SelectTeam 인스턴스에 **Team Index** 설정: 팀1=0, 팀2=1, 팀3=2, 팀4=3.  
+- 1Player/2Player 이름용 TextBlock은 **Player Name Slot0** / **Player Name Slot1** (또는 BindWidgetOptional 이름에 맞게) 연결.  
+- **OnPlayerListUpdated** 시 각 WBP_SelectTeam에 **Update Slot Display** 호출.
+
+**버튼 바인딩:**  
+- **1Player 버튼 (SelectTeam N):** On Clicked → **Request Assign To Lobby Team** (BR Widget Function Library)  
+  - World Context Object = self, **Team Index** = N-1 (팀1=0 … 팀4=3), **Slot Index** = 0  
+- **2Player 버튼 (SelectTeam N):** On Clicked → **Request Assign To Lobby Team**  
+  - **Team Index** = N-1, **Slot Index** = 1  
+- **Entry 버튼 (SelectTeam N의 특정 슬롯에서 “대기열로 돌아가기”):** On Clicked → **Request Move To Lobby Entry**  
+  - **Team Index** = N-1, **Slot Index** = 0 또는 1 (해당 슬롯)
+
+**주의:**  
+- Entry → SelectTeam로 이동 시 **해당 Entry 슬롯은 비워지고**, SelectTeam → Entry로 이동 시 **해당 팀 슬롯은 비워집니다.** (서버에서 처리)  
+- 리슨 서버이므로 **모두 같은 화면**을 보려면 위 RPC(Request Assign To Lobby Team / Request Move To Lobby Entry)로 서버에만 요청하고, UI는 **On Player List Changed → Get Lobby Entry Display List / Update Slot Display** 로 갱신하면 됩니다.
+
+---
+
+### 3. 전체 연동 흐름 (요약)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_Entry (Pre Construct)                                               │
+│    UserNameSlot = [TextBlock_Entry00 .. 07]  (0~7번 슬롯 고정)            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │  WBP_Entry는 WBP_LobbyMenu 자식으로 배치
+                                      │  WBP_LobbyMenu 변수 "WBP_Entry"로 참조
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_LobbyMenu (Construct)                                               │
+│    CustomEvent → Get Game State → Is Valid?                              │
+│      → Add Dynamic(On Player List Changed → OnPlayerListUpdated)         │
+│      → Get Game State → Get All Player User Info                         │
+│      → Update Player Names(WBP_Entry, Player Info List)  [최초 1회]      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │  플레이어 입장/퇴장 시 GameState가
+                                      │  On Player List Changed 브로드캐스트
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  OnPlayerListUpdated (Custom Event)                                      │
+│    Get Game State → Is Valid?                                            │
+│      → Get All Player User Info → Update Player Names(WBP_Entry, List)   │
+└─────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │  Update Player Names 내부 (C++)
+                                      │  SlotIndex 0~7 ↔ PlayerInfoList[0~7]
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_Entry · UserNameSlot                                                │
+│    [0] 1번째 입장자 이름  [1] 2번째  …  [7] 8번째  /  없으면 공란          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│  WBP_LobbyMenu (Destruct)                                                │
+│    Get Game State → Is Valid? → Remove Dynamic(On Player List Changed)   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 4. 블루프린트에서 확인할 것
+
+| 항목 | 확인 내용 |
+|------|-----------|
+| **CustomEvent 트리거** | Event Construct(또는 Pre Construct)에서 CustomEvent 호출되는지 |
+| **Get BR Game State** | 위젯 블루프린트 내 호출 시 **World Context = self 자동 적용**. self 핀 연결 불가·불필요 |
+| **Is Valid 분기** | Get BR Game State 직후 **Is Valid**로 null 체크 후 분기하는지 |
+| **WBP_Entry 참조** | Update Player Names의 Target이 실제 **WBP_Entry** 자식 위젯인지 |
+| **Remove Dynamic** | Event Destruct에서 **On Player List Changed** 바인딩 해제하는지 |
+| **로비 이름 표시** | **Player Name**만 사용. **User UID**는 절대 표시하지 말 것. 아래 5번 참고. |
+
+---
+
+### 5. 로비 이름 표시: Player Name만, User UID 금지
+
+플레이어 이름이 **UID**로 나오는 경우, 다음을 확인하세요.
+
+- **로비 플레이어 이름은 반드시 `Player Name`만 사용**합니다. **`User UID`는 절대 표시하지 마세요.**
+- **권장:** `Get All Player User Info` → **Update Player Names**(Target = WBP_Entry)만 사용하면, C++에서 `Player Name` 기준으로 표시합니다. `User UID`는 사용하지 않습니다.
+- **직접 텍스트 설정 시:** `Get All Player User Info`로 배열을 받은 뒤, 각 `FBRUserInfo`에 대해 **Break BRUserInfo** → **User UID**가 아닌 **Player Name**을 TextBlock에 연결하세요.  
+  또는 **Get Display Name For Lobby**(BR Widget Function Library)에 `FBRUserInfo`를 넣어 **표시용 이름**을 받아 사용하세요. 이 함수는 `Player Name`이 비어 있거나 `User UID`와 같으면 `"Player N"`을 반환하고, **`User UID`는 절대 반환하지 않습니다.**
+
+---
+
+### 6. 방 나가기: 반드시 LeaveRoom 사용 (서버 연결 해제)
+
+클라이언트가 **방 나가기** 버튼을 눌렀을 때, **UI만 전환(ShowEntranceMenu 등)하고 연결을 끊지 않으면** 서버는 해당 플레이어를 여전히 방에 있는 것으로 인식합니다.  
+**반드시** 아래처럼 **Leave Room**(BR Widget Function Library)을 호출해야 합니다.
+
+- **클라이언트:** `Leave Room` 호출 시 서버와의 연결이 끊어지고, 서버의 `Logout(Exiting)`이 호출되어 `PlayerArray`에서 제거됩니다.
+- **호스트:** `Leave Room` 호출 시 세션이 종료되고 메인 맵으로 이동합니다(모든 클라이언트도 함께 이동).
+
+**블루프린트 연결 예시 (WBP_LobbyMenu 등):**
+
+```
+[방 나가기 버튼 · On Clicked]
+    │
+    ▼
+[Leave Room] (BR Widget Function Library)
+    · World Context Object = self (또는 Get Player Controller → Get World 등)
+```
+
+- **잘못된 예:** 방 나가기 버튼에서 **Show Entrance Menu** / **Set Main Screen To Entrance Menu** 만 호출 → 클라이언트는 여전히 서버에 연결된 상태로 남아 서버에서는 방에 있는 것으로 표시됨.
+- **올바른 예:** 방 나가기 버튼에서 **Leave Room** 호출 → 클라이언트는 `disconnect`로 연결이 끊어지고, 서버에서 플레이어가 제거됨.
+
+---
 
 ## 주의사항
 

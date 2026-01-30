@@ -144,8 +144,8 @@ void ABRPlayerState::SwapControlWithPartner()
 	if (!GS || !GS->PlayerArray.IsValidIndex(ConnectedPlayerIndex)) return;
 
 	ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[ConnectedPlayerIndex]);
-	ABRPlayerController* MyPC = Cast<ABRPlayerController>(GetOwner());
-	ABRPlayerController* PartnerPC = Cast<ABRPlayerController>(PartnerPS->GetOwner());
+	ABRPlayerController* MyPC = Cast<ABRPlayerController>(GetOwningController());
+	ABRPlayerController* PartnerPC = Cast<ABRPlayerController>(PartnerPS->GetOwningController());
 
 	if (MyPC && PartnerPC)
 	{
@@ -232,6 +232,12 @@ FBRUserInfo ABRPlayerState::GetUserInfo() const
 	
 	// PlayerIndex: 0=하체, 1=상체 (bIsLowerBody를 기반으로 변환)
 	UserInfo.PlayerIndex = bIsLowerBody ? 0 : 1;
+
+	if (UserInfo.PlayerName.IsEmpty() || UserInfo.PlayerName == UserInfo.UserUID)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] GetUserInfo | PlayerName 비어있거나 UID와 동일 → UI에 UID/빈값 나올 수 있음 | PlayerName='%s' UserUID='%s'"),
+			*UserInfo.PlayerName, *UserInfo.UserUID);
+	}
 	
 	return UserInfo;
 }
@@ -253,9 +259,15 @@ void ABRPlayerState::OnRep_UserUID()
 
 void ABRPlayerState::SetPlayerNameString(const FString& NewPlayerName)
 {
-	if (HasAuthority())
+	if (!HasAuthority()) return;
+
+	// UID를 이름으로 저장하지 않음. 표시용은 "Player N" 등으로 대체됨.
+	FString NameToSet = NewPlayerName;
+	if (!NameToSet.IsEmpty() && NameToSet == UserUID)
 	{
-		SetPlayerName(NewPlayerName);
-		UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] %s"), *NewPlayerName);
+		NameToSet = TEXT("Player");
+		UE_LOG(LogTemp, Log, TEXT("[플레이어 이름] UID와 동일하여 'Player'로 대체 저장"));
 	}
+	SetPlayerName(NameToSet);
+	UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] %s"), *NameToSet);
 }

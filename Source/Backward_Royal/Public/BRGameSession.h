@@ -57,6 +57,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	bool HasActiveSession() const;
 
+	/** 호스트가 방을 나갈 때: 세션을 종료하고 메인 맵으로 이동합니다. (클라이언트는 LeaveRoom에서 disconnect 사용) */
+	UFUNCTION(BlueprintCallable, Category = "Session")
+	void DestroySessionAndReturnToMainMenu();
+
 	/** PIE 종료 시 GameInstance::Shutdown에서 호출. SessionInterface 델리게이트 및 PendingRoom 타이머를 먼저 해제해 월드 참조 사슬을 끊음 */
 	void UnbindSessionDelegatesForPIEExit();
 
@@ -99,6 +103,9 @@ protected:
 	// DestroySession 완료 후 CreateSession 호출을 위한 방 이름 저장
 	FString PendingRoomName;
 	bool bPendingCreateSession;
+
+	/** DestroySession 완료 후 메인 맵으로 ServerTravel 할지 여부 (방 나가기 호스트용) */
+	bool bReturnToMainMenuAfterDestroy;
 
 	/** NGDA 스타일: CreateSession 성공 후 StartSession → ServerTravel(TravelURL) 호출 시 사용 */
 	FString TravelURL;
