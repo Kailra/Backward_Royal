@@ -1,5 +1,6 @@
 ﻿// BaseCharacter.cpp
 #include "BaseCharacter.h"
+#include "BaseWeapon.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -152,40 +153,51 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
 // [신규] 공격 요청 처리 함수
 void ABaseCharacter::RequestAttack()
 {
-    // 1. 무기가 있는 경우: 기존 로직 유지
+    // 1. 무기를 들고 있는 경우
     if (CurrentWeapon)
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-        if (AnimInstance && AttackMontage)
+
+        // 재생할 몽타주 선택 로직
+        UAnimMontage* MontageToPlay = nullptr;
+
+        // 무기 타입 확인 (BaseWeapon.h의 EWeaponType 사용)
+        switch (CurrentWeapon->CurrentWeaponData.WeaponType)
         {
-            if (AnimInstance->Montage_IsPlaying(AttackMontage)) return;
+        case EWeaponType::OneHanded:
+            MontageToPlay = OneHandedAttackMontage;
+            break;
+        case EWeaponType::TwoHanded:
+            MontageToPlay = TwoHandedAttackMontage;
+            break;
+        default:
+            // 예외 처리: 기본적으로 한손 모션 사용하거나 로그 출력
+            MontageToPlay = OneHandedAttackMontage;
+            CHAR_LOG(Warning, TEXT("Unknown Weapon Type. Defaulting to OneHanded."));
+            break;
         }
-        MulticastPlayWeaponAttack(nullptr);
+
+        if (AnimInstance && MontageToPlay)
+        {
+            // 이미 해당 몽타주가 재생 중이면 패스
+            if (AnimInstance->Montage_IsPlaying(MontageToPlay)) return;
+
+            // [핵심] 선택된 몽타주를 인자로 전달 (RequestingPawn은 없으므로 nullptr)
+            MulticastPlayWeaponAttack(MontageToPlay, nullptr);
+        }
         return;
     }
 
-    // 2. 맨손 공격 로직 (번갈아 치기)
+    // 2. 맨손 공격 로직 (기존 유지)
     UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
     if (!AnimInstance) return;
 
-    // [핵심] 현재 어떤 공격 몽타주라도 재생 중이면 입력을 무시
-    if (AnimInstance->Montage_IsPlaying(PunchMontage_L) ||
-        AnimInstance->Montage_IsPlaying(PunchMontage_R))
-    {
-        return;
-    }
+    if (AnimInstance->Montage_IsPlaying(PunchMontage_L) || AnimInstance->Montage_IsPlaying(PunchMontage_R)) return;
 
-    // 재생할 손 결정
     UAnimMontage* SelectedMontage = bNextAttackIsLeft ? PunchMontage_L : PunchMontage_R;
-
     if (SelectedMontage)
     {
         MulticastPlayPunch(SelectedMontage);
-
-        // [2025-11-18] 커스텀 디버그 로그 매크로 사용 (규칙 준수)
-        CHAR_LOG(Log, TEXT("Starting Punch: %s"), bNextAttackIsLeft ? TEXT("Left") : TEXT("Right"));
-
-        // 다음 손으로 변경
         bNextAttackIsLeft = !bNextAttackIsLeft;
     }
 }
@@ -265,7 +277,7 @@ void ABaseCharacter::Die()
     if (bIsDead) return;
 
     // 죽는 순간 저장해둔 힘을 모든 클라이언트에 전송
-    MulticastDie(LastDeathImpulse, LastDeathHitLocation);
+    MulticastDie(LastDeathImpulse, LastDeathHitLocation, GetActorLocation(), GetActorRotation());
 }
 
 void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
@@ -275,14 +287,24 @@ void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
 }
 
 // [핵심] 랙돌 활성화 직후 힘 적용
-void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLocation)
+void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLocation, FVector ServerDieLocation, FRotator ServerDieRotation)
 {
     if (bIsDead) return;
     bIsDead = true;
 
-    CHAR_LOG(Warning, TEXT("Character Died (Multicast) - Death Impulse: %s"), *Impulse.ToString());
+    CHAR_LOG(Warning, TEXT("Character Died (Multicast) - Impulse: %s"), *Impulse.ToString());
 
-    // 1. 캡슐 및 이동 정지
+    // [중요] 사망 시 더 이상 서버가 위치를 동기화하지 않도록 설정
+    // 이것이 켜져 있으면 클라이언트 랙돌이 날아가다가도 서버의 캡슐 위치로 되돌아와서 끊김 현상이 발생합니다.
+    SetReplicateMovement(false);
+
+    // 1. 서버 위치로 싱크 (오차가 너무 크지 않을 때만)
+    if (!HasAuthority() && FVector::DistSquared(GetActorLocation(), ServerDieLocation) < 250000.0f) // 5m 이내
+    {
+        SetActorLocationAndRotation(ServerDieLocation, ServerDieRotation, false, nullptr, ETeleportType::TeleportPhysics);
+    }
+
+    // 2. 캡슐 및 이동 정지
     GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     if (GetCharacterMovement())
     {
@@ -297,22 +319,49 @@ void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLoc
         PhysAnimComp->SetSkeletalMeshComponent(nullptr);
     }
 
-    // 2. 랙돌 활성화
+    // 3. 랙돌 활성화
     if (GetMesh())
     {
         GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
         GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-        GetMesh()->SetSimulatePhysics(true);
 
-        // [핵심] 랙돌이 켜진 직후, 클라이언트에서도 물리력을 가함
+        // 특정 뼈 이름("pelvis") 대신 루트 본을 찾아 전체 물리 활성화
+        FName RootBoneName = GetMesh()->GetBoneName(0);
+        GetMesh()->SetAllBodiesBelowSimulatePhysics(RootBoneName, true, true);
+        GetMesh()->SetSimulatePhysics(true);
+        GetMesh()->WakeAllRigidBodies();
+
+        // 4. 충격량 적용
         if (!Impulse.IsNearlyZero())
         {
+            // 화면에 디버그 메시지 출력 (클라이언트에서도 보이도록)
+            if (GEngine)
+            {
+                FString DebugMsg = FString::Printf(TEXT("Ragdoll Force: %.0f"), Impulse.Size());
+                GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, DebugMsg);
+            }
+
+            // 디버그 라인 그리기 (모든 빌드에서 보이도록)
             if (!HitLocation.IsNearlyZero())
             {
-                GetMesh()->AddImpulseAtLocation(Impulse, HitLocation);
+                DrawDebugLine(GetWorld(), HitLocation, HitLocation + (Impulse.GetSafeNormal() * 150.0f), FColor::Red, false, 5.0f, 0, 3.0f);
+                DrawDebugSphere(GetWorld(), HitLocation, 15.0f, 12, FColor::Red, false, 5.0f);
+
+                // 가장 가까운 뼈를 찾아 타격
+                FName ClosestBone = GetMesh()->FindClosestBone(HitLocation);
+                if (ClosestBone != NAME_None)
+                {
+                    GetMesh()->AddImpulseAtLocation(Impulse, HitLocation, ClosestBone);
+                    CHAR_LOG(Log, TEXT("Applied Impulse to Bone: %s"), *ClosestBone.ToString());
+                }
+                else
+                {
+                    GetMesh()->AddImpulseAtLocation(Impulse, HitLocation);
+                }
             }
             else
             {
+                // 위치 정보 없으면 전체(Root)에 적용
                 GetMesh()->AddImpulse(Impulse);
             }
         }
@@ -320,6 +369,7 @@ void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLoc
 
     OnDeath.Broadcast();
 }
+
 void ABaseCharacter::UpdateHPUI()
 {
     if (OnHPChanged.IsBound())
@@ -343,24 +393,29 @@ void ABaseCharacter::OnRep_CurrentHP()
     CHAR_LOG(Log, TEXT("HP가 복제되었습니다. 현재 HP: %.1f"), CurrentHP);
 }
 
-void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(APawn* RequestingPawn)
+void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(UAnimMontage* MontageToPlay, APawn* RequestingPawn)
 {
-    if (AttackMontage && GetMesh())
+    // 몽타주가 없으면 실행 불가
+    if (!MontageToPlay) return;
+
+    if (GetMesh())
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
             float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
 
-            AnimInstance->Montage_Play(AttackMontage, AttackSpeed);
+            // [핵심] 인자로 받은 몽타주를 재생
+            AnimInstance->Montage_Play(MontageToPlay, AttackSpeed);
 
-            // 전달받은 Pawn을 UpperBodyPawn으로 캐스팅
+            // [기존 로직 유지] UpperBodyPawn이 요청한 경우(VR 등), 몽타주 종료 콜백 연결
             if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
             {
                 FOnMontageEnded EndDelegate;
-              
                 EndDelegate.BindUObject(UpperPawn, &AUpperBodyPawn::OnAttackMontageEnded);
-                AnimInstance->Montage_SetEndDelegate(EndDelegate, AttackMontage);
+
+                // 해당 몽타주가 끝날 때 델리게이트 호출
+                AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
             }
         }
     }
