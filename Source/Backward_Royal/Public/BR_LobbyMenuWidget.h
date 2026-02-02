@@ -75,6 +75,10 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Events")
 	void OnPlayerListChanged();
 
+	/** 방 제목 갱신 이벤트 - RoomTitle 문자열을 TextBlock에 표시하도록 블루프린트에서 구현 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Events", meta = (DisplayName = "On Room Title Refreshed"))
+	void OnRoomTitleRefreshed(const FString& RoomTitle);
+
 	// 팀 변경 이벤트 (블루프린트에서 바인딩 가능)
 	UFUNCTION(BlueprintImplementableEvent, Category = "Events")
 	void OnTeamChanged();

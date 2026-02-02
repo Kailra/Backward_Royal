@@ -46,6 +46,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject", DisplayName = "Create Room With Player Name"))
 	static void CreateRoomWithPlayerName(const UObject* WorldContextObject, const FString& RoomName, const FString& PlayerName);
 
+	/** EditableText에서 직접 읽어 방 생성. 버튼 클릭 시 GetText가 빈 값 반환하는 타이밍 이슈 해결 (한 프레임 지연 후 읽음) */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject", DisplayName = "Create Room With Player Name From Editable Text"))
+	static void CreateRoomWithPlayerNameFromEditableText(const UObject* WorldContextObject, class UEditableText* PlayerNameEditableText);
+
 	// 방 찾기
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void FindRooms(const UObject* WorldContextObject);
@@ -84,6 +88,10 @@ public:
 	/** 로비: SelectTeam 슬롯의 플레이어를 Entry로 이동 요청 */
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby", meta = (WorldContext = "WorldContextObject"))
 	static void RequestMoveToLobbyEntry(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex);
+
+	/** 로비: SelectTeam 위젯(WBP_SelectTeam 등)의 슬롯 표시 갱신. Cast 경고 없이 블루프린트에서 WBP_SelectTeam_0~3 전달용 */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby")
+	static void UpdateSelectTeamSlotDisplay(UUserWidget* SelectTeamWidget);
 
 	// 게임 시작 (방장만)
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Game", meta = (WorldContext = "WorldContextObject"))

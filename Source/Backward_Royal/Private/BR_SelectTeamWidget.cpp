@@ -9,10 +9,30 @@
 void UBR_SelectTeamWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	CachedGameState = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
+	if (CachedGameState)
+	{
+		CachedGameState->OnPlayerListChanged.AddDynamic(this, &UBR_SelectTeamWidget::HandlePlayerListChanged);
+	}
 	UpdateSlotDisplay();
 }
 
-void UBR_SelectTeamWidget::UpdateSlotDisplay()
+void UBR_SelectTeamWidget::NativeDestruct()
+{
+	if (CachedGameState)
+	{
+		CachedGameState->OnPlayerListChanged.RemoveDynamic(this, &UBR_SelectTeamWidget::HandlePlayerListChanged);
+		CachedGameState = nullptr;
+	}
+	Super::NativeDestruct();
+}
+
+void UBR_SelectTeamWidget::HandlePlayerListChanged()
+{
+	UpdateSlotDisplay();
+}
+
+void UBR_SelectTeamWidget::UpdateSlotDisplay_Implementation()
 {
 	UWorld* World = GetWorld();
 	if (!World) return;

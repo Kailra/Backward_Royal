@@ -1,10 +1,14 @@
 // BR_LobbyMenuWidget.cpp
 #include "BR_LobbyMenuWidget.h"
+#include "BR_LobbyTeamSlotDisplayInterface.h"
 #include "BRPlayerController.h"
 #include "BRGameState.h"
 #include "BRPlayerState.h"
+#include "BRWidgetFunctionLibrary.h"
+#include "Blueprint/WidgetTree.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/Widget.h"
 
 UBR_LobbyMenuWidget::UBR_LobbyMenuWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -30,6 +34,10 @@ void UBR_LobbyMenuWidget::NativeConstruct()
 		// 초기 게임 시작 가능 여부 확인
 		HandleCanStartGameChanged();
 	}
+
+	// 초기 방 제목 표시
+	FString RoomTitle = UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(this);
+	OnRoomTitleRefreshed(RoomTitle);
 }
 
 void UBR_LobbyMenuWidget::NativeDestruct()
@@ -209,6 +217,42 @@ void UBR_LobbyMenuWidget::SetMyPlayerRole(int32 PlayerIndex)
 
 void UBR_LobbyMenuWidget::HandlePlayerListChanged()
 {
+	// 팀 슬롯(1P/2P) 자동 갱신: 인터페이스 구현체 찾아서 UpdateSlotDisplay 호출
+	auto UpdateTeamSlotsInTree = [this](UWidgetTree* Tree)
+	{
+		if (!Tree) return;
+		TArray<UWidget*> AllWidgets;
+		Tree->GetAllWidgets(AllWidgets);
+		for (UWidget* Widget : AllWidgets)
+		{
+			if (UUserWidget* UserWidget = Cast<UUserWidget>(Widget))
+			{
+				if (UserWidget != this && UserWidget->GetClass()->ImplementsInterface(UBR_LobbyTeamSlotDisplayInterface::StaticClass()))
+				{
+					IBR_LobbyTeamSlotDisplayInterface::Execute_UpdateSlotDisplay(UserWidget);
+				}
+			}
+		}
+	};
+
+	// 1) 자신의 위젯 트리 검색
+	UpdateTeamSlotsInTree(WidgetTree);
+
+	// 2) 부모 위젯 트리도 검색 (WBP_SelectTeam이 형제 위젯일 수 있음)
+	for (UWidget* Ancestor = GetParent(); Ancestor; Ancestor = Ancestor->GetParent())
+	{
+		UUserWidget* ParentUserWidget = Cast<UUserWidget>(Ancestor);
+		if (ParentUserWidget && ParentUserWidget->WidgetTree)
+		{
+			UpdateTeamSlotsInTree(ParentUserWidget->WidgetTree);
+			break;
+		}
+	}
+
+	// 방 제목 갱신 (C++에서 직접 호출 → 블루프린트 OnRoomTitleRefreshed 구현 필요)
+	FString RoomTitle = UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(this);
+	OnRoomTitleRefreshed(RoomTitle);
+
 	// 블루프린트 이벤트 호출
 	OnPlayerListChanged();
 }

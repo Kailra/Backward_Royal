@@ -129,6 +129,9 @@ public:
 	UFUNCTION()
 	void OnRep_RoomTitle();
 
+	/** 대기열 슬롯 압축: 빈 칸(-1) 제거 후 뒤 플레이어를 앞으로 당김. AssignPlayerToLobbyTeam / MovePlayerToLobbyEntry 후 호출 */
+	void CompactLobbyEntrySlots();
+
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
