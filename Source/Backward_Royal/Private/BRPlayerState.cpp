@@ -31,6 +31,7 @@ void ABRPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABRPlayerState, UserUID);
 	DOREPLIFETIME(ABRPlayerState, CustomizationData);
 	DOREPLIFETIME(ABRPlayerState, CurrentStatus);
+	DOREPLIFETIME(ABRPlayerState, UserInfo);
 }
 
 void ABRPlayerState::ServerSetCustomizationData_Implementation(const FBRCustomizationData& NewData)

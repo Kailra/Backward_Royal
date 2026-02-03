@@ -109,7 +109,11 @@ public:
 	EPlayerStatus CurrentStatus = EPlayerStatus::Alive;
 
 	UFUNCTION()
-	void OnRep_PlayerStatus();
+	void OnRep_PlayerStatus();	
+
+	// 데이터가 복제되었을 때 UI 등을 갱신하기 위한 함수
+	UFUNCTION()
+	void OnRep_UserInfo();
 
 	// 서버에서 상태 변경 시 호출
 	void SetPlayerStatus(EPlayerStatus NewStatus);
@@ -132,6 +136,10 @@ public:
 	// ReplicatedUsing으로 변경하여 수신 시 함수 호출 유도
 	UPROPERTY(ReplicatedUsing = OnRep_CustomizationData, BlueprintReadOnly, Category = "Customization")
 	FBRCustomizationData CustomizationData;
+
+	// 블루프린트에서 접근 가능한 사용자 정보 구조체
+	UPROPERTY(ReplicatedUsing = OnRep_UserInfo, BlueprintReadWrite, Category = "PlayerState")
+	FBRUserInfo UserInfo;
 
 	// 구독 가능한 이벤트 디스패처
 	UPROPERTY(BlueprintAssignable, Category = "Events")
