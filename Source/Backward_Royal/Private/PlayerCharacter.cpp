@@ -8,9 +8,16 @@
 #include "EnhancedInputSubsystems.h"
 #include "BRPlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "BRGameInstance.h"
+#include "BRPlayerState.h"
+#include "BRGameState.h"
+#include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 
 DEFINE_LOG_CATEGORY(LogPlayerChar);
+
+#define LOG_PLAYER(Verbosity, Format, ...) \
+    UE_LOG(LogPlayerChar, Verbosity, TEXT("%s - %s"), *FString(__FUNCTION__), *FString::Printf(Format, ##__VA_ARGS__))
 
 APlayerCharacter::APlayerCharacter()
 {
@@ -77,6 +84,11 @@ void APlayerCharacter::BeginPlay()
 				Subsystem->AddMappingContext(DefaultMappingContext, 0);
 			}
 		}
+	}
+
+	if (GetPlayerState())
+	{
+		OnRep_PlayerState();
 	}
 }
 
@@ -212,8 +224,6 @@ void APlayerCharacter::Jump()
 	if (StaminaComp && StaminaComp->CanJump())
 	{
 		Super::Jump();
-		// [중요] 여기서 ServerConsumeJumpStamina RPC를 호출하지 않습니다!
-		// 중복 소모의 원인이 되므로 삭제.
 	}
 }
 
@@ -285,5 +295,216 @@ void APlayerCharacter::OnRep_PlayerState()
 		{
 			PC->SetupRoleInput(true);
 		}
+	}
+
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (MyPS)
+	{
+		// 1-1. 내 커마 정보가 오면 알려줘
+		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+		// 1-2. 내 역할(상/하체)이나 파트너가 정해지면 알려줘
+		// (기존 코드에 OnPlayerRoleChanged 델리게이트가 이미 있다고 가정)
+		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+
+		// 혹시 이미 데이터가 와 있을 수도 있으니 한번 체크
+		TryApplyCustomization();
+
+		// 혹시 이미 파트너가 정해져 있을 수도 있으니 체크
+		if (MyPS->ConnectedPlayerIndex != -1)
+		{
+			BindToPartnerPlayerState(MyPS->bIsLowerBody);
+		}
+	}
+}
+
+ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
+{
+	// 현재 캐릭터의 PlayerState (보통 하체/Movement 담당이 소유)
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (!MyPS) return nullptr;
+
+	// 만약 내가 상체 역할이라면 -> 내 PS 반환
+	if (!MyPS->bIsLowerBody) return MyPS;
+
+	// 만약 내가 하체 역할이라면 -> 연결된 파트너(상체)의 PS를 찾아야 함
+	if (MyPS->ConnectedPlayerIndex != -1)
+	{
+		AGameStateBase* GS = UGameplayStatics::GetGameState(this);
+		if (GS && GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+		{
+			return Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
+		}
+	}
+	return nullptr;
+}
+
+ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
+{
+	// 현재 캐릭터의 PlayerState
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (!MyPS) return nullptr;
+
+	// 내가 하체라면 -> 내 PS 반환
+	if (MyPS->bIsLowerBody) return MyPS;
+
+	// 내가 상체라면 -> 파트너(하체) PS 찾기
+	if (MyPS->ConnectedPlayerIndex != -1)
+	{
+		AGameStateBase* GS = UGameplayStatics::GetGameState(this);
+		if (GS && GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+		{
+			return Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
+		}
+	}
+	return nullptr;
+}
+
+void APlayerCharacter::TryApplyCustomization()
+{
+	// 이미 둘 다 적용 끝났으면 더 이상 연산하지 않음 (최적화)
+	if (bUpperBodyApplied && bLowerBodyApplied) return;
+
+	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
+	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
+
+	// --- 1. 상체 적용 ---
+	// 아직 적용 안 됐고(false), 데이터가 존재하면(HeadID != 0) 적용
+	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.HeadID != 0)
+	{
+		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
+		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
+		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+
+		bUpperBodyApplied = true; // 완료 마킹 (이후에는 다시 적용 안 함)
+		LOG_PLAYER(Display, TEXT("Upper Body Customization Applied"));
+	}
+
+	// --- 2. 하체 적용 ---
+	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.LegID != 0)
+	{
+		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
+		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+
+		bLowerBodyApplied = true; // 완료 마킹
+		LOG_PLAYER(Display, TEXT("Lower Body Customization Applied"));
+	}
+}
+
+void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
+{
+	// 1. 이미 바인딩 완료면 패스
+	if (bBoundToPartner) return;
+
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+
+	// 내 PS조차 없으면 -> 아주 찰나의 순간일 수 있으니 이것도 재시도 대상
+	if (!MyPS)
+	{
+		// 0.5초 뒤 재시도
+		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
+			BindToPartnerPlayerState(bIsLowerBody);
+			}, 0.5f, false);
+		return;
+	}
+
+	// 파트너가 아예 없는 솔로/매칭 전 상태라면 재시도 불필요
+	if (MyPS->ConnectedPlayerIndex == -1) return;
+
+	AGameStateBase* GS = GetWorld()->GetGameState();
+
+	// 2. 파트너 인덱스가 유효하지 않거나, 아직 배열에 안 들어왔다면?
+	if (!GS || !GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+	{
+		// [중요] 포기하지 말고 0.5초 뒤에 다시 확인하러 온다!
+		// 로그: 아직 파트너가 로딩 안됨, 재시도 예약...
+		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
+			BindToPartnerPlayerState(bIsLowerBody);
+			}, 0.5f, false);
+		return;
+	}
+
+	ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
+
+	// 3. 인덱스는 유효한데 캐스팅이 안되거나 null인 경우 (드물지만 안전장치)
+	if (!PartnerPS)
+	{
+		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
+			BindToPartnerPlayerState(bIsLowerBody);
+			}, 0.5f, false);
+		return;
+	}
+
+	// --- 성공 시 ---
+
+	// 혹시 재시도 타이머가 돌고 있다면 취소
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+
+	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+	PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+	bBoundToPartner = true;
+	LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
+
+	TryApplyCustomization();
+}
+
+void APlayerCharacter::ApplyMeshFromID(EArmorSlot Slot, int32 MeshID)
+{
+	// 1. GameInstance 가져오기
+	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		// 에디터 등에서 PIE 시작 전이거나 엣지 케이스
+		return;
+	}
+
+	// 2. GameInstance의 맵에서 'ArmorData' 테이블 찾기
+	// (주의: ConfigDataMap에 "ArmorData"라는 Key로 테이블이 등록되어 있어야 함)
+	UDataTable* ArmorDT = nullptr;
+	if (GI->ConfigDataMap.Contains(TEXT("ArmorData")))
+	{
+		ArmorDT = GI->ConfigDataMap[TEXT("ArmorData")];
+	}
+
+	// 테이블이 없으면 중단
+	if (!ArmorDT)
+	{
+		LOG_PLAYER(Error, TEXT("ArmorDataTable Not Found in GameInstance ConfigMap!"));
+		return;
+	}
+
+	// --- 아래부터는 기존 로직과 동일 ---
+
+	// 3. 타겟 컴포넌트 선정
+	USkeletalMeshComponent* TargetMeshComp = nullptr;
+	switch (Slot)
+	{
+	case EArmorSlot::Head:  TargetMeshComp = HeadMesh; break;
+	case EArmorSlot::Chest: TargetMeshComp = ChestMesh; break;
+	case EArmorSlot::Hands: TargetMeshComp = HandMesh; break;
+	case EArmorSlot::Legs:  TargetMeshComp = LegMesh; break;
+	case EArmorSlot::Feet:  TargetMeshComp = FootMesh; break;
+	default: return;
+	}
+
+	if (!TargetMeshComp) return;
+
+	// 4. 장비 해제 (ID 0)
+	if (MeshID == 0)
+	{
+		TargetMeshComp->SetSkeletalMesh(nullptr);
+		return;
+	}
+
+	// 5. 데이터 검색
+	FName RowName = FName(*FString::FromInt(MeshID));
+	FArmorData* FoundData = ArmorDT->FindRow<FArmorData>(RowName, TEXT("ApplyMeshFromID"));
+
+	// 6. 적용
+	if (FoundData && FoundData->ArmorMesh)
+	{
+		TargetMeshComp->SetSkeletalMesh(FoundData->ArmorMesh);
+		LOG_PLAYER(Display, TEXT("Applied Mesh ID %d via GameInstance"), MeshID);
 	}
 }

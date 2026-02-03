@@ -1073,3 +1073,10 @@ void UBRGameInstance::LoadPlayerNameFromUserInfo()
 		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] S_UserInfo에서 이름 로드 실패. 기본값 'Player' 사용"));
 	}
 }
+
+void UBRGameInstance::SaveCustomization(const FBRCustomizationData& NewData)
+{
+	LocalCustomizationData = NewData;
+
+	UE_LOG(LogBRGameInstance, Log, TEXT("Local Customization Saved: Head(%d), Leg(%d)"), NewData.HeadID, NewData.LegID);
+}
