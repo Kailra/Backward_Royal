@@ -583,13 +583,14 @@ void ABRGameMode::StartGame()
 		return;
 	}
 	
-	// Travel 직전에 역할 저장 (PC 쪽 저장이 실패해도 여기서 한 번 더 저장, PIE/멀티 프로세스 대응)
+	// Travel 직전에 역할 저장 (로비에서 선택한 1P/2P·팀 포함) + 게임 맵 로드 후 상체/하체 Pawn 적용 예약
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
 	{
 		if (ABRGameState* GS = GetGameState<ABRGameState>())
 		{
 			GI->SavePendingRolesForTravel(GS);
-			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] Travel 직전 역할 저장 완료 (GameMode)"));
+			GI->SetPendingApplyRandomTeamRoles(true);  // 랜덤이 아니어도 로비 역할(1P=하체, 2P=상체) 적용을 위해 플래그 설정
+			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] Travel 직전 역할 저장 완료 (GameMode), 게임 맵에서 상체/하체 적용 예정"));
 		}
 	}
 	
@@ -673,3 +674,28 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 }
 
+void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
+{
+	if (!VictimCharacter) return;
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망 확인: %s"), *VictimCharacter->GetName());
+
+	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
+	if (AController* Controller = VictimCharacter->GetController())
+	{
+		if (ABRPlayerState* PS = Controller->GetPlayerState<ABRPlayerState>())
+		{
+			// PlayerState에 사망 상태가 아직 반영 안 되었다면 여기서 확실히 처리
+			if (PS->CurrentStatus != EPlayerStatus::Dead)
+			{
+				PS->SetPlayerStatus(EPlayerStatus::Dead);
+			}
+
+			UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
+				*PS->GetPlayerName(), PS->TeamNumber);
+		}
+	}
+
+	// TODO: 여기에 남은 생존 팀 수를 확인하여 '게임 종료(우승)' 판정 로직 추가
+	// 예: CheckGameEndCondition();
+}

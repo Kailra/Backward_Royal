@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CustomizationInfo.h"
 #include "BRUserInfo.generated.h"
 
 /**
@@ -29,6 +30,10 @@ struct BACKWARD_ROYAL_API FBRUserInfo
 	UPROPERTY(BlueprintReadWrite, Category = "User Info")
 	int32 PlayerIndex;
 
+	// 커스터마이징 정보 구조체
+	UPROPERTY(BlueprintReadWrite, Category = "User Info")
+	FBRCustomizationData CustomizationData;
+
 	// 방장 여부
 	UPROPERTY(BlueprintReadWrite, Category = "User Info")
 	bool bIsHost;
@@ -37,6 +42,14 @@ struct BACKWARD_ROYAL_API FBRUserInfo
 	UPROPERTY(BlueprintReadWrite, Category = "User Info")
 	bool bIsReady;
 
+	// 하체 역할 여부 (true = 하체, false = 상체)
+	UPROPERTY(BlueprintReadWrite, Category = "User Info")
+	bool bIsLowerBody;
+
+	// 연결된 플레이어 인덱스 (파트너, -1이면 없음)
+	UPROPERTY(BlueprintReadWrite, Category = "User Info")
+	int32 ConnectedPlayerIndex;
+
 	FBRUserInfo()
 		: UserUID(TEXT(""))
 		, PlayerName(TEXT(""))
@@ -44,6 +57,9 @@ struct BACKWARD_ROYAL_API FBRUserInfo
 		, PlayerIndex(-1)
 		, bIsHost(false)
 		, bIsReady(false)
+		, bIsLowerBody(true)
+		, ConnectedPlayerIndex(-1)
+		, CustomizationData()
 	{
 	}
 };

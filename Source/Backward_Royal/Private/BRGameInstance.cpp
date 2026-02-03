@@ -869,9 +869,6 @@ void UBRGameInstance::SaveDataTableToAsset(UDataTable* TargetTable)
 #endif
 }
 
-// BRGameInstance.cpp 의 ApplyGlobalMultipliers 함수 수정
-#include "StaminaComponent.h" // 헤더 추가 필수
-
 void UBRGameInstance::ApplyGlobalMultipliers()
 {
 	if (UDataTable** TargetTablePtr = ConfigDataMap.Find(TEXT("GlobalSettings")))
@@ -888,6 +885,8 @@ void UBRGameInstance::ApplyGlobalMultipliers()
 				ABaseWeapon::GlobalDamageMultiplier = FoundData->Global_Weapon_DamageMultiplier;
 				ABaseWeapon::GlobalImpulseMultiplier = FoundData->Global_Weapon_ImpulseMultiplier;
 				ABaseWeapon::GlobalAttackSpeedMultiplier = FoundData->Global_Weapon_AttackSpeedMultiplier;
+				ABaseWeapon::GlobalDurabilityReduction = FoundData->Global_Durability_Reduction;
+
 
 				// 2. 스태미나 관련 전역(static) 변수 업데이트
 				UStaminaComponent::Global_SprintDrainRate = FoundData->Global_Stamina_SprintDrainRate;
@@ -897,17 +896,36 @@ void UBRGameInstance::ApplyGlobalMultipliers()
 				// 3. (핵심) 이미 소환된 캐릭터들에게도 즉시 적용 (실시간 리로드를 위해)
 				if (UWorld* World = GetWorld())
 				{
+					// 캐릭터 및 스태미나 업데이트
 					for (TActorIterator<APlayerCharacter> It(World); It; ++It)
 					{
-						if (UStaminaComponent* StaminaComp = It->StaminaComp)
+						APlayerCharacter* PC = *It;
+
+						// A. 스태미나 컴포넌트 업데이트 (기존 코드)
+						if (UStaminaComponent* StaminaComp = PC->StaminaComp)
 						{
 							StaminaComp->StaminaDrainRate = UStaminaComponent::Global_SprintDrainRate;
 							StaminaComp->JumpCost = UStaminaComponent::Global_JumpCost;
 							StaminaComp->StaminaRegenRate = UStaminaComponent::Global_RegenRate;
 						}
+
+						// B. 캐릭터가 장착 중인 무기 업데이트
+						// (캐릭터에 GetCurrentWeapon() 같은 접근자가 있다고 가정)
+						if (ABaseWeapon* CharacterWeapon = PC->CurrentWeapon)
+						{
+							// 내구도 감소량 등 인스턴스 변수 갱신
+							CharacterWeapon->DurabilityReduction = ABaseWeapon::GlobalDurabilityReduction;
+						}
+					}
+
+					// C. 바닥에 떨어져 있는(장착되지 않은) 무기들도 업데이트
+					for (TActorIterator<ABaseWeapon> It(World); It; ++It)
+					{
+						ABaseWeapon* Weapon = *It;
+						Weapon->DurabilityReduction = ABaseWeapon::GlobalDurabilityReduction;
 					}
 				}
-
+				
 				GI_LOG(Display, TEXT("스태미나 세팅 적용. Stamina: Drain(%.1f), Jump(%.1f), Regen(%.1f)"),
 					UStaminaComponent::Global_SprintDrainRate,
 					UStaminaComponent::Global_JumpCost,
@@ -1048,10 +1066,17 @@ void UBRGameInstance::LoadPlayerNameFromUserInfo()
 		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] S_UserInfo 에셋을 로드할 수 없습니다. 경로: %s"), *AssetPath);
 	}
 	
-	// 기본 플레이어 이름 설정 (에셋 로드 실패 시)
+	// 에셋 로드 실패 시 "Player" 사용 (빈 값이면 UID가 표시되는 문제 방지. "Player_1234" 대신 깔끔한 기본값)
 	if (PlayerName.IsEmpty())
 	{
-		PlayerName = FString::Printf(TEXT("Player_%d"), FMath::RandRange(1000, 9999));
-		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 기본 PlayerName 설정: %s"), *PlayerName);
+		PlayerName = TEXT("Player");
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] S_UserInfo에서 이름 로드 실패. 기본값 'Player' 사용"));
 	}
+}
+
+void UBRGameInstance::SaveCustomization(const FBRCustomizationData& NewData)
+{
+	LocalCustomizationData = NewData;
+
+	UE_LOG(LogBRGameInstance, Log, TEXT("Local Customization Saved: Head(%d), Leg(%d)"), NewData.HeadID, NewData.LegID);
 }

@@ -29,6 +29,21 @@ void ABRPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABRPlayerState, bIsLowerBody);
 	DOREPLIFETIME(ABRPlayerState, ConnectedPlayerIndex);
 	DOREPLIFETIME(ABRPlayerState, UserUID);
+	DOREPLIFETIME(ABRPlayerState, CustomizationData);
+	DOREPLIFETIME(ABRPlayerState, CurrentStatus);
+}
+
+void ABRPlayerState::ServerSetCustomizationData_Implementation(const FBRCustomizationData& NewData)
+{
+	CustomizationData = NewData;
+	// 서버에서도 적용이 필요하면 여기서 델리게이트를 호출하거나 로직 수행
+	OnRep_CustomizationData();
+}
+
+void ABRPlayerState::OnRep_CustomizationData()
+{
+	// 데이터가 갱신되었음을 캐릭터에게 알리거나, 캐릭터가 이를 감지하여 외형 갱신
+	// 예: Cast<APlayerCharacter>(GetPawn())->UpdateAppearance();
 }
 
 void ABRPlayerState::BeginPlay()
@@ -49,6 +64,7 @@ void ABRPlayerState::SetTeamNumber(int32 NewTeamNumber)
 		}
 		UE_LOG(LogTemp, Log, TEXT("[팀 변경] %s: 팀 %d -> 팀 %d"), *PlayerName, OldTeam, NewTeamNumber);
 		OnRep_TeamNumber();
+		NotifyUserInfoChanged();
 	}
 }
 
@@ -67,6 +83,7 @@ void ABRPlayerState::SetIsHost(bool bNewIsHost)
 			UE_LOG(LogTemp, Log, TEXT("[방장] %s가 방장이 되었습니다."), *PlayerName);
 		}
 		OnRep_IsHost();
+		NotifyUserInfoChanged();
 	}
 }
 
@@ -86,7 +103,8 @@ void ABRPlayerState::ToggleReady()
 			bWasReady ? TEXT("준비 완료") : TEXT("대기 중"),
 			bIsReady ? TEXT("준비 완료") : TEXT("대기 중"));
 		OnRep_IsReady();
-		
+		NotifyUserInfoChanged();
+
 		// 준비 상태 변경 후 게임 시작 가능 여부 확인
 		if (UWorld* World = GetWorld())
 		{
@@ -128,6 +146,7 @@ void ABRPlayerState::SetPlayerRole(bool bLowerBody, int32 ConnectedIndex)
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: %s 역할 할당 (연결된 플레이어 인덱스: %d)"), 
 			*PlayerName, *RoleName, ConnectedIndex);
 		OnRep_PlayerRole();
+		NotifyUserInfoChanged();
 	}
 }
 
@@ -229,7 +248,9 @@ FBRUserInfo ABRPlayerState::GetUserInfo() const
 	UserInfo.TeamID = TeamNumber;
 	UserInfo.bIsHost = bIsHost;
 	UserInfo.bIsReady = bIsReady;
-	
+	UserInfo.bIsLowerBody = bIsLowerBody;
+	UserInfo.ConnectedPlayerIndex = ConnectedPlayerIndex;
+
 	// PlayerIndex: 0=하체, 1=상체 (bIsLowerBody를 기반으로 변환)
 	UserInfo.PlayerIndex = bIsLowerBody ? 0 : 1;
 
@@ -249,12 +270,25 @@ void ABRPlayerState::SetUserUID(const FString& NewUserUID)
 		UserUID = NewUserUID;
 		UE_LOG(LogTemp, Log, TEXT("[UserUID 설정] %s: UserUID = %s"), *GetPlayerName(), *UserUID);
 		OnRep_UserUID();
+		NotifyUserInfoChanged();
 	}
 }
 
 void ABRPlayerState::OnRep_UserUID()
 {
 	// UI 업데이트를 위한 이벤트 발생 가능
+}
+
+void ABRPlayerState::NotifyUserInfoChanged()
+{
+	if (!HasAuthority()) return;
+	UWorld* World = GetWorld();
+	if (!World) return;
+	ABRGameState* GS = World->GetGameState<ABRGameState>();
+	if (GS)
+	{
+		GS->UpdatePlayerList();
+	}
 }
 
 void ABRPlayerState::SetPlayerNameString(const FString& NewPlayerName)
@@ -270,4 +304,23 @@ void ABRPlayerState::SetPlayerNameString(const FString& NewPlayerName)
 	}
 	SetPlayerName(NameToSet);
 	UE_LOG(LogTemp, Log, TEXT("[플레이어 이름 설정] %s"), *NameToSet);
+	NotifyUserInfoChanged();
+}
+
+void ABRPlayerState::SetPlayerStatus(EPlayerStatus NewStatus)
+{
+	if (HasAuthority())
+	{
+		CurrentStatus = NewStatus;
+		OnRep_PlayerStatus(); // 서버에서도 로직 실행을 위해 직접 호출
+	}
+}
+
+void ABRPlayerState::OnRep_PlayerStatus()
+{
+	// 1. 델리게이트 방송 -> UI(생존자 숫자, 팀원 상태창) 갱신
+	OnPlayerStatusChanged.Broadcast(CurrentStatus);
+
+	// 2. 로그
+	UE_LOG(LogTemp, Log, TEXT("Player %s Status Changed to %d"), *GetPlayerName(), (int32)CurrentStatus);
 }
