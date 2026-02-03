@@ -8,7 +8,8 @@
 #include "UpperBodyPawn.h"
 #include "Net/UnrealNetwork.h"
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
-#include "BaseWeapon.h"
+#include "BRPlayerState.h"
+#include "BRGameMode.h"
 
 DEFINE_LOG_CATEGORY(LogBaseChar);
 
@@ -252,55 +253,94 @@ void ABaseCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(ABaseCharacter, CurrentHP);
     DOREPLIFETIME(ABaseCharacter, CurrentWeapon);
+    DOREPLIFETIME(ABaseCharacter, LastDeathInfo);
+}
+
+bool ABaseCharacter::IsDead() const
+{
+    // BRPlayerState의 EPlayerStatus를 확인
+    if (ABRPlayerState* PS = GetPlayerState<ABRPlayerState>())
+    {
+        return PS->CurrentStatus == EPlayerStatus::Dead;
+    }
+    return false;
+}
+
+void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
+{
+    LastDeathInfo.Impulse = Impulse;
+    LastDeathInfo.HitLocation = HitLocation;
 }
 
 float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
-    if (bIsDead) return 0.0f;
+    // 이미 사망 상태면 데미지 무시 (EPlayerStatus 체크)
+    if (IsDead()) return 0.0f;
 
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
     CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
 
     UpdateHPUI();
 
-    if (CurrentHP <= 0.0f) Die();
+    if (CurrentHP <= 0.0f)
+    {
+        // 저장해둔 LastDeathInfo의 값을 인자로 직접 전달하여 호출
+        Die(LastDeathInfo.Impulse, LastDeathInfo.HitLocation);
+    }
 
     return ActualDamage;
 }
 
-void ABaseCharacter::Die()
+void ABaseCharacter::Die(FVector KillImpulse, FVector HitLocation)
 {
-    if (bIsDead) return;
+    // 중복 사망 방지
+    if (IsDead()) return;
 
-    // 죽는 순간 저장해둔 힘을 모든 클라이언트에 전송
-    MulticastDie(LastDeathImpulse, LastDeathHitLocation, GetActorLocation(), GetActorRotation());
-}
-
-void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
-{
-    LastDeathImpulse = Impulse;
-    LastDeathHitLocation = HitLocation;
-}
-
-// [핵심] 랙돌 활성화 직후 힘 적용
-void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLocation, FVector ServerDieLocation, FRotator ServerDieRotation)
-{
-    if (bIsDead) return;
-    bIsDead = true;
-
-    CHAR_LOG(Warning, TEXT("Character Died (Multicast) - Impulse: %s"), *Impulse.ToString());
-
-    // [중요] 사망 시 더 이상 서버가 위치를 동기화하지 않도록 설정
-    // 이것이 켜져 있으면 클라이언트 랙돌이 날아가다가도 서버의 캡슐 위치로 되돌아와서 끊김 현상이 발생합니다.
-    SetReplicateMovement(false);
-
-    // 1. 서버 위치로 싱크 (오차가 너무 크지 않을 때만)
-    if (!HasAuthority() && FVector::DistSquared(GetActorLocation(), ServerDieLocation) < 250000.0f) // 5m 이내
+    // 1. PlayerState 상태 변경 (Alive -> Dead)
+    if (ABRPlayerState* PS = GetPlayerState<ABRPlayerState>())
     {
-        SetActorLocationAndRotation(ServerDieLocation, ServerDieRotation, false, nullptr, ETeleportType::TeleportPhysics);
+        PS->SetPlayerStatus(EPlayerStatus::Dead);
     }
 
-    // 2. 캡슐 및 이동 정지
+    // 2. 사망 정보 확정 저장 (서버 위치 등)
+    LastDeathInfo.Impulse = KillImpulse;
+    LastDeathInfo.HitLocation = HitLocation;
+    LastDeathInfo.ServerDieLocation = GetActorLocation();
+    LastDeathInfo.ServerDieRotation = GetActorRotation();
+
+    // 3. 래그돌/이펙트 처리
+    PerformDeathVisuals();
+
+    // 4. 게임 모드에 알림
+    if (ABRGameMode* GM = GetWorld()->GetAuthGameMode<ABRGameMode>())
+    {
+        GM->OnPlayerDied(this);
+    }
+}
+
+void ABaseCharacter::PerformDeathVisuals()
+{
+    // 이미 물리 시뮬레이션 중이라면 중복 실행 방지
+    if (GetMesh()->IsSimulatingPhysics()) return;
+
+    // --- 변수 가져오기 ---
+    FVector Impulse = LastDeathInfo.Impulse;
+    FVector HitLocation = LastDeathInfo.HitLocation;
+    FVector ServerLoc = LastDeathInfo.ServerDieLocation;
+    FRotator ServerRot = LastDeathInfo.ServerDieRotation;
+
+    CHAR_LOG(Warning, TEXT("PerformDeathVisuals Executed - Impulse: %s"), *Impulse.ToString());
+
+    // [중요] 이동 동기화 해제
+    SetReplicateMovement(false);
+
+    // 1. 위치 싱크 (오차 보정)
+    if (!HasAuthority() && FVector::DistSquared(GetActorLocation(), ServerLoc) < 250000.0f)
+    {
+        SetActorLocationAndRotation(ServerLoc, ServerRot, false, nullptr, ETeleportType::TeleportPhysics);
+    }
+
+    // 2. 캡슐 및 이동 컴포넌트 비활성화
     GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     if (GetCharacterMovement())
     {
@@ -309,44 +349,32 @@ void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLoc
         GetCharacterMovement()->SetComponentTickEnabled(false);
     }
 
+    // 피지컬 애니메이션 해제 (순수 랙돌 전환을 위해)
     UPhysicalAnimationComponent* PhysAnimComp = FindComponentByClass<UPhysicalAnimationComponent>();
     if (PhysAnimComp)
     {
         PhysAnimComp->SetSkeletalMeshComponent(nullptr);
     }
 
-    // 3. 랙돌 활성화
+    // 3. 랙돌 활성화 및 힘 적용
     if (GetMesh())
     {
         GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
         GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
+        // 루트 본 하위 모든 바디 시뮬레이션
         FName RootBoneName = GetMesh()->GetBoneName(0);
         GetMesh()->SetAllBodiesBelowSimulatePhysics(RootBoneName, true, true);
 
         GetMesh()->SetSimulatePhysics(true);
         GetMesh()->WakeAllRigidBodies();
 
-        // [★수정] 에러 로그 방지 코드
-        // 물리가 켜져 있을 때만 힘을 가합니다. 
-        // (만약 이번 프레임에 안 켜졌다면 건너뛰지만, 랙돌의 자연스러운 관성은 유지됩니다)
+        // 4. 충격량 적용 (기존 로직 복원)
         if (GetMesh()->IsSimulatingPhysics() && !Impulse.IsNearlyZero())
         {
-            // 디버그 메시지
-            if (GEngine)
-            {
-                FString DebugMsg = FString::Printf(TEXT("Ragdoll Force: %.0f"), Impulse.Size());
-                GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, DebugMsg);
-            }
-
             if (!HitLocation.IsNearlyZero())
             {
-                // ... (디버그 라인 그리기 생략) ...
-
                 FName ClosestBone = GetMesh()->FindClosestBone(HitLocation);
-
-                // [안전장치 추가] 찾은 뼈가 유효하고, 해당 뼈에 물리 바디가 있는지 확인하면 더 완벽합니다.
-                // 하지만 IsSimulatingPhysics() 체크만으로도 대부분 해결됩니다.
                 if (ClosestBone != NAME_None)
                 {
                     GetMesh()->AddImpulseAtLocation(Impulse, HitLocation, ClosestBone);
@@ -360,10 +388,14 @@ void ABaseCharacter::MulticastDie_Implementation(FVector Impulse, FVector HitLoc
             {
                 GetMesh()->AddImpulse(Impulse);
             }
+
+            // 디버깅
+            if (GEngine)
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Red, FString::Printf(TEXT("Ragdoll Impulse: %.1f"), Impulse.Size()));
+            }
         }
     }
-
-    OnDeath.Broadcast();
 }
 
 void ABaseCharacter::UpdateHPUI()
