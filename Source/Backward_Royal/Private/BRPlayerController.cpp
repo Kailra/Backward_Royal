@@ -1140,6 +1140,27 @@ void ABRPlayerController::RequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotInd
 	ServerRequestMoveToLobbyEntry(TeamIndex, SlotIndex);
 }
 
+void ABRPlayerController::RequestMoveMyPlayerToLobbyEntry()
+{
+	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
+	APlayerState* PS = GetPlayerState<APlayerState>();
+	if (!GS || !PS) return;
+	const int32 PlayerIndex = GS->PlayerArray.Find(PS);
+	if (PlayerIndex == INDEX_NONE) return;
+	for (int32 TeamIndex = 0; TeamIndex < 4; ++TeamIndex)
+	{
+		for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
+		{
+			const int32 Flat = TeamIndex * 2 + SlotIndex;
+			if (GS->LobbyTeamSlots.IsValidIndex(Flat) && GS->LobbyTeamSlots[Flat] == PlayerIndex)
+			{
+				RequestMoveToLobbyEntry(TeamIndex, SlotIndex);
+				return;
+			}
+		}
+	}
+}
+
 void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
 	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;

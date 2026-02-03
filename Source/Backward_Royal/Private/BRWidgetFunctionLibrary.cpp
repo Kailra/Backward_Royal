@@ -321,6 +321,26 @@ void UBRWidgetFunctionLibrary::RequestAssignToLobbyTeam(const UObject* WorldCont
 	}
 }
 
+void UBRWidgetFunctionLibrary::RequestAssignToLobbyTeamFromWidget(UUserWidget* Widget, int32 TeamID, int32 SlotIndex)
+{
+	if (ABRPlayerController* BRPC = GetBRPlayerController(Widget))
+	{
+		if (TeamID == 0)
+		{
+			BRPC->RequestMoveMyPlayerToLobbyEntry();
+		}
+		else if (TeamID >= 1 && TeamID <= 4)
+		{
+			const int32 TeamIndex = TeamID - 1;
+			BRPC->RequestAssignToLobbyTeam(TeamIndex, SlotIndex);
+		}
+	}
+	else if (Widget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[WidgetFunctionLibrary] RequestAssignToLobbyTeamFromWidget: Widget에서 PlayerController를 찾을 수 없습니다. Target에 self(위젯)를 연결했는지 확인하세요."));
+	}
+}
+
 void UBRWidgetFunctionLibrary::RequestMoveToLobbyEntry(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))

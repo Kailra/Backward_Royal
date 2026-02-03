@@ -215,6 +215,28 @@ void UBR_LobbyMenuWidget::SetMyPlayerRole(int32 PlayerIndex)
 	}
 }
 
+void UBR_LobbyMenuWidget::AssignMyPlayerToTeamSlot(int32 TeamID, int32 PlayerIndex)
+{
+	if (ABRPlayerController* BRPC = GetBRPlayerController())
+	{
+		// UserInfo 기준: TeamID 1~4, PlayerIndex 0=1P, 1=2P → 내부 TeamIndex = TeamID - 1
+		if (TeamID >= 1 && TeamID <= 4 && (PlayerIndex == 0 || PlayerIndex == 1))
+		{
+			const int32 TeamIndex = TeamID - 1;
+			UE_LOG(LogTemp, Log, TEXT("[LobbyMenu] 팀 슬롯 선택: TeamID=%d, PlayerIndex=%d (%s)"), TeamID, PlayerIndex, PlayerIndex == 0 ? TEXT("1P") : TEXT("2P"));
+			BRPC->RequestAssignToLobbyTeam(TeamIndex, PlayerIndex);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[LobbyMenu] 잘못된 값: TeamID=%d (1~4), PlayerIndex=%d (0=1P, 1=2P)"), TeamID, PlayerIndex);
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[LobbyMenu] PlayerController를 찾을 수 없습니다."));
+	}
+}
+
 void UBR_LobbyMenuWidget::HandlePlayerListChanged()
 {
 	// 팀 슬롯(1P/2P) 자동 갱신: 인터페이스 구현체 찾아서 UpdateSlotDisplay 호출

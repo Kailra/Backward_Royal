@@ -373,11 +373,39 @@ FBRUserInfo ABRGameState::GetLobbyTeamSlotInfo(int32 TeamIndex, int32 SlotIndex)
 	if (LobbyTeamSlots.Num() <= Idx || Idx < 0) return Empty;
 	int32 Pidx = LobbyTeamSlots[Idx];
 	if (Pidx < 0 || Pidx >= PlayerArray.Num()) return Empty;
+	// 대기열과 동일: 서버가 채운 PlayerListForDisplay 우선 사용 → 복제 후 클라이언트에서도 이름이 안정적으로 표시됨
+	if (Pidx < PlayerListForDisplay.Num())
+	{
+		FBRUserInfo Info = PlayerListForDisplay[Pidx];
+		Info.TeamID = TeamIndex + 1;
+		Info.PlayerIndex = SlotIndex;  // 0=1P, 1=2P
+		return Info;
+	}
 	FBRUserInfo Info = GetPlayerUserInfo(Pidx);
-	// 팀 슬롯(1P/2P 버튼)용: TeamID = 1팀~4팀, PlayerIndex = 0(1P) / 1(2P)
 	Info.TeamID = TeamIndex + 1;
 	Info.PlayerIndex = SlotIndex;
 	return Info;
+}
+
+FBRUserInfo ABRGameState::GetLobbyTeamSlotInfoByTeamIDAndPlayerIndex(int32 TeamID, int32 PlayerIndex) const
+{
+	FBRUserInfo Empty;
+	if (TeamID < 1 || TeamID > 4 || (PlayerIndex != 0 && PlayerIndex != 1)) return Empty;
+	// 각 플레이어의 TeamID(TeamNumber)·PlayerIndex(1P=0, 2P=1)로 찾기 → 서버/클라이언트 모두 복제된 PlayerState 기준으로 표시
+	for (int32 i = 0; i < PlayerArray.Num(); i++)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerArray[i]))
+		{
+			if (BRPS->TeamNumber != TeamID) continue;
+			int32 Slot = BRPS->bIsLowerBody ? 0 : 1;  // 0=1P, 1=2P
+			if (Slot != PlayerIndex) continue;
+			FBRUserInfo Info = BRPS->GetUserInfo();
+			Info.TeamID = TeamID;
+			Info.PlayerIndex = PlayerIndex;
+			return Info;
+		}
+	}
+	return Empty;
 }
 
 void ABRGameState::OnRep_LobbySlots()
@@ -414,6 +442,12 @@ bool ABRGameState::AssignPlayerToLobbyTeam(int32 PlayerIndex, int32 TeamIndex, i
 	const int32 Flat = TeamIndex * 2 + SlotIndex;
 	if (LobbyTeamSlots.Num() <= Flat || LobbyEntrySlots.Num() < 8) return false;
 
+	// 이미 이 슬롯에 있으면 아무것도 하지 않음 (같은 버튼 다시 클릭 시 대기열로 돌아가는 버그 방지)
+	if (LobbyTeamSlots[Flat] == PlayerIndex)
+	{
+		return true;
+	}
+
 	// Entry에서 해당 플레이어 제거
 	bool bFoundInEntry = false;
 	for (int32 i = 0; i < LobbyEntrySlots.Num(); i++)
@@ -425,9 +459,9 @@ bool ABRGameState::AssignPlayerToLobbyTeam(int32 PlayerIndex, int32 TeamIndex, i
 			break;
 		}
 	}
-	// 기존 팀 슬롯에 있던 플레이어는 Entry 첫 빈 자리로
+	// 기존 팀 슬롯에 있던 플레이어(다른 사람)는 Entry 첫 빈 자리로
 	int32 OldPlayer = LobbyTeamSlots[Flat];
-	if (OldPlayer >= 0)
+	if (OldPlayer >= 0 && OldPlayer != PlayerIndex)
 	{
 		for (int32 i = 0; i < LobbyEntrySlots.Num(); i++)
 		{
@@ -497,6 +531,16 @@ bool ABRGameState::MovePlayerToLobbyEntry(int32 TeamIndex, int32 SlotIndex)
 					PartnerPS->SetPlayerRole(PartnerPS->bIsLowerBody, -1);
 				}
 			}
+		}
+	}
+
+	// 같은 플레이어가 이미 대기열에 있으면 제거 (중복 표시 방지: 대기열 버튼 이중 호출 등)
+	for (int32 i = 0; i < LobbyEntrySlots.Num(); i++)
+	{
+		if (LobbyEntrySlots[i] == PlayerIndex)
+		{
+			LobbyEntrySlots[i] = -1;
+			break;
 		}
 	}
 

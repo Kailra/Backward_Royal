@@ -85,6 +85,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby", meta = (WorldContext = "WorldContextObject"))
 	static void RequestAssignToLobbyTeam(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex);
 
+	/** 로비: 위젯(self)을 Target에 연결해서 팀/대기열 요청. TeamID 0=대기열 이동, 1~4=팀1~4 슬롯 배치. SlotIndex 0=1P 1=2P */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby", meta = (DisplayName = "Request Assign To Lobby Team (From Widget)"))
+	static void RequestAssignToLobbyTeamFromWidget(UUserWidget* Widget, int32 TeamID, int32 SlotIndex);
+
 	/** 로비: SelectTeam 슬롯의 플레이어를 Entry로 이동 요청 */
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Lobby", meta = (WorldContext = "WorldContextObject"))
 	static void RequestMoveToLobbyEntry(const UObject* WorldContextObject, int32 TeamIndex, int32 SlotIndex);
