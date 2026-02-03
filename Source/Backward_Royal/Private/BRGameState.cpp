@@ -496,7 +496,15 @@ bool ABRGameState::AssignPlayerToLobbyTeam(int32 PlayerIndex, int32 TeamIndex, i
 				PartnerPS->SetPlayerRole(PartnerPS->bIsLowerBody, PlayerIndex);
 			}
 		}
+		// 팀 버튼으로 배치된 플레이어 자동 준비 완료 (랜덤 버튼과 동일)
+		if (!BRPS->bIsReady)
+		{
+			BRPS->bIsReady = true;
+			BRPS->OnRep_IsReady();
+		}
 	}
+
+	CheckCanStartGame();
 
 	// 대기열 압축: 빈 자리 제거 후 뒤 플레이어를 앞으로 채움 (예: 2번 자리 비면 3번부터 2번 자리로 당겨짐)
 	CompactLobbyEntrySlots();

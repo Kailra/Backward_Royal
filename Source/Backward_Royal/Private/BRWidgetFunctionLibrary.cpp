@@ -474,6 +474,16 @@ FString UBRWidgetFunctionLibrary::GetDisplayNameForLobby(const FBRUserInfo& User
 	return UserInfo.PlayerName;
 }
 
+FString UBRWidgetFunctionLibrary::GetDisplayNameForLobbySlot(const FBRUserInfo& UserInfo, int32 SlotIndex)
+{
+	FString Name = GetDisplayNameForLobby(UserInfo);
+	if (!Name.IsEmpty())
+	{
+		return Name;
+	}
+	return (SlotIndex == 0) ? TEXT("1Player") : TEXT("2Player");
+}
+
 ABRPlayerState* UBRWidgetFunctionLibrary::GetBRPlayerState(const UObject* WorldContextObject)
 {
 	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))

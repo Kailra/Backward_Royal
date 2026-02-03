@@ -133,6 +133,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameState", meta = (DisplayName = "Get Display Name For Lobby"))
 	static FString GetDisplayNameForLobby(const FBRUserInfo& UserInfo);
 
+	/** 로비 팀 슬롯 이름 표시용. 플레이어가 있으면 이름, 없으면 SlotIndex 0="1Player" 1="2Player" 반환 */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|GameState", meta = (DisplayName = "Get Display Name For Lobby Slot"))
+	static FString GetDisplayNameForLobbySlot(const FBRUserInfo& UserInfo, int32 SlotIndex);
+
 	// ============================================
 	// PlayerState 관련 함수들
 	// ============================================
