@@ -109,7 +109,7 @@ public:
 	EPlayerStatus CurrentStatus = EPlayerStatus::Alive;
 
 	UFUNCTION()
-	void OnRep_PlayerStatus();
+	void OnRep_PlayerStatus();	
 
 	// 서버에서 상태 변경 시 호출
 	void SetPlayerStatus(EPlayerStatus NewStatus);
