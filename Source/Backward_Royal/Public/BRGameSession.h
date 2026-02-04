@@ -137,6 +137,9 @@ protected:
 	void FindSessionsInternal(bool bIsRetry);
 	void FindSessionsRetryCallback();
 
+	/** 델리게이트 해제·타이머 정리. EndPlay/UnbindSessionDelegatesForPIEExit에서 공용 */
+	void ClearSessionDelegatesAndTimers(bool bDestroySessionIfExists = false);
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 };

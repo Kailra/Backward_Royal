@@ -2,6 +2,7 @@
 #include "BR_JoinMenuWidget.h"
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
+#include "BRWidgetFunctionLibrary.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
@@ -115,16 +116,8 @@ ABRGameSession* UBR_JoinMenuWidget::GetBRGameSession() const
 	}
 
 	// 캐시가 없거나 유효하지 않으면 새로 가져오기
-	if (UWorld* World = GetWorld())
-	{
-		if (AGameModeBase* GameMode = World->GetAuthGameMode())
-		{
-			CachedGameSession = Cast<ABRGameSession>(GameMode->GameSession);
-			return CachedGameSession;
-		}
-	}
-
-	return nullptr;
+	CachedGameSession = UBRWidgetFunctionLibrary::GetBRGameSession(this);
+	return CachedGameSession;
 }
 
 void UBR_JoinMenuWidget::HandleJoinSessionComplete(bool bWasSuccessful)

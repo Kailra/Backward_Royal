@@ -106,24 +106,22 @@ void ABRGameState::UpdatePlayerList()
 
 void ABRGameState::CheckCanStartGame()
 {
-	if (HasAuthority())
+	if (!HasAuthority()) return;
+	// 호스트는 Ready 불필요 → AreAllNonHostPlayersReady 사용 (StartGame과 동일 규칙)
+	bool bCanStart = (PlayerCount >= MinPlayers && PlayerCount <= MaxPlayers && AreAllNonHostPlayersReady());
+	if (bCanStart != bCanStartGame)
 	{
-		bool bCanStart = (PlayerCount >= MinPlayers && PlayerCount <= MaxPlayers && AreAllPlayersReady());
-		if (bCanStart != bCanStartGame)
+		bCanStartGame = bCanStart;
+		if (bCanStart)
 		{
-			bCanStartGame = bCanStart;
-			if (bCanStart)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[게임 시작] 조건 만족: 게임 시작 가능"));
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 조건 불만족: 플레이어 수=%d/%d-%d, 모든 준비=%s"), 
-					PlayerCount, MinPlayers, MaxPlayers,
-					AreAllPlayersReady() ? TEXT("예") : TEXT("아니오"));
-			}
-			OnRep_CanStartGame();
+			UE_LOG(LogTemp, Log, TEXT("[게임 시작] 조건 만족: 게임 시작 가능"));
 		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 조건 불만족: 플레이어 수=%d/%d-%d, 호스트 제외 준비=%s"),
+				PlayerCount, MinPlayers, MaxPlayers, AreAllNonHostPlayersReady() ? TEXT("예") : TEXT("아니오"));
+		}
+		OnRep_CanStartGame();
 	}
 }
 
