@@ -2,7 +2,6 @@
 #include "BRGameInstance.h"
 #include "BRPlayerController.h"
 #include "BRGameState.h"
-#include "BRWidgetFunctionLibrary.h"
 #include "BRPlayerState.h"
 #include "BRGameSession.h"
 #include "BRGameMode.h"
@@ -374,12 +373,15 @@ void UBRGameInstance::CreateRoom(const FString& RoomName)
 		}
 	}
 
-	// GameMode를 통한 직접 접근 방법 (PC 없을 때 fallback)
-	if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(GetWorld()))
+	// GameMode를 통한 직접 접근 방법 (게임이 시작되지 않았을 때)
+	if (AGameModeBase* GameMode = GetWorld()->GetAuthGameMode())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[GameInstance] GameSession을 통해 직접 방 생성 요청"));
-		GameSession->CreateRoomSession(RoomName);
-		return;
+		if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+		{
+			UE_LOG(LogTemp, Log, TEXT("[GameInstance] GameSession을 통해 직접 방 생성 요청"));
+			GameSession->CreateRoomSession(RoomName);
+			return;
+		}
 	}
 
 	UE_LOG(LogTemp, Error, TEXT("[GameInstance] 방 생성을 위한 필요한 객체를 찾을 수 없습니다."));
@@ -947,9 +949,12 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld* World)
 	GI_LOG(Warning, TEXT("PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"));
 
 	// 1) SessionInterface→GameSession→World 참조를 가장 먼저 끊음 (UnrealEdEngine 경로의 참조 원인 제거)
-	if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(World))
+	if (AGameModeBase* GameMode = World->GetAuthGameMode())
 	{
-		GameSession->UnbindSessionDelegatesForPIEExit();
+		if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+		{
+			GameSession->UnbindSessionDelegatesForPIEExit();
+		}
 	}
 
 	// 2) GEngine/GameSession 델리게이트·위젯 정리 — PC가 월드를 잡지 않도록

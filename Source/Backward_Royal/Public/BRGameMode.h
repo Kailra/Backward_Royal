@@ -1,4 +1,4 @@
-                                      // BRGameMode.h
+// BRGameMode.h
 #pragma once
 
 #include "CoreMinimal.h"
@@ -30,15 +30,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	FString GameMapPath = TEXT("/Game/Main/Level/Stage/Stage01_Temple");
 
-	/** Stage 맵 폴더 경로. 지정 시 이 폴더(및 하위)의 맵 중 하나를 랜덤 선택. 예: /Game/Main/Level/Stage */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (DisplayName = "Stage 맵 폴더 경로"))
-	FString StageMapFolderPath = TEXT("/Game/Main/Level/Stage");
-
-	/** Stage 폴더 스캔 시 하위 폴더 포함 여부 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
-	bool bRecursiveStageFolder = true;
-
-	/** Stage 맵 목록 (폴더 스캔 실패 시 fallback) */
+	// Stage 맵 목록 (랜덤 선택용)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	TArray<FString> StageMapPaths = {
 		TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
@@ -69,12 +61,6 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-	/** StageMapFolderPath에서 맵 목록을 Asset Registry로 조회. 빈 배열이면 StageMapPaths 사용 */
-	TArray<FString> GetStageMapPaths() const;
-
-	/** 모든 클라이언트에게 게임 시작 알림 (ServerTravel 직전 호출) */
-	void NotifyAllClientsGameStarting();
 
 	// 에디터(BP_BRGameMode)에서 BP_UpperBodyPawn을 할당할 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Classes")

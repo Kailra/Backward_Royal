@@ -25,8 +25,7 @@ public class Backward_Royal : ModuleRules
             "Niagara",
             "GeometryCollectionEngine",
             "ChaosSolverEngine",
-            "NavigationSystem",
-            "AssetRegistry"
+            "NavigationSystem"
         });
 		
 		// Standalone 모드에서 Null Online Subsystem을 사용하기 위해 동적 로드

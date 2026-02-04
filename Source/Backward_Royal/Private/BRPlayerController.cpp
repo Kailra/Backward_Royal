@@ -2,7 +2,6 @@
 #include "BRPlayerController.h"
 #include "BRCheatManager.h"
 #include "BRGameSession.h"
-#include "BRWidgetFunctionLibrary.h"
 #include "BRGameState.h"
 #include "BRPlayerState.h"
 #include "BRGameMode.h"
@@ -49,10 +48,16 @@ void ABRPlayerController::BeginPlay()
 	}
 
 	// GameSession 이벤트 바인딩 (방 생성 완료)
-	if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(this))
+	if (UWorld* World = GetWorld())
 	{
-		GameSession->OnCreateSessionComplete.AddDynamic(this, &ABRPlayerController::HandleCreateRoomComplete);
-		UE_LOG(LogTemp, Log, TEXT("[PlayerController] GameSession 이벤트 바인딩 완료"));
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->OnCreateSessionComplete.AddDynamic(this, &ABRPlayerController::HandleCreateRoomComplete);
+				UE_LOG(LogTemp, Log, TEXT("[PlayerController] GameSession 이벤트 바인딩 완료"));
+			}
+		}
 	}
 
 	// 클라이언트에서만 초기 UI 표시
@@ -126,9 +131,12 @@ void ABRPlayerController::BeginPlay()
 			
 			// 세션이 활성화되어 있는지 확인 (ServerTravel 후 맵 재로드 시 세션이 있을 수 있음)
 			bool bHasActiveSession = false;
-			if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(W))
+			if (AGameModeBase* GameMode = W->GetAuthGameMode())
 			{
-				bHasActiveSession = GameSession->HasActiveSession();
+				if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+				{
+					bHasActiveSession = GameSession->HasActiveSession();
+				}
 			}
 			
 			// 플레이어가 이미 입장했다면 (PostLogin 호출됨) 세션이 있다고 간주
@@ -421,9 +429,12 @@ void ABRPlayerController::ClearUIForShutdown()
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
-		if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(World))
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{
-			GameSession->OnCreateSessionComplete.RemoveAll(this);
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->OnCreateSessionComplete.RemoveAll(this);
+			}
 		}
 	}
 	if (GEngine)
@@ -463,9 +474,15 @@ void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	// GameSession 이벤트 언바인딩
-	if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(GetWorld()))
+	if (UWorld* World = GetWorld())
 	{
-		GameSession->OnCreateSessionComplete.RemoveAll(this);
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->OnCreateSessionComplete.RemoveAll(this);
+			}
+		}
 	}
 	
 	Super::EndPlay(EndPlayReason);
@@ -575,16 +592,34 @@ void ABRPlayerController::CreateRoom(const FString& RoomName)
 	if (HasAuthority())
 	{
 		UE_LOG(LogTemp, Error, TEXT("[방 생성] 서버 권한 있음 - 직접 실행"));
+		// 서버에서 직접 실행
 		if (World)
 		{
-			if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(World))
+			if (AGameModeBase* GameMode = World->GetAuthGameMode())
 			{
-				UE_LOG(LogTemp, Error, TEXT("[방 생성] GameSession 발견! 세션 생성 요청 중..."));
-				GameSession->CreateRoomSession(RoomName);
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] GameMode 발견: %s"), *GameMode->GetClass()->GetName());
+				if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] GameSession 발견! 세션 생성 요청 중..."));
+					GameSession->CreateRoomSession(RoomName);
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GameSession을 찾을 수 없습니다."));
+					if (GameMode->GameSession)
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] GameMode->GameSession 타입: %s (ABRGameSession이 아님)"), 
+							*GameMode->GameSession->GetClass()->GetName());
+					}
+					else
+					{
+						UE_LOG(LogTemp, Error, TEXT("[방 생성] GameMode->GameSession이 NULL입니다."));
+					}
+				}
 			}
 			else
 			{
-				UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GameSession을 찾을 수 없습니다."));
+				UE_LOG(LogTemp, Error, TEXT("[방 생성] ❌ GameMode를 찾을 수 없습니다."));
 			}
 		}
 	}
@@ -641,17 +676,35 @@ void ABRPlayerController::FindRooms()
 	if (HasAuthority())
 	{
 		// 서버에서 직접 실행
-		if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(GetWorld()))
+		if (UWorld* World = GetWorld())
 		{
-			UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 검색 시작..."));
-			GameSession->FindSessions();
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패: GameSession을 찾을 수 없습니다."));
-			if (GEngine)
+			if (AGameModeBase* GameMode = World->GetAuthGameMode())
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] 실패: GameSession을 찾을 수 없습니다!"));
+				if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+				{
+					UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션 검색 시작..."));
+					GameSession->FindSessions();
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패: GameSession을 찾을 수 없습니다."));
+					
+					// 화면에 디버그 메시지 표시
+					if (GEngine)
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] 실패: GameSession을 찾을 수 없습니다!"));
+					}
+				}
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패: GameMode를 찾을 수 없습니다."));
+				
+				// 화면에 디버그 메시지 표시
+				if (GEngine)
+				{
+					GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 찾기] 실패: GameMode를 찾을 수 없습니다!"));
+				}
 			}
 		}
 	}
@@ -701,9 +754,15 @@ void ABRPlayerController::JoinRoom(int32 SessionIndex)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[방 참가] 로컬 컨트롤러: 직접 세션 참가 시도..."));
 		
-		ABRGameSession* BRGameSession = UBRWidgetFunctionLibrary::GetBRGameSession(World);
+		ABRGameSession* BRGameSession = nullptr;
 		
-		// GetBRGameSession이 null이면 (NM_Client 모드 등), 직접 GameSession 찾기
+		// 1. GameMode에서 GameSession 가져오기 (Standalone 모드용)
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			BRGameSession = Cast<ABRGameSession>(GameMode->GameSession);
+		}
+		
+		// 2. GameMode에 없으면 (NM_Client 모드 등), 직접 GameSession 찾기
 		if (!BRGameSession)
 		{
 			for (TActorIterator<ABRGameSession> It(World); It; ++It)
@@ -953,15 +1012,7 @@ void ABRPlayerController::ServerToggleReady_Implementation()
 
 void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 {
-	// 호스트만 랜덤 팀 배정 요청 허용
-	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
-	{
-		if (!BRPS->bIsHost)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 배정] 거부: 호스트만 실행 가능"));
-			return;
-		}
-	}
+	// 서버에서 직접 팀 배정 실행 (역할/팀 번호만 설정, 상체 스폰·빙의는 게임 맵 로드 후 적용)
 	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
 	{
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 배정] 서버에서 직접 실행: 총 %d명의 플레이어"), BRGameState->PlayerArray.Num());
@@ -987,73 +1038,53 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 
 void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 PlayerIndex, int32 NewTeamNumber)
 {
-	ABRGameState* BRGameState = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
-	ABRPlayerState* CallerPS = GetPlayerState<ABRPlayerState>();
-	if (!BRGameState || !CallerPS) return;
-
-	// 팀 번호 범위 검증 (0 = 미배정, 1~4 = 팀)
-	if (NewTeamNumber < 0 || NewTeamNumber > 4)
+	// 서버에서 직접 팀 변경 실행
+	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 거부: 잘못된 팀 번호 %d"), NewTeamNumber);
-		return;
-	}
-
-	int32 CallerIndex = BRGameState->PlayerArray.Find(CallerPS);
-	// 자신의 팀만 변경 허용, 또는 호스트는 타인 팀 변경 허용
-	bool bAllowed = (CallerIndex == PlayerIndex) || CallerPS->bIsHost;
-	if (!bAllowed)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 거부: 타인 팀 변경 권한 없음 (Caller=%d, Target=%d)"), CallerIndex, PlayerIndex);
-		return;
-	}
-
-	if (PlayerIndex >= 0 && PlayerIndex < BRGameState->PlayerArray.Num())
-	{
-		if (ABRPlayerState* TargetPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[PlayerIndex]))
+		if (PlayerIndex >= 0 && PlayerIndex < BRGameState->PlayerArray.Num())
 		{
-			FString PlayerName = TargetPS->GetPlayerName();
-			if (PlayerName.IsEmpty()) PlayerName = FString::Printf(TEXT("Player %d"), PlayerIndex + 1);
-			TargetPS->SetTeamNumber(NewTeamNumber);
-			UE_LOG(LogTemp, Log, TEXT("[팀 변경] 서버 실행: %s -> 팀 %d"), *PlayerName, NewTeamNumber);
-			BRGameState->OnTeamChanged.Broadcast();
+			if (ABRPlayerState* TargetPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[PlayerIndex]))
+			{
+				FString PlayerName = TargetPS->GetPlayerName();
+				if (PlayerName.IsEmpty())
+				{
+					PlayerName = FString::Printf(TEXT("Player %d"), PlayerIndex + 1);
+				}
+				TargetPS->SetTeamNumber(NewTeamNumber);
+				UE_LOG(LogTemp, Log, TEXT("[팀 변경] 서버에서 직접 실행: %s -> 팀 %d"), *PlayerName, NewTeamNumber);
+				BRGameState->OnTeamChanged.Broadcast();
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: PlayerState를 찾을 수 없습니다."));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: 잘못된 PlayerIndex (%d)"), PlayerIndex);
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: 잘못된 PlayerIndex (%d)"), PlayerIndex);
+		UE_LOG(LogTemp, Error, TEXT("[팀 변경] 실패: GameState를 찾을 수 없습니다."));
 	}
 }
 
 void ABRPlayerController::ServerRequestStartGame_Implementation()
 {
-	// 서버 권한: 호스트만 게임 시작 요청 허용 (클라이언트 RPC 위조 방지)
-	ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>();
-	if (!BRPS || !BRPS->bIsHost)
-	{
-		if (BRPS)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 거부: 호스트가 아님"));
-		}
-		return;
-	}
 	StartGame();
 }
 
 void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewPlayerName)
 {
-	static constexpr int32 MaxPlayerNameLen = 24;
-	FString Trimmed = NewPlayerName.TrimStartAndEnd();
-	if (Trimmed.Len() > MaxPlayerNameLen)
-	{
-		Trimmed = Trimmed.Left(MaxPlayerNameLen);
-		UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 길이 제한 적용 (%d자)"), MaxPlayerNameLen);
-	}
+	UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 수신 | NewPlayerName='%s' | HasAuthority=%d"), *NewPlayerName, HasAuthority() ? 1 : 0);
 	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
 	{
 		FString OldName = BRPS->GetPlayerName();
 		FString OldUID = BRPS->UserUID;
-		BRPS->SetPlayerNameString(Trimmed);
-		UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 수신/적용 | 이전='%s' → 새='%s'"), *OldName, *BRPS->GetPlayerName());
+		BRPS->SetPlayerNameString(NewPlayerName);
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 적용 | 이전 PlayerName='%s' UserUID='%s' → 새 PlayerName='%s'"), *OldName, *OldUID, *BRPS->GetPlayerName());
+		// SetPlayerNameString 내부에서 NotifyUserInfoChanged() → UpdatePlayerList() 호출됨
 	}
 }
 
@@ -1136,9 +1167,7 @@ void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 Te
 	if (!GS || !HasAuthority()) return;
 	APlayerState* PS = GetPlayerState<APlayerState>();
 	int32 PlayerIndex = PS ? GS->PlayerArray.Find(PS) : INDEX_NONE;
-	// 서버 RPC는 호출자 본인만 슬롯 배치 가능 (이미 AssignPlayerToLobbyTeam이 호출자 인덱스만 사용)
-	if (PlayerIndex == INDEX_NONE) return;
-	if (GS->AssignPlayerToLobbyTeam(PlayerIndex, TeamIndex, SlotIndex))
+	if (PlayerIndex != INDEX_NONE && GS->AssignPlayerToLobbyTeam(PlayerIndex, TeamIndex, SlotIndex))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[로비] 서버: 플레이어 %d -> 팀 %d 슬롯 %d 배치"), PlayerIndex, TeamIndex + 1, SlotIndex + 1);
 	}
@@ -1148,16 +1177,6 @@ void ABRPlayerController::ServerRequestMoveToLobbyEntry_Implementation(int32 Tea
 {
 	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
 	if (!GS || !HasAuthority()) return;
-	// 호출자는 자신이 있는 팀/슬롯만 Entry로 이동 가능 (타인 강제 이동 방지)
-	const int32 Flat = TeamIndex * 2 + SlotIndex;
-	if (Flat < 0 || !GS->LobbyTeamSlots.IsValidIndex(Flat)) return;
-	APlayerState* PS = GetPlayerState<APlayerState>();
-	int32 CallerIndex = PS ? GS->PlayerArray.Find(PS) : INDEX_NONE;
-	if (CallerIndex != GS->LobbyTeamSlots[Flat])
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[로비] Entry 이동 거부: 해당 슬롯의 플레이어가 아님 (Caller=%d, Slot=%d)"), CallerIndex, GS->LobbyTeamSlots[Flat]);
-		return;
-	}
 	if (GS->MovePlayerToLobbyEntry(TeamIndex, SlotIndex))
 	{
 		UE_LOG(LogTemp, Log, TEXT("[로비] 서버: 팀 %d 슬롯 %d -> Entry 이동"), TeamIndex + 1, SlotIndex + 1);
@@ -1589,9 +1608,12 @@ void ABRPlayerController::SetMainScreenWidget(UUserWidget* Widget)
 			{
 				// 세션 확인
 				bool bHasActiveSession = false;
-				if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(World))
+				if (AGameModeBase* GameMode = World->GetAuthGameMode())
 				{
-					bHasActiveSession = GameSession->HasActiveSession();
+					if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+					{
+						bHasActiveSession = GameSession->HasActiveSession();
+					}
 				}
 				
 				if (bHasActiveSession)
@@ -1844,13 +1866,16 @@ void ABRPlayerController::LeaveRoom()
 	// 호스트(ListenServer): 세션을 종료하고 메인 맵으로 이동 (모든 클라이언트도 함께 이동)
 	if (NetMode == NM_ListenServer)
 	{
-		if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(World))
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{
-			GameSession->DestroySessionAndReturnToMainMenu();
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[방 나가기] 호스트: BRGameSession을 찾을 수 없습니다."));
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->DestroySessionAndReturnToMainMenu();
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 나가기] 호스트: BRGameSession을 찾을 수 없습니다."));
+			}
 		}
 		return;
 	}

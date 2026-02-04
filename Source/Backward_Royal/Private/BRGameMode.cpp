@@ -1,9 +1,6 @@
 // BRGameMode.cpp
 #include "BRGameMode.h"
 #include "BRGameState.h"
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/ARFilter.h"
-#include "Modules/ModuleManager.h"
 #include "BRPlayerState.h"
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
@@ -499,37 +496,6 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	}
 }
 
-TArray<FString> ABRGameMode::GetStageMapPaths() const
-{
-	TArray<FString> Result;
-	if (StageMapFolderPath.IsEmpty())
-	{
-		return StageMapPaths;
-	}
-	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-	TArray<FAssetData> AssetDataList;
-	FARFilter Filter;
-	Filter.PackagePaths.Add(FName(*StageMapFolderPath));
-	Filter.bRecursivePaths = bRecursiveStageFolder;
-	Filter.ClassPaths.Add(FTopLevelAssetPath(TEXT("/Script/Engine"), TEXT("World")));
-	AssetRegistry.GetAssets(Filter, AssetDataList);
-	for (const FAssetData& Data : AssetDataList)
-	{
-		FString Path = Data.PackageName.ToString();
-		if (!Path.IsEmpty())
-		{
-			Result.Add(Path);
-		}
-	}
-	if (Result.Num() > 0)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[Stage 맵] 폴더에서 %d개 맵 발견: %s"), Result.Num(), *StageMapFolderPath);
-		return Result;
-	}
-	UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] 폴더에서 맵 없음, StageMapPaths fallback (%d개): %s"), StageMapPaths.Num(), *StageMapFolderPath);
-	return StageMapPaths;
-}
-
 void ABRGameMode::StartGame()
 {
 	if (!HasAuthority())
@@ -539,24 +505,67 @@ void ABRGameMode::StartGame()
 	
 	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
 	{
-		BRGameState->CheckCanStartGame();
-		if (!BRGameState->bCanStartGame)
+		// 호스트인지 확인
+		bool bIsHost = false;
+		if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 조건 불만족 - 플레이어 수=%d/%d-%d"),
-				BRGameState->PlayerCount, BRGameState->MinPlayers, BRGameState->MaxPlayers);
+			if (ABRPlayerState* BRPS = PC->GetPlayerState<ABRPlayerState>())
+			{
+				bIsHost = BRPS->bIsHost;
+			}
+		}
+		
+		// 호스트인 경우: 호스트를 제외한 모든 플레이어가 준비되었는지 확인
+		// 호스트가 아닌 경우: 모든 플레이어가 준비되었는지 확인
+		bool bCanStart = false;
+		if (bIsHost)
+		{
+			// 호스트는 자신이 준비하지 않아도 다른 모든 플레이어가 준비되었으면 시작 가능
+			bCanStart = (BRGameState->PlayerCount >= BRGameState->MinPlayers && 
+			            BRGameState->PlayerCount <= BRGameState->MaxPlayers && 
+			            BRGameState->AreAllNonHostPlayersReady());
+			
+			if (bCanStart)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[게임 시작] 호스트: 다른 모든 플레이어가 준비 완료 - 게임 시작 가능"));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 호스트: 조건 불만족 - 플레이어 수=%d/%d-%d, 호스트 제외 모든 준비=%s"), 
+					BRGameState->PlayerCount, BRGameState->MinPlayers, BRGameState->MaxPlayers,
+					BRGameState->AreAllNonHostPlayersReady() ? TEXT("예") : TEXT("아니오"));
+			}
+		}
+		else
+		{
+			// 호스트가 아닌 경우: 기존 로직 사용 (모든 플레이어가 준비되어야 함)
+			BRGameState->CheckCanStartGame();
+			bCanStart = BRGameState->bCanStartGame;
+			
+			if (!bCanStart)
+			{
+				UE_LOG(LogTemp, Error, TEXT("[게임 시작] 실패: 게임을 시작할 수 없습니다."));
+				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 조건 확인: 플레이어 수=%d/%d-%d, 모든 준비=%s"), 
+					BRGameState->PlayerCount, BRGameState->MinPlayers, BRGameState->MaxPlayers,
+					BRGameState->AreAllPlayersReady() ? TEXT("예") : TEXT("아니오"));
+			}
+		}
+		
+		if (!bCanStart)
+		{
 			return;
 		}
 	}
 
 	// 맵 선택: 랜덤 맵 사용 여부에 따라 결정
 	FString SelectedMapPath;
-	TArray<FString> StageMaps = GetStageMapPaths();
-	if (bUseRandomMap && StageMaps.Num() > 0)
+	if (bUseRandomMap && StageMapPaths.Num() > 0)
 	{
-		int32 RandomIndex = FMath::RandRange(0, StageMaps.Num() - 1);
-		SelectedMapPath = StageMaps[RandomIndex];
+		// 랜덤으로 Stage 맵 중 하나 선택
+		int32 RandomIndex = FMath::RandRange(0, StageMapPaths.Num() - 1);
+		SelectedMapPath = StageMapPaths[RandomIndex];
 		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 랜덤 맵 선택: %s (인덱스: %d/%d)"), 
-			*SelectedMapPath, RandomIndex + 1, StageMaps.Num());
+			*SelectedMapPath, RandomIndex + 1, StageMapPaths.Num());
 	}
 	else
 	{
@@ -599,34 +608,50 @@ void ABRGameMode::StartGame()
 	
 	// 맵 이동 - PIE 환경에 따라 Travel 방식 선택
 	FString TravelURL = SelectedMapPath + TEXT("?listen");
-	NotifyAllClientsGameStarting();
+	
 	if (bShouldUseSeamlessTravel)
 	{
 		UE_LOG(LogTemp, Log, TEXT("[게임 시작] SeamlessTravel 호출: %s"), *TravelURL);
-		World->ServerTravel(TravelURL, true);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 일반 ServerTravel 호출: %s (PIE 모드: %s)"),
-			*TravelURL, bIsPIE ? TEXT("예") : TEXT("아니오"));
-		World->ServerTravel(TravelURL, true);
-	}
-}
-
-void ABRGameMode::NotifyAllClientsGameStarting()
-{
-	UWorld* World = GetWorld();
-	if (!World) return;
-	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
-	{
-		if (APlayerController* PC = It->Get())
+		
+		// 클라이언트에게 게임 시작 알림 (맵 이동 전에 알림)
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 		{
-			if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+			if (APlayerController* PC = It->Get())
 			{
-				BRPC->ClientNotifyGameStarting();
+				if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+				{
+					// 클라이언트에게 게임 시작 알림 (RPC)
+					BRPC->ClientNotifyGameStarting();
+				}
 			}
 		}
+		
+		// SeamlessTravel 사용 - 클라이언트가 부드럽게 따라옵니다
+		World->ServerTravel(TravelURL, true); // 두 번째 파라미터는 bAbsolute (true = 절대 경로)
 	}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("[게임 시작] 일반 ServerTravel 호출: %s (PIE 모드: %s)"), 
+				*TravelURL, bIsPIE ? TEXT("예") : TEXT("아니오"));
+			
+			// 클라이언트에게 게임 시작 알림 (맵 이동 전에 알림)
+			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+			{
+				if (APlayerController* PC = It->Get())
+				{
+					if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+					{
+						// 클라이언트에게 게임 시작 알림 (RPC)
+						BRPC->ClientNotifyGameStarting();
+					}
+				}
+			}
+			
+			// PIE 환경에서는 ServerTravel이 클라이언트를 자동으로 따라오지 않을 수 있음
+			// 하지만 일반적으로 ServerTravel은 클라이언트가 자동으로 따라옵니다
+			// 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동으로 따라옵니다
+			World->ServerTravel(TravelURL, true);
+		}
 }
 
 void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)

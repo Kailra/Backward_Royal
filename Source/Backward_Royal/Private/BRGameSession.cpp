@@ -11,24 +11,6 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Paths.h"
 
-namespace
-{
-	/** 맵 경로를 /Game/.../MapName.MapName 형식으로 변환 후 ?listen 붙임. BuildTravelURL·CreateRoomSession에서 공용 */
-	FString ToListenURL(const FString& MapPath)
-	{
-		if (MapPath.IsEmpty()) return FString();
-		FString Path = MapPath;
-		if (!Path.Contains(TEXT("/")))
-			Path = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *Path, *Path);
-		else if (!Path.Contains(TEXT(".")))
-		{
-			FString BaseName = FPaths::GetBaseFilename(Path);
-			Path = FString::Printf(TEXT("%s.%s"), *Path, *BaseName);
-		}
-		return Path + TEXT("?listen");
-	}
-}
-
 ABRGameSession::ABRGameSession()
 	: bIsSearchingSessions(false)
 	, FindSessionsRetryCount(0)
@@ -160,8 +142,11 @@ void ABRGameSession::InitializeOnlineSubsystem()
 	}
 }
 
-void ABRGameSession::ClearSessionDelegatesAndTimers(bool bDestroySessionIfExists)
+void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	Super::EndPlay(EndPlayReason);
+	
+	// 콜백 해제
 	if (SessionInterface.IsValid())
 	{
 		SessionInterface->OnCreateSessionCompleteDelegates.RemoveAll(this);
@@ -169,7 +154,37 @@ void ABRGameSession::ClearSessionDelegatesAndTimers(bool bDestroySessionIfExists
 		SessionInterface->OnDestroySessionCompleteDelegates.RemoveAll(this);
 		SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
 		SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
-		if (bDestroySessionIfExists && SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
+	}
+	
+	// 검색 중이면 취소
+	if (bIsSearchingSessions && SessionInterface.IsValid())
+	{
+		SessionInterface->CancelFindSessions();
+		bIsSearchingSessions = false;
+	}
+	
+	// 타이머 정리
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(FindSessionsRetryHandle);
+		World->GetTimerManager().ClearTimer(PendingCreateRoomTimerHandle);
+	}
+}
+
+void ABRGameSession::UnbindSessionDelegatesForPIEExit()
+{
+	// SessionInterface가 GameSession(this)을 붙들고 있으면 UnrealEdEngine → OSS → SessionInterface → GameSession → World 참조 사슬로
+	// PIE 월드가 GC되지 않는다. PIE 종료 시 GameInstance::Shutdown/DoPIEExitCleanup에서 먼저 호출해 이 사슬을 끊는다.
+	if (SessionInterface.IsValid())
+	{
+		// 델리게이트를 먼저 제거해 콜백이 이 GameSession을 보지 않도록 함
+		SessionInterface->OnCreateSessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnStartSessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnDestroySessionCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
+		SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
+		// PIE 종료 시 남아 있던 세션 파괴 (Unbind 후 호출 — 콜백이 이 객체를 참조하지 않음)
+		if (SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
 		{
 			SessionInterface->DestroySession(NAME_GameSession);
 		}
@@ -183,24 +198,8 @@ void ABRGameSession::ClearSessionDelegatesAndTimers(bool bDestroySessionIfExists
 	{
 		World->GetTimerManager().ClearTimer(FindSessionsRetryHandle);
 		World->GetTimerManager().ClearTimer(PendingCreateRoomTimerHandle);
-		if (bDestroySessionIfExists)
-		{
-			World->GetTimerManager().ClearAllTimersForObject(this);
-		}
+		World->GetTimerManager().ClearAllTimersForObject(this);
 	}
-}
-
-void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
-	ClearSessionDelegatesAndTimers(false);
-}
-
-void ABRGameSession::UnbindSessionDelegatesForPIEExit()
-{
-	// SessionInterface가 GameSession(this)을 붙들고 있으면 UnrealEdEngine → OSS → SessionInterface → GameSession → World 참조 사슬로
-	// PIE 월드가 GC되지 않는다. PIE 종료 시 GameInstance::Shutdown/DoPIEExitCleanup에서 먼저 호출해 이 사슬을 끊는다.
-	ClearSessionDelegatesAndTimers(true);
 }
 
 FString ABRGameSession::BuildTravelURL() const
@@ -220,16 +219,35 @@ FString ABRGameSession::BuildTravelURL() const
 		}
 	}
 	
-	// 현재 맵 경로로 리슨 URL 구성
+	// 현재 맵 경로로 리슨 URL 구성 (BRCheatManager와 동일한 방식)
 	FString MapPath = UGameplayStatics::GetCurrentLevelName(World, true);
 	if (MapPath.IsEmpty())
 	{
 		MapPath = World->GetMapName();
 		MapPath.RemoveFromStart(World->StreamingLevelsPrefix);
 	}
+	
+	// 맵 경로가 비어있으면 기본값 사용
 	if (MapPath.IsEmpty())
+	{
 		MapPath = TEXT("/Game/Main/Level/Main_Scene");
-	return ToListenURL(MapPath);
+	}
+	
+	// /Game/.../MapName 형식으로 변환 (이미 올바른 형식이면 그대로 사용)
+	if (!MapPath.Contains(TEXT("/")))
+	{
+		// 짧은 이름만 있으면 전체 경로로 변환
+		MapPath = FString::Printf(TEXT("/Game/Main/Level/%s"), *MapPath);
+	}
+	
+	// .MapName 형식이 아니면 추가
+	if (!MapPath.Contains(TEXT(".")))
+	{
+		FString BaseName = FPaths::GetBaseFilename(MapPath);
+		MapPath = FString::Printf(TEXT("%s.%s"), *MapPath, *BaseName);
+	}
+	
+	return MapPath + TEXT("?listen");
 }
 
 void ABRGameSession::CreateRoomSession(const FString& RoomName)
@@ -265,15 +283,29 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	if (NetMode == NM_Standalone)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[방 생성] ⚠️ Standalone 모드 감지 - ListenServer로 전환 후 세션 생성"));
+		
+		// 현재 맵 경로 가져오기
 		FString CurrentMapPath = UGameplayStatics::GetCurrentLevelName(World, true);
 		if (CurrentMapPath.IsEmpty())
 		{
 			CurrentMapPath = World->GetMapName();
 			CurrentMapPath.RemoveFromStart(World->StreamingLevelsPrefix);
 		}
-		FString ListenURL = ToListenURL(CurrentMapPath);
-		if (!ListenURL.IsEmpty())
+		
+		// 맵 경로를 /Game/.../MapName.MapName 형식으로 변환
+		if (!CurrentMapPath.Contains(TEXT("/")))
 		{
+			CurrentMapPath = FString::Printf(TEXT("/Game/Main/Level/%s.%s"), *CurrentMapPath, *CurrentMapPath);
+		}
+		else if (!CurrentMapPath.Contains(TEXT(".")))
+		{
+			FString MapName = FPaths::GetBaseFilename(CurrentMapPath);
+			CurrentMapPath = FString::Printf(TEXT("%s.%s"), *CurrentMapPath, *MapName);
+		}
+		
+		if (!CurrentMapPath.IsEmpty())
+		{
+			FString ListenURL = FString::Printf(TEXT("%s?listen"), *CurrentMapPath);
 			FString OpenCommand = FString::Printf(TEXT("open %s"), *ListenURL);
 			
 			// PendingRoomName 저장 (ListenServer 전환 후 자동 방 생성용)

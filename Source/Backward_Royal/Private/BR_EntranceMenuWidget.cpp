@@ -2,7 +2,6 @@
 #include "BR_EntranceMenuWidget.h"
 #include "BRPlayerController.h"
 #include "BRGameSession.h"
-#include "BRWidgetFunctionLibrary.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
@@ -22,9 +21,15 @@ void UBR_EntranceMenuWidget::NativeConstruct()
 	CachedPlayerController = GetBRPlayerController();
 
 	// GameSession 이벤트 바인딩 (방 생성 완료)
-	if (ABRGameSession* GameSession = UBRWidgetFunctionLibrary::GetBRGameSession(this))
+	if (UWorld* World = GetWorld())
 	{
-		GameSession->OnCreateSessionComplete.AddDynamic(this, &UBR_EntranceMenuWidget::HandleCreateRoomComplete);
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
+			{
+				GameSession->OnCreateSessionComplete.AddDynamic(this, &UBR_EntranceMenuWidget::HandleCreateRoomComplete);
+			}
+		}
 	}
 }
 
