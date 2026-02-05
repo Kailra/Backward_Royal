@@ -1098,10 +1098,11 @@ void UBRGameInstance::LoadPlayerNameFromUserInfo() {
   }
 }
 
-void UBRGameInstance::SaveCustomization(const FBRCustomizationData &NewData) {
-  LocalCustomizationData = NewData;
+void UBRGameInstance::SaveCustomization(const FBRCustomizationData &NewData)
+{
+    LocalCustomizationData = NewData;
 
-  UE_LOG(LogBRGameInstance, Log,
-         TEXT("Local Customization Saved: Head(%d), Leg(%d)"), NewData.HeadID,
-         NewData.LegID);
+    UE_LOG(LogBRGameInstance, Log,
+            TEXT("Local Customization Saved: Head(%d), Leg(%d)"), NewData.HeadID,
+            NewData.LegID);
 }
