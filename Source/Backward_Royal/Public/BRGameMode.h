@@ -33,14 +33,17 @@ public:
 	// Stage 맵 목록 (랜덤 선택용)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	TArray<FString> StageMapPaths = {
-		TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
+		//TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
 		TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
-		TEXT("/Game/Main/Level/Stage/Stage03_Arena")
+		//TEXT("/Game/Main/Level/Stage/Stage03_Arena")
 	};
 
 	// 랜덤 맵 선택 사용 여부
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	bool bUseRandomMap = true;
+
+	/** PIE 종료 시 GameMode→GameSession→World 참조 사슬 차단 (DoPIEExitCleanup에서 호출) */
+	void ClearGameSessionForPIEExit();
 
 	// 게임 시작
 	UFUNCTION(BlueprintCallable, Category = "Game")

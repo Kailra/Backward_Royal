@@ -28,6 +28,11 @@ ABRGameMode::ABRGameMode()
 	bUseSeamlessTravel = true;
 }
 
+void ABRGameMode::ClearGameSessionForPIEExit()
+{
+	GameSession = nullptr;
+}
+
 void ABRGameMode::BeginPlay()
 {
 	Super::BeginPlay();
@@ -381,17 +386,33 @@ void ABRGameMode::Logout(AController* Exiting)
 
 void ABRGameMode::ApplyRoleChangesForRandomTeams()
 {
-	if (!HasAuthority() || !UpperBodyClass) return;
+	if (!HasAuthority()) return;
+	if (!UpperBodyClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 적용] UpperBodyClass가 설정되지 않았습니다. BP_MainGameMode(또는 사용 중인 GameMode 블루프린트)에서 Upper Body Class에 BP_UpperBodyPawn을 할당하세요."));
+		return;
+	}
 
 	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
 	if (!GI || !GI->GetPendingApplyRandomTeamRoles())
 		return;
-	GI->ClearPendingApplyRandomTeamRoles();
-
-	UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] ApplyRoleChangesForRandomTeams 진입 (1.5초 타이머)"));
 
 	ABRGameState* BRGameState = GetGameState<ABRGameState>();
-	if (!BRGameState || BRGameState->PlayerArray.Num() < 2) return;
+	if (!BRGameState || BRGameState->PlayerArray.Num() < 2)
+		return;
+
+	// 저장된 인원 수만큼 플레이어가 다 들어올 때까지 짧게 대기 (전원 하체로 나오는 현상 방지)
+	const int32 ExpectedCount = GI->GetPendingRoleRestoreCount();
+	if (ExpectedCount > 0 && BRGameState->PlayerArray.Num() < ExpectedCount)
+	{
+		FTimerHandle H;
+		GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.5f, false);
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 플레이어 대기 중 (%d/%d), 0.5초 후 재시도"), BRGameState->PlayerArray.Num(), ExpectedCount);
+		return;
+	}
+
+	// 플래그는 하체 Pawn 확인 통과 후에만 클리어 (Pawn 없이 재시도할 때 플래그 유지)
+	UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] ApplyRoleChangesForRandomTeams 진입 (상체/하체 Pawn 적용)"));
 
 	// Seamless Travel 후 PlayerState가 초기화될 수 있으므로, 저장해 둔 팀/역할을 복원
 	GI->RestorePendingRolesFromTravel(BRGameState);
@@ -417,7 +438,43 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 
 	const int32 NumPlayers = SortedByTeam.Num();
 	const int32 NumTeams = NumPlayers / 2;
-	if (NumTeams < 1) return;
+	if (NumTeams < 1)
+	{
+		GI->ClearPendingApplyRandomTeamRoles();
+		return;
+	}
+
+	// 하체 플레이어에게 기본 Pawn이 스폰될 때까지 대기 (Seamless Travel 직후엔 Pawn이 아직 없을 수 있음)
+	static int32 G_ApplyRolePawnWaitRetries = 0;
+	const int32 MaxPawnWaitRetries = 20; // 0.5초 * 20 = 최대 10초 대기
+	bool bAllLowerHavePawns = true;
+	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
+	{
+		ABRPlayerState* LowerPS = SortedByTeam[2 * TeamIndex];
+		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwningController());
+		if (LowerPC && (!LowerPC->GetPawn() || !IsValid(LowerPC->GetPawn())))
+		{
+			bAllLowerHavePawns = false;
+			break;
+		}
+	}
+	if (!bAllLowerHavePawns)
+	{
+		if (G_ApplyRolePawnWaitRetries >= MaxPawnWaitRetries)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 대기 시간 초과(%d회), 적용 포기"), G_ApplyRolePawnWaitRetries);
+			G_ApplyRolePawnWaitRetries = 0;
+			GI->ClearPendingApplyRandomTeamRoles();
+			return;
+		}
+		G_ApplyRolePawnWaitRetries++;
+		FTimerHandle H;
+		GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.5f, false);
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 하체 Pawn 대기 중 (%d/%d회), 0.5초 후 재시도"), G_ApplyRolePawnWaitRetries, MaxPawnWaitRetries);
+		return;
+	}
+	G_ApplyRolePawnWaitRetries = 0;
+	GI->ClearPendingApplyRandomTeamRoles();
 
 	// 상체로 지정된 플레이어들의 기존(하체) Pawn만 먼저 제거 → 팀당 1개 하체 몸통만 남김
 	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)

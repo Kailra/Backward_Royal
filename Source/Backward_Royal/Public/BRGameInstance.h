@@ -175,6 +175,9 @@ public:
 
 	/** Travel 복원 대기 중인지 (게임 맵 PostLogin 직후 UpdatePlayerList에서 새 플레이어→대기열 초기화 스킵용) */
 	bool HasPendingRoleRestore() const;
+	/** 저장된 역할 복원 데이터 개수 (ApplyRoleChangesForRandomTeams 대기 조건용) */
+	int32 GetPendingRoleRestoreCount() const;
+
 	/** PostLogin에서 호출: Travel 복원 시 해당 인덱스의 UserInfo가 있으면 true */
 	bool HasPendingUserInfoForIndex(int32 Index) const;
 	/** PostLogin에서 호출: 저장된 UserInfo를 PlayerState에 즉시 복원 (UID, Name, Customization, Host, Ready) */

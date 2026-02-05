@@ -470,7 +470,8 @@ void ABRPlayerController::ClearUIForShutdown()
 	if (CurrentMenuWidget && IsValid(CurrentMenuWidget))
 	{
 		CurrentMenuWidget->RemoveFromParent();
-		CurrentMenuWidget = nullptr;
+
+		
 	}
 }
 
