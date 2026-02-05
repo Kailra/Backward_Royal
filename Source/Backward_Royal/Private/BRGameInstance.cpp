@@ -576,7 +576,7 @@ void UBRGameInstance::SavePendingRolesForTravel(ABRGameState *GameState) {
     if (ABRPlayerState *BRPS = Cast<ABRPlayerState>(PS)) {
       FString Key = BRPS->GetPlayerName();
       if (Key.IsEmpty())
-        Key = BRPS->UserUID;
+        Key = BRPS->MyProfile.UserUID;
       if (!Key.IsEmpty()) {
         TTuple<int32, bool, int32> Data(BRPS->TeamNumber, BRPS->bIsLowerBody,
                                         BRPS->ConnectedPlayerIndex);
@@ -622,7 +622,7 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState *GameState) {
     if (ABRPlayerState *BRPS = Cast<ABRPlayerState>(PS)) {
       FString Key = BRPS->GetPlayerName();
       if (Key.IsEmpty())
-        Key = BRPS->UserUID;
+        Key = BRPS->MyProfile.UserUID;
       const TTuple<int32, bool, int32> *Found = NameMap.Find(Key);
       if (Found) {
         BRPS->SetTeamNumber(Found->Get<0>());
@@ -1098,11 +1098,10 @@ void UBRGameInstance::LoadPlayerNameFromUserInfo() {
   }
 }
 
-void UBRGameInstance::SaveCustomization(const FBRCustomizationData &NewData)
-{
-    LocalCustomizationData = NewData;
+void UBRGameInstance::SaveCustomization(const FBRCustomizationData &NewData) {
+  MyProfile.UserCustomData = NewData;
 
-    UE_LOG(LogBRGameInstance, Log,
-            TEXT("Local Customization Saved: Head(%d), Leg(%d)"), NewData.HeadID,
-            NewData.LegID);
+  UE_LOG(LogBRGameInstance, Log,
+         TEXT("Local Customization Saved to MyProfile: Head(%d), Leg(%d)"),
+         NewData.HeadID, NewData.LegID);
 }

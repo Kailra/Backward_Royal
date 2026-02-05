@@ -1,196 +1,220 @@
 // BRGameInstance.h
 #pragma once
 
+#include "ArmorTypes.h"
+#include "BaseUserInfo.h"
 #include "CoreMinimal.h"
+#include "CustomizationInfo.h"
 #include "Delegates/Delegate.h"
 #include "Engine/GameInstance.h"
 #include "TimerManager.h"
 #include "WeaponTypes.h"
-#include "ArmorTypes.h"
-#include "CustomizationInfo.h"
 #include "BRGameInstance.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogBRGameInstance, Log, All);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRoomTitleReceived);
 
 UCLASS()
-class BACKWARD_ROYAL_API UBRGameInstance : public UGameInstance
-{
-	GENERATED_BODY()
+class BACKWARD_ROYAL_API UBRGameInstance : public UGameInstance {
+  GENERATED_BODY()
 
 public:
-	UBRGameInstance();
-	
-	virtual void Init() override;
-	virtual void OnStart() override;
-	virtual void Shutdown() override;
+  UBRGameInstance();
 
-	// 방 생성
-	UFUNCTION(Exec)
-	void CreateRoom(const FString& RoomName = TEXT("TestRoom"));
+  virtual void Init() override;
+  virtual void OnStart() override;
+  virtual void Shutdown() override;
 
-	// 방 찾기
-	UFUNCTION(Exec)
-	void FindRooms();
+  // 방 생성
+  UFUNCTION(Exec)
+  void CreateRoom(const FString &RoomName = TEXT("TestRoom"));
 
-	// 준비 상태 토글
-	UFUNCTION(Exec)
-	void ToggleReady();
+  // 방 찾기
+  UFUNCTION(Exec)
+  void FindRooms();
 
-	// 랜덤 팀 배정
-	UFUNCTION(Exec)
-	void RandomTeams();
+  // 준비 상태 토글
+  UFUNCTION(Exec)
+  void ToggleReady();
 
-	// 플레이어 팀 변경
-	UFUNCTION(Exec)
-	void ChangeTeam(int32 PlayerIndex, int32 TeamNumber);
+  // 랜덤 팀 배정
+  UFUNCTION(Exec)
+  void RandomTeams();
 
-	// 게임 시작
-	UFUNCTION(Exec)
-	void StartGame();
+  // 플레이어 팀 변경
+  UFUNCTION(Exec)
+  void ChangeTeam(int32 PlayerIndex, int32 TeamNumber);
 
-	// 현재 상태 확인
-	UFUNCTION(Exec)
-	void ShowRoomInfo();
+  // 게임 시작
+  UFUNCTION(Exec)
+  void StartGame();
 
-	/** * [확장형 구조]
-	 * Key: JSON 파일 이름 (확장자 제외, 예: "WeaponBalance")
-	 * Value: 매칭될 데이터 테이블 에셋
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data|Config")
-	TMap<FString, class UDataTable*> ConfigDataMap;
+  // 현재 상태 확인
+  UFUNCTION(Exec)
+  void ShowRoomInfo();
 
-	// --- [핵심] JSON 로드 및 밸런싱 적용 ---
-	UFUNCTION(Exec, Category = "Data")
-	void ReloadAllConfigs();
+  /** * [확장형 구조]
+   * Key: JSON 파일 이름 (확장자 제외, 예: "WeaponBalance")
+   * Value: 매칭될 데이터 테이블 에셋
+   */
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data|Config")
+  TMap<FString, class UDataTable *> ConfigDataMap;
 
-	/** JSON 파일을 읽어 데이터 테이블 업데이트 */
-	UFUNCTION(BlueprintCallable, Category = "Data")
-	void UpdateDataTableFromJson(UDataTable* TargetTable, FString FileName);
+  // --- [핵심] JSON 로드 및 밸런싱 적용 ---
+  UFUNCTION(Exec, Category = "Data")
+  void ReloadAllConfigs();
 
-	/** 데이터 테이블 변경 사항을 .uasset 파일로 영구 저장 (에디터 전용) */
-	void SaveDataTableToAsset(UDataTable* TargetTable);
+  /** JSON 파일을 읽어 데이터 테이블 업데이트 */
+  UFUNCTION(BlueprintCallable, Category = "Data")
+  void UpdateDataTableFromJson(UDataTable *TargetTable, FString FileName);
 
-	// 플레이어 이름 저장 및 가져오기
-	UPROPERTY(BlueprintReadWrite, Category = "Player")
-	FString PlayerName;
+  /** 데이터 테이블 변경 사항을 .uasset 파일로 영구 저장 (에디터 전용) */
+  void SaveDataTableToAsset(UDataTable *TargetTable);
 
-	UFUNCTION(BlueprintCallable, Category = "Player")
-	FString GetPlayerName() const { return PlayerName; }
+  // 플레이어 이름 저장 및 가져오기
+  UPROPERTY(BlueprintReadWrite, Category = "Player")
+  FString PlayerName;
 
-	UFUNCTION(BlueprintCallable, Category = "Player")
-	void SetPlayerName(const FString& NewPlayerName) { PlayerName = NewPlayerName; }
+  UFUNCTION(BlueprintCallable, Category = "Player")
+  FString GetPlayerName() const { return PlayerName; }
 
-	/** S_UserInfo 에셋에서 PlayerName 로드 */
-	void LoadPlayerNameFromUserInfo();
+  UFUNCTION(BlueprintCallable, Category = "Player")
+  void SetPlayerName(const FString &NewPlayerName) {
+    PlayerName = NewPlayerName;
+  }
 
-	// LAN 전용(true) / 인터넷(Steam) 매칭(false). 방 생성·방 찾기 시 사용.
-	// 기본값: false (인터넷 매칭) - Steam을 통한 인터넷 매칭 사용
-	// 콘솔 명령어: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷 매칭)
-	UPROPERTY(BlueprintReadWrite, Category = "Session|Match")
-	bool bUseLANOnly = false;
+  // [Refactored] 영구 유저 프로필 (이름, UID, 레벨, 커스터마이징 등 통합)
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player")
+  FBaseUserInfo MyProfile;
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void SetUseLANOnly(bool bLAN) { bUseLANOnly = bLAN; }
+  /** S_UserInfo 에셋에서 PlayerName 로드 */
+  void LoadPlayerNameFromUserInfo();
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	bool GetUseLANOnly() const { return bUseLANOnly; }
+  // LAN 전용(true) / 인터넷(Steam) 매칭(false). 방 생성·방 찾기 시 사용.
+  // 기본값: false (인터넷 매칭) - Steam을 통한 인터넷 매칭 사용
+  // 콘솔 명령어: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷 매칭)
+  UPROPERTY(BlueprintReadWrite, Category = "Session|Match")
+  bool bUseLANOnly = false;
 
-	/** 콘솔: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷) */
-	UFUNCTION(Exec, Category = "Session|Match")
-	void SetLANOnly(int32 bEnabled);
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void SetUseLANOnly(bool bLAN) { bUseLANOnly = bLAN; }
 
-	/** 방 생성 성공 후 ServerTravel 직전에 설정. 맵 재로드 후 로비 UI 표시 판단용. */
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void SetDidCreateRoomThenTravel(bool b) { bDidCreateRoomThenTravel = b; }
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  bool GetUseLANOnly() const { return bUseLANOnly; }
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	bool GetDidCreateRoomThenTravel() const { return bDidCreateRoomThenTravel; }
+  /** 콘솔: SetLANOnly 1 (LAN 전용) / SetLANOnly 0 (인터넷) */
+  UFUNCTION(Exec, Category = "Session|Match")
+  void SetLANOnly(int32 bEnabled);
 
-	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void SetPendingRoomName(const FString& RoomName) { PendingRoomName = RoomName; }
+  /** 방 생성 성공 후 ServerTravel 직전에 설정. 맵 재로드 후 로비 UI 표시
+   * 판단용. */
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void SetDidCreateRoomThenTravel(bool b) { bDidCreateRoomThenTravel = b; }
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	FString GetPendingRoomName() const { return PendingRoomName; }
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  bool GetDidCreateRoomThenTravel() const { return bDidCreateRoomThenTravel; }
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void ClearPendingRoomName() { PendingRoomName.Empty(); }
+  /** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void SetPendingRoomName(const FString &RoomName) {
+    PendingRoomName = RoomName;
+  }
 
-	/** 클라이언트 입장 시 RPC로 받은 방 제목 캐시. "○○'s Game" 즉시 표시용 */
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void SetCachedRoomTitle(const FString& Title) { CachedRoomTitle = Title; }
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  FString GetPendingRoomName() const { return PendingRoomName; }
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	FString GetCachedRoomTitle() const { return CachedRoomTitle; }
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void ClearPendingRoomName() { PendingRoomName.Empty(); }
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void ClearCachedRoomTitle() { CachedRoomTitle.Empty(); }
+  /** 클라이언트 입장 시 RPC로 받은 방 제목 캐시. "○○'s Game" 즉시 표시용 */
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void SetCachedRoomTitle(const FString &Title) { CachedRoomTitle = Title; }
 
-	/** RPC로 방 제목 수신 시 브로드캐스트 (로비 UI에서 바인딩해 제목 즉시 갱신) */
-	UPROPERTY(BlueprintAssignable, Category = "Session|Match")
-	FOnRoomTitleReceived OnRoomTitleReceived;
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  FString GetCachedRoomTitle() const { return CachedRoomTitle; }
 
-	/** 로비에서 랜덤 팀 배정 후, 게임 맵 로드 시 상체/하체 Pawn 적용 대기 플래그 */
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void SetPendingApplyRandomTeamRoles(bool b) { bPendingApplyRandomTeamRoles = b; }
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void ClearCachedRoomTitle() { CachedRoomTitle.Empty(); }
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	bool GetPendingApplyRandomTeamRoles() const { return bPendingApplyRandomTeamRoles; }
+  /** RPC로 방 제목 수신 시 브로드캐스트 (로비 UI에서 바인딩해 제목 즉시 갱신)
+   */
+  UPROPERTY(BlueprintAssignable, Category = "Session|Match")
+  FOnRoomTitleReceived OnRoomTitleReceived;
 
-	UFUNCTION(BlueprintCallable, Category = "Session|Match")
-	void ClearPendingApplyRandomTeamRoles() { bPendingApplyRandomTeamRoles = false; }
+  /** 로비에서 랜덤 팀 배정 후, 게임 맵 로드 시 상체/하체 Pawn 적용 대기 플래그
+   */
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void SetPendingApplyRandomTeamRoles(bool b) {
+    bPendingApplyRandomTeamRoles = b;
+  }
 
-	/** Seamless Travel 전에 호출: 현재 GameState의 팀/역할을 저장 (Travel 후 PlayerState가 초기화되므로 복원용) */
-	void SavePendingRolesForTravel(class ABRGameState* GameState);
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  bool GetPendingApplyRandomTeamRoles() const {
+    return bPendingApplyRandomTeamRoles;
+  }
 
-	/** 게임 맵 로드 후 ApplyRoleChangesForRandomTeams 내부에서 호출: 저장된 팀/역할을 PlayerState에 복원 */
-	void RestorePendingRolesFromTravel(class ABRGameState* GameState);
+  UFUNCTION(BlueprintCallable, Category = "Session|Match")
+  void ClearPendingApplyRandomTeamRoles() {
+    bPendingApplyRandomTeamRoles = false;
+  }
 
-	// 전역 변수 설정을 위한 함수
-	void ApplyGlobalMultipliers();
+  /** Seamless Travel 전에 호출: 현재 GameState의 팀/역할을 저장 (Travel 후
+   * PlayerState가 초기화되므로 복원용) */
+  void SavePendingRolesForTravel(class ABRGameState *GameState);
 
-	// 로컬 플레이어가 선택한 커스터마이징 정보 (UI에서 이 값을 수정)
-	UPROPERTY(BlueprintReadWrite, Category = "Customization")
-	FBRCustomizationData LocalCustomizationData;
+  /** 게임 맵 로드 후 ApplyRoleChangesForRandomTeams 내부에서 호출: 저장된
+   * 팀/역할을 PlayerState에 복원 */
+  void RestorePendingRolesFromTravel(class ABRGameState *GameState);
 
-	UFUNCTION(BlueprintCallable, Category = "Customization")
-	void SaveCustomization(const FBRCustomizationData& NewData);
+  // 전역 변수 설정을 위한 함수
+  void ApplyGlobalMultipliers();
 
-	UFUNCTION(BlueprintCallable, Category = "Customization")
-	FBRCustomizationData GetLocalCustomization() const { return LocalCustomizationData; }
-		
+  // [Legacy] LocalCustomizationData 삭제됨 -> MyProfile.UserCustomData 사용
+
+  UFUNCTION(BlueprintCallable, Category = "Customization")
+  void SaveCustomization(const FBRCustomizationData &NewData);
+
+  UFUNCTION(BlueprintCallable, Category = "Customization")
+  FBRCustomizationData GetLocalCustomization() const {
+    return MyProfile.UserCustomData;
+  }
+
 protected:
-	// 실제 JSON 파싱 로직
-	void LoadConfigFromJson(const FString& FileName, class UDataTable* TargetTable);
+  // 실제 JSON 파싱 로직
+  void LoadConfigFromJson(const FString &FileName,
+                          class UDataTable *TargetTable);
 
-	FString GetConfigDirectory();
+  FString GetConfigDirectory();
 
-	/** Session/타이머/네비 등 정리 (Shutdown PIE 블록과 OnWorldCleanup 콜백에서 호출) */
-	void DoPIEExitCleanup(UWorld* World);
+  /** Session/타이머/네비 등 정리 (Shutdown PIE 블록과 OnWorldCleanup 콜백에서
+   * 호출) */
+  void DoPIEExitCleanup(UWorld *World);
 
-	/** 방 생성 후 ServerTravel 호출 직전에 true 설정. BeginPlay에서 로비 표시 여부 판단에 사용. */
-	bool bDidCreateRoomThenTravel = false;
+  /** 방 생성 후 ServerTravel 호출 직전에 true 설정. BeginPlay에서 로비 표시
+   * 여부 판단에 사용. */
+  bool bDidCreateRoomThenTravel = false;
 
-	/** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
-	FString PendingRoomName;
+  /** 방 생성 시 방 이름 저장 (맵 재로드 후 세션 재생성용) */
+  FString PendingRoomName;
 
-	/** 클라이언트 입장 시 RPC로 받은 방 제목 캐시 */
-	FString CachedRoomTitle;
+  /** 클라이언트 입장 시 RPC로 받은 방 제목 캐시 */
+  FString CachedRoomTitle;
 
-	/** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출 대기 */
-	bool bPendingApplyRandomTeamRoles = false;
+  /** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출
+   * 대기 */
+  bool bPendingApplyRandomTeamRoles = false;
 
-	/** Seamless Travel 후 역할 복원용. PlayerName으로 매칭 (Travel 후에도 동일한 이름 유지 가정) */
-	TMap<FString, TTuple<int32, bool, int32>> PendingRoleRestoreByName;
-	/** 인덱스 폴백용 (PlayerName 매칭 실패 시 사용) */
-	TArray<TTuple<int32, bool, int32>> PendingRoleRestoreByIndex;
+  /** Seamless Travel 후 역할 복원용. PlayerName으로 매칭 (Travel 후에도 동일한
+   * 이름 유지 가정) */
+  TMap<FString, TTuple<int32, bool, int32>> PendingRoleRestoreByName;
+  /** 인덱스 폴백용 (PlayerName 매칭 실패 시 사용) */
+  TArray<TTuple<int32, bool, int32>> PendingRoleRestoreByIndex;
 
-	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
-	FTimerHandle ListenServerTimerHandle;
-	FTimerHandle SessionRecreateTimerHandle;
+  /** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들
+   * (Shutdown에서 명시적으로 클리어) */
+  FTimerHandle ListenServerTimerHandle;
+  FTimerHandle SessionRecreateTimerHandle;
 
-	/** OnWorldCleanup 등록 해제용 (Shutdown에서 Remove) */
-	FDelegateHandle OnWorldCleanupHandle;
+  /** OnWorldCleanup 등록 해제용 (Shutdown에서 Remove) */
+  FDelegateHandle OnWorldCleanupHandle;
 };
-
