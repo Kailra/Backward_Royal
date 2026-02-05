@@ -245,5 +245,9 @@ private:
 
 	// BeginPlay UI 초기화 타이머 (EndPlay에서 해제하여 open ?listen 크래시 방지)
 	FTimerHandle BeginPlayUITimerHandle;
+
+	/** 호스트가 방 나가기 후 메인 맵에서 ListenServer NetDriver를 한 번만 종료해 Standalone으로 전환 (방 찾기 가능하도록) */
+	FTimerHandle ShutdownListenServerTimerHandle;
+	void TryShutdownListenServerForRoomSearch();
 };
 

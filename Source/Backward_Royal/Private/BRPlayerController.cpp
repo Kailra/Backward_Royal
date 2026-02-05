@@ -253,13 +253,14 @@ void ABRPlayerController::BeginPlay()
 					}
 					else
 					{
-						// 세션이 없음 - MainMenu 표시 (처음 실행 시)
+						// 세션이 없음 - MainMenu 표시 (호스트가 방 나가기 후 복귀). ListenServer NetDriver 종료 예약 → Standalone 전환 후 방 찾기 가능.
 						if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 						{
 							BRGI->SetDidCreateRoomThenTravel(false);
 						}
 						SetMainScreenToEntranceMenu();
 						UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 - ListenServer 모드 (세션 없음)"));
+						W->GetTimerManager().SetTimer(ShutdownListenServerTimerHandle, this, &ABRPlayerController::TryShutdownListenServerForRoomSearch, 0.3f, false);
 					}
 				}
 				else
@@ -293,7 +294,7 @@ void ABRPlayerController::BeginPlay()
 					}
 					else
 					{
-						// 세션이 없음 - MainMenu 표시 (처음 실행 시)
+						// 세션이 없음 - MainMenu 표시 (호스트가 방 나가기 후 복귀). ListenServer NetDriver 종료 예약.
 						if (UBRGameInstance* BRGI = Cast<UBRGameInstance>(W->GetGameInstance()))
 						{
 							BRGI->SetDidCreateRoomThenTravel(false);
@@ -302,6 +303,7 @@ void ABRPlayerController::BeginPlay()
 						{
 							ShowEntranceMenu();
 							UE_LOG(LogTemp, Log, TEXT("[PlayerController] 초기 UI (EntranceMenu) 표시 - ListenServer 모드 (세션 없음)"));
+							W->GetTimerManager().SetTimer(ShutdownListenServerTimerHandle, this, &ABRPlayerController::TryShutdownListenServerForRoomSearch, 0.3f, false);
 						}
 						else
 						{
@@ -428,12 +430,23 @@ void ABRPlayerController::OnRep_Pawn()
 	}
 }
 
+void ABRPlayerController::TryShutdownListenServerForRoomSearch()
+{
+	UWorld* World = GetWorld();
+	if (!World || !GEngine) return;
+	if (World->GetNetMode() != NM_ListenServer) return;
+	// 호스트가 방 나가기 후 메인 맵에만 해당: ListenServer NetDriver를 제거해 Standalone으로 전환하면 방 찾기(FindSessions)가 동작함
+	GEngine->DestroyNamedNetDriver(World, FName(TEXT("GameNetDriver")));
+	UE_LOG(LogTemp, Log, TEXT("[PlayerController] ListenServer NetDriver 종료 - Standalone 전환 (방 찾기 가능)"));
+}
+
 void ABRPlayerController::ClearUIForShutdown()
 {
 	// PIE 종료 시 월드 참조 잔류 방지: GEngine/GameSession 델리게이트를 먼저 끊는다.
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+		World->GetTimerManager().ClearTimer(ShutdownListenServerTimerHandle);
 		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{
 			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))
@@ -472,6 +485,7 @@ void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+		World->GetTimerManager().ClearTimer(ShutdownListenServerTimerHandle);
 	}
 
 	// 네트워크 연결 실패 델리게이트 언바인딩
