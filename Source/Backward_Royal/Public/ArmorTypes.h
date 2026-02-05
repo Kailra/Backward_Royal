@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/DataTable.h"
 #include "ArmorTypes.generated.h"
 
 UENUM(BlueprintType)

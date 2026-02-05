@@ -16,7 +16,6 @@
 #include "TimerManager.h"
 #include "UpperBodyPawn.h"
 
-
 ABRGameMode::ABRGameMode() {
   // GameState 클래스 설정
   GameStateClass = ABRGameState::StaticClass();
@@ -369,6 +368,30 @@ void ABRGameMode::Logout(AController *Exiting) {
   ABRGameState *BRGameState = GetGameState<ABRGameState>();
   if (BRGameState) {
     if (APlayerState *ExitingPS = Exiting->GetPlayerState<APlayerState>()) {
+      // [Fix] PlayerArray에서 제거 시 인덱스가 밀리는(Shift) 문제 해결
+      // 예: 0,1,2 중 1번이 나가면 2번이 1번 자리로 옴.
+      // 로비 슬롯들은 인덱스를 들고 있으므로, 나간 사람보다 뒤에 있던 사람들의
+      // 인덱스를 -1 해줘야 함.
+      int32 ExitingIndex = BRGameState->PlayerArray.Find(ExitingPS);
+      if (ExitingIndex != INDEX_NONE) {
+        // 1. 대기열 슬롯 갱신
+        for (int32 &SlotRef : BRGameState->LobbyEntrySlots) {
+          if (SlotRef == ExitingIndex) {
+            SlotRef = -1; // 나간 사람은 제거
+          } else if (SlotRef > ExitingIndex) {
+            SlotRef--; // 뒤에 있던 사람은 인덱스 당김
+          }
+        }
+        // 2. 팀 슬롯 갱신
+        for (int32 &SlotRef : BRGameState->LobbyTeamSlots) {
+          if (SlotRef == ExitingIndex) {
+            SlotRef = -1;
+          } else if (SlotRef > ExitingIndex) {
+            SlotRef--;
+          }
+        }
+      }
+
       BRGameState->PlayerArray.Remove(ExitingPS);
     }
   }

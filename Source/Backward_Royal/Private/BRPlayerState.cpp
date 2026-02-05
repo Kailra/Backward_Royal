@@ -262,6 +262,9 @@ void ABRPlayerState::SetPlayerProfile(const FBaseUserInfo &InProfile) {
 void ABRPlayerState::OnRep_MyProfile() {
   // 프로필 변경 시 GameState에 알림 (UI 갱신 등)
   NotifyUserInfoChanged();
+
+  // 커스터마이징 데이터 변경 알림 (캐릭터 외형 변경 등)
+  OnCustomizationDataChanged.Broadcast();
 }
 
 void ABRPlayerState::NotifyUserInfoChanged() {
@@ -282,7 +285,7 @@ void ABRPlayerState::SetPlayerNameString(const FString &NewPlayerName) {
 
   // UID를 이름으로 저장하지 않음. 표시용은 "Player N" 등으로 대체됨.
   FString NameToSet = NewPlayerName;
-  if (!NameToSet.IsEmpty() && NameToSet == UserUID) {
+  if (!NameToSet.IsEmpty() && NameToSet == MyProfile.UserUID) {
     NameToSet = TEXT("Player");
     UE_LOG(LogTemp, Log,
            TEXT("[플레이어 이름] UID와 동일하여 'Player'로 대체 저장"));

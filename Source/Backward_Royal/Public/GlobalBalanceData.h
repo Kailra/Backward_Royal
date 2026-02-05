@@ -1,35 +1,35 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/DataTable.h"
 #include "GlobalBalanceData.generated.h"
 
-// ¿¸ø™ πÎ∑±Ω∫ µ•¿Ã≈Õ ±∏¡∂√º
+// Ï†ÑÏó≠ Î∞∏Îü∞Ïä§ Îç∞Ïù¥ÌÑ∞ Íµ¨Ï°∞Ï≤¥
 USTRUCT(BlueprintType)
-struct FGlobalBalanceData : public FTableRowBase
-{
-    GENERATED_BODY()
+struct FGlobalBalanceData : public FTableRowBase {
+  GENERATED_BODY()
 
 public:
-    // --- π´±‚ ∞¸∑√ º≥¡§ ---
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Weapon_DamageMultiplier = 1.0f;
+  // --- Î¨¥Í∏∞ Í¥ÄÎ†® ÏÑ§Ï†ï ---
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Weapon_DamageMultiplier = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Weapon_ImpulseMultiplier = 1.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Weapon_ImpulseMultiplier = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Weapon_AttackSpeedMultiplier = 1.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Weapon_AttackSpeedMultiplier = 1.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Durability_Reduction = 10.f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Durability_Reduction = 10.f;
 
-    // --- Ω∫≈¬πÃ≥™ ∞¸∑√ º≥¡§ ---
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Stamina_SprintDrainRate = 20.0f;
+  // --- Ïä§ÌÉúÎØ∏ÎÇò Í¥ÄÎ†® ÏÑ§Ï†ï ---
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Stamina_SprintDrainRate = 20.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Stamina_JumpCost = 15.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Stamina_JumpCost = 15.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Global_Stamina_RegenRate = 10.0f;
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  float Global_Stamina_RegenRate = 10.0f;
 };

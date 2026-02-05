@@ -1,5 +1,6 @@
 #pragma once
 
+
 #include "CoreMinimal.h"
 #include "CustomizationInfo.h"
 #include "BaseUserInfo.generated.h"
@@ -31,12 +32,4 @@ struct FBaseUserInfo {
   // [Refactored] 커스터마이징 데이터 통합 (기존 SkinID 등 대체)
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Customization")
   FBRCustomizationData UserCustomData;
-};
-
-/**
- *
- */
-UCLASS()
-class BACKWARD_ROYAL_API UBaseUserInfo : public UObject {
-  GENERATED_BODY()
 };

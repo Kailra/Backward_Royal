@@ -1082,6 +1082,16 @@ void ABRPlayerController::ServerSetTeamNumber_Implementation(
   }
 }
 
+void ABRPlayerController::ServerSetProfile_Implementation(
+    const FBaseUserInfo &InProfile) {
+  if (ABRPlayerState *BRPS = GetPlayerState<ABRPlayerState>()) {
+    BRPS->SetPlayerProfile(InProfile);
+    UE_LOG(LogTemp, Log,
+           TEXT("[BRPlayerController] ServerSetProfile: %s (UID: %s)"),
+           *InProfile.PlayerName, *InProfile.UserUID);
+  }
+}
+
 void ABRPlayerController::ServerSetPlayerRole_Implementation(bool bLowerBody) {
   if (ABRPlayerState *BRPS = GetPlayerState<ABRPlayerState>()) {
     // 현재는 연결된 플레이어 인덱스를 -1로 설정 (나중에 연결 로직 추가 가능)
