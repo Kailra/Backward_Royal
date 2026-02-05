@@ -672,15 +672,31 @@ void ABRGameMode::StartGame()
 				{
 					if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
 					{
-						// 클라이언트에게 게임 시작 알림 (RPC)
 						BRPC->ClientNotifyGameStarting();
 					}
 				}
 			}
 			
-			// PIE 환경에서는 ServerTravel이 클라이언트를 자동으로 따라오지 않을 수 있음
-			// 하지만 일반적으로 ServerTravel은 클라이언트가 자동으로 따라옵니다
-			// 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동으로 따라옵니다
+			// PIE에서는 ServerTravel만으로는 클라이언트가 따라오지 않는 경우가 있으므로,
+			// 원격 클라이언트에게 명시적으로 ClientTravel URL을 보내서 같은 맵으로 이동시킴
+			if (bIsPIE)
+			{
+				// PIE 서버는 ServerConnection이 없으므로 기본 주소 사용 (클라이언트는 이 주소로 접속)
+				FString ServerAddr = TEXT("127.0.0.1:7777");
+				// 클라이언트 이동 URL: "host:port/MapPath" (맵 경로는 /Game/... 형식)
+				FString ClientTravelURL = ServerAddr + SelectedMapPath;
+				for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+				{
+					APlayerController* PC = It->Get();
+					if (!PC || PC->IsLocalController()) continue;
+					if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+					{
+						BRPC->ClientTravelToGameMap(ClientTravelURL);
+						UE_LOG(LogTemp, Log, TEXT("[게임 시작] PIE: 원격 클라이언트에게 ClientTravel 전송: %s"), *ClientTravelURL);
+					}
+				}
+			}
+			
 			World->ServerTravel(TravelURL, true);
 		}
 }

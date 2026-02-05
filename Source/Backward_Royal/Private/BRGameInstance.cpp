@@ -28,14 +28,12 @@
 #include "UObject/UnrealType.h"
 
 #if WITH_EDITOR
+#include "Editor/EditorEngine.h"
 #include "UObject/SavePackage.h"
 #endif
 
 DEFINE_LOG_CATEGORY(LogBRGameInstance);
 
-#define GI_LOG(Verbosity, Format, ...)                                         \
-  UE_LOG(LogBRGameInstance, Verbosity, TEXT("%s: ") Format,                    \
-         *FString(__FUNCTION__), ##__VA_ARGS__)
 
 UBRGameInstance::UBRGameInstance() {}
 
@@ -64,6 +62,27 @@ void UBRGameInstance::Init() {
           Self->DoPIEExitCleanup(InWorld);
         }
       });
+
+#if WITH_EDITOR
+  // PIE 종료 시 엔진의 '월드 참조 검사'(PlayLevel assertion)보다 먼저 실행되도록
+  // PrePIEEnded에서 정리. OnWorldCleanup만으로는 검사가 먼저 돌 수 있음.
+  TWeakObjectPtr<UBRGameInstance> SelfForPIE(this);
+  PrePIEEndedHandle = FEditorDelegates::PrePIEEnded.AddLambda(
+      [SelfForPIE](bool /* bSimulating */) {
+        if (!SelfForPIE.IsValid()) return;
+        UBRGameInstance *GI = SelfForPIE.Get();
+        if (GEngine) {
+          const auto &Contexts = GEngine->GetWorldContexts();
+          for (const FWorldContext &Context : Contexts) {
+            UWorld *World = Context.World();
+            if (World && World->IsPlayInEditor() &&
+                Context.OwningGameInstance == GI) {
+              GI->DoPIEExitCleanup(World);
+            }
+          }
+        }
+      });
+#endif
 
   // 패킹된 게임에서 Standalone 모드로 시작하는 것을 방지하기 위해
   // 명령줄 인자 확인 (이미 ?listen이 있으면 그대로 사용)
@@ -144,9 +163,7 @@ void UBRGameInstance::OnStart() {
       // GEngine과 World가 유효한지 확인
       if (GEngine && World && IsValid(World)) {
         FString DebugMsg = FString::Printf(
-            TEXT("[GameInstance] Standalone 모드 + PendingRoomName 감지!\n")
-                TEXT("자동으로 ListenServer 모드로 전환합니다.\n")
-                    TEXT("명령어: %s"),
+            TEXT("[GameInstance] Standalone 모드 + PendingRoomName 감지! 자동으로 ListenServer 모드로 전환합니다. 명령어: %s"),
             *OpenCommand);
         GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
       }
@@ -243,13 +260,9 @@ void UBRGameInstance::OnStart() {
         UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 명령어: %s"),
                *OpenCommand);
 
-        if (GEngine) {
-          FString DebugMsg = FString::Printf(
-              TEXT("[GameInstance] PendingRoomName 감지!\n")
-                  TEXT("자동으로 ListenServer 모드로 전환합니다.\n")
-                      TEXT("명령어: %s"));
-          GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, DebugMsg);
-        }
+        FString DebugMsg = FString::Printf(
+            TEXT("[GameInstance] PendingRoomName 감지! 자동으로 ListenServer 모드로 전환합니다. 명령어: %s"),
+            *OpenCommand);
 
         // PlayerController를 통한 ConsoleCommand 실행
         if (APlayerController *PC = World->GetFirstPlayerController()) {
@@ -725,12 +738,10 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
 
 /** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */
 void UBRGameInstance::ReloadAllConfigs() {
-  GI_LOG(Display, TEXT("=== Starting Global Config Reload and Asset Sync ==="));
+      UE_LOG(LogBRGameInstance, Display, TEXT("%s: === Starting Global Config Reload and Asset Sync ==="), *FString(__FUNCTION__));
 
   if (ConfigDataMap.Num() == 0) {
-    GI_LOG(
-        Warning,
-        TEXT("ConfigDataMap이 비어 있습니다. 에디터에서 설정이 필요합니다."));
+      UE_LOG(LogBRGameInstance, Warning, TEXT("%s: ConfigDataMap이 비어 있습니다. 에디터에서 설정이 필요합니다."), *FString(__FUNCTION__));
     return;
   }
 
@@ -764,7 +775,7 @@ void UBRGameInstance::ReloadAllConfigs() {
     }
   }
 
-  GI_LOG(Display, TEXT("=== Global Config Reload Complete ==="));
+  UE_LOG(LogBRGameInstance, Display, TEXT("%s: === Global Config Reload Complete ==="), *FString(__FUNCTION__));
 }
 
 void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
@@ -777,7 +788,7 @@ void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
   FString JsonString;
 
   if (!FFileHelper::LoadFileToString(JsonString, *FilePath)) {
-    GI_LOG(Warning, TEXT("File not found: %s"), *FilePath);
+    UE_LOG(LogBRGameInstance, Warning, TEXT("%s: File not found: %s"), *FString(__FUNCTION__), *FilePath);
     return;
   }
 
@@ -804,7 +815,7 @@ void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
           // 수치 데이터 주입
           FJsonObjectConverter::JsonObjectToUStruct(DataObj.ToSharedRef(),
                                                     TableStruct, RowPtr);
-          GI_LOG(Log, TEXT("[%s.json] Row Updated: %s"), *FileName,
+          UE_LOG(LogBRGameInstance, Log, TEXT("%s: [%s.json] Row Updated: %s"), *FString(__FUNCTION__), *FileName,
                  *RowID.ToString());
         }
       }
@@ -838,7 +849,7 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable *TargetTable,
   FString JsonString;
 
   if (!FFileHelper::LoadFileToString(JsonString, *FullPath)) {
-    GI_LOG(Warning, TEXT("JSON 파일을 찾을 수 없습니다: %s"), *FullPath);
+    UE_LOG(LogBRGameInstance, Warning, TEXT("%s: JSON 파일을 찾을 수 없습니다: %s"), *FString(__FUNCTION__), *FullPath);
     return;
   }
 
@@ -875,7 +886,7 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable *TargetTable,
           // 추가된 행의 포인터를 다시 가져옴
           RowPtr = TargetTable->FindRowUnchecked(RowName);
 
-          GI_LOG(Log, TEXT("[%s] 새로운 행 생성됨: %s"), *FileName,
+          UE_LOG(LogBRGameInstance, Log, TEXT("%s: [%s] 새로운 행 생성됨: %s"), *FString(__FUNCTION__), *FileName,
                  *RowName.ToString());
         }
 
@@ -884,7 +895,7 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable *TargetTable,
         if (RowPtr && TableStruct) {
           FJsonObjectConverter::JsonObjectToUStruct(DataObj.ToSharedRef(),
                                                     TableStruct, RowPtr);
-          GI_LOG(Log, TEXT("[%s] 데이터 업데이트 완료: %s"), *FileName,
+          UE_LOG(LogBRGameInstance, Log, TEXT("%s: [%s] 데이터 업데이트 완료: %s"), *FString(__FUNCTION__), *FileName,
                  *RowName.ToString());
         }
       }
@@ -911,18 +922,18 @@ void UBRGameInstance::SaveDataTableToAsset(UDataTable *TargetTable) {
   // 게임 실행 중이면 저장하지 않음 (Standalone, PIE 모드 등)
   // GetWorld()가 있으면 게임이 실행 중인 것으로 간주
   if (GetWorld()) {
-    GI_LOG(Warning, TEXT("게임 실행 중이므로 Asset 저장을 건너뜁니다."));
+    UE_LOG(LogBRGameInstance, Warning, TEXT("%s: 게임 실행 중이므로 Asset 저장을 건너뜜"), *FString(__FUNCTION__));
     return;
   }
 
   if (!TargetTable) {
-    GI_LOG(Error, TEXT("TargetTable이 유효하지 않습니다."));
+    UE_LOG(LogBRGameInstance, Error, TEXT("%s: TargetTable이 유효하지 않음"), *FString(__FUNCTION__));
     return;
   }
 
   UPackage *Package = TargetTable->GetOutermost();
   if (!Package) {
-    GI_LOG(Error, TEXT("Package를 찾을 수 없습니다."));
+    UE_LOG(LogBRGameInstance, Error, TEXT("%s: Package를 찾을 수 없음"), *FString(__FUNCTION__));
     return;
   }
 
@@ -935,13 +946,13 @@ void UBRGameInstance::SaveDataTableToAsset(UDataTable *TargetTable) {
   SaveArgs.bForceByteSwapping = true;
 
   if (UPackage::SavePackage(Package, TargetTable, *PackageFileName, SaveArgs)) {
-    GI_LOG(Log, TEXT("Asset 영구 저장 성공: %s"), *PackageFileName);
+    UE_LOG(LogBRGameInstance, Log, TEXT("%s: Asset 영구 저장 성공: %s"), *FString(__FUNCTION__), *PackageFileName);
   } else {
-    GI_LOG(Error, TEXT("Asset 저장 실패: %s"), *PackageFileName);
+    UE_LOG(LogBRGameInstance, Error, TEXT("%s: Asset 저장 실패: %s"), *FString(__FUNCTION__), *PackageFileName);
   }
 #else
   // 에디터가 아닌 환경에서는 저장하지 않음
-  GI_LOG(Warning, TEXT("에디터가 아니므로 Asset 저장을 건너뜁니다."));
+  UE_LOG(LogBRGameInstance, Warning, TEXT("%s: 에디터가 아니므로 Asset 저장을 건너뜁니다."), *FString(__FUNCTION__));
 #endif
 }
 
@@ -1004,16 +1015,16 @@ void UBRGameInstance::ApplyGlobalMultipliers() {
           }
         }
 
-        GI_LOG(Display,
-               TEXT("스태미나 세팅 적용. Stamina: Drain(%.1f), Jump(%.1f), "
-                    "Regen(%.1f)"),
+        UE_LOG(LogBRGameInstance, Display,
+               TEXT("%s: 스태미나 세팅 적용. Stamina: Drain(%.1f), Jump(%.1f), Regen(%.1f)"),
+               *FString(__FUNCTION__),
                UStaminaComponent::Global_SprintDrainRate,
                UStaminaComponent::Global_JumpCost,
                UStaminaComponent::Global_RegenRate);
 
-        GI_LOG(Display,
-               TEXT("무기 배율 세팅 적용. Weapon: Damage(%.1f), Impulse(%.1f), "
-                    "AttackSpeed(%.1f)"),
+        UE_LOG(LogBRGameInstance, Display,
+               TEXT("%s: 무기 배율 세팅 적용. Weapon: Damage(%.1f), Impulse(%.1f), AttackSpeed(%.1f)"),
+               *FString(__FUNCTION__),
                ABaseWeapon::GlobalDamageMultiplier,
                ABaseWeapon::GlobalImpulseMultiplier,
                ABaseWeapon::GlobalAttackSpeedMultiplier);
@@ -1026,8 +1037,7 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
   if (!World || !World->IsPlayInEditor()) {
     return;
   }
-  GI_LOG(Warning,
-         TEXT("PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"));
+  UE_LOG(LogBRGameInstance, Warning, TEXT("%s: PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"), *FString(__FUNCTION__));
 
   // 1) SessionInterface→GameSession→World 참조를 가장 먼저 끊음 (UnrealEdEngine
   // 경로의 참조 원인 제거)
@@ -1038,9 +1048,10 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
     }
   }
 
-  // 2) GEngine/GameSession 델리게이트·위젯 정리 — PC가 월드를 잡지 않도록
-  if (APlayerController *PC = World->GetFirstPlayerController()) {
-    if (ABRPlayerController *BRPC = Cast<ABRPlayerController>(PC)) {
+  // 2) GEngine/GameSession 델리게이트·위젯 정리 — 모든 PC가 월드를 잡지 않도록
+  for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator();
+       It; ++It) {
+    if (ABRPlayerController *BRPC = Cast<ABRPlayerController>(It->Get())) {
       BRPC->ClearUIForShutdown();
     }
   }
@@ -1054,11 +1065,76 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
   // 참조가 남음
   OnRoomTitleReceived.Clear();
 
-  // 4) NavigationSystem 정리 (월드 파괴 직전 호출 시 크래시 가능성 있음 —
-  // 마지막에 수행)
-  if (UNavigationSystemV1 *NavSys =
-          FNavigationSystem::GetCurrent<UNavigationSystemV1>(World)) {
-    NavSys->CleanUp();
+  // 5) UserInfo 맵/배열 정리 (필요 시)
+  PendingRoleRestoreByName.Empty();
+  PendingRoleRestoreByIndex.Empty();
+  G_PendingRoleByName.Empty();
+  G_PendingRoleByIndex.Empty();
+
+  // 7) 모든 컴포넌트 Detach 유도 및 ChaosScene 정리 지원
+  if (World && !World->bIsTearingDown)
+  {
+      UE_LOG(LogBRGameInstance, Warning, TEXT("%s: 모든 액터 및 컴포넌트 강제 정리 시작"), *FString(__FUNCTION__));
+
+      // 1단계: 모든 액터의 계층 구조 끊기 및 티킹 중지
+      for (FActorIterator It(World); It; ++It)
+      {
+          AActor* Actor = *It;
+          if (IsValid(Actor) && !Actor->IsA<AWorldSettings>())
+          {
+              Actor->SetActorTickEnabled(false);
+              Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+              
+              TArray<UActorComponent*> Components;
+              Actor->GetComponents(Components);
+              for (UActorComponent* Comp : Components)
+              {
+                  if (Comp)
+                  {
+                      Comp->PrimaryComponentTick.bCanEverTick = false;
+                      if (USceneComponent* SceneComp = Cast<USceneComponent>(Comp))
+                      {
+                          SceneComp->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+                      }
+                  }
+              }
+          }
+      }
+
+      // 2단계: 모든 컴포넌트 등록 해제 및 파괴 (ChaosScene 참조 제거 핵심)
+      for (FActorIterator It(World); It; ++It)
+      {
+          AActor* Actor = *It;
+          if (IsValid(Actor))
+          {
+              TArray<UActorComponent*> Components;
+              Actor->GetComponents(Components);
+              for (UActorComponent* Comp : Components)
+              {
+                  if (Comp)
+                  {
+                      if (Comp->IsRegistered())
+                      {
+                          Comp->UnregisterComponent();
+                      }
+                      Comp->DestroyComponent();
+                  }
+              }
+              
+              if (!Actor->IsA<AWorldSettings>())
+              {
+                  Actor->Destroy();
+              }
+          }
+      }
+  }
+
+  // 8) NavigationSystem 및 CrowdManager 확실히 정리
+  if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
+  {
+      UE_LOG(LogBRGameInstance, Warning, TEXT("%s: NavigationSystem/CrowdManager 정리 시도"), *FString(__FUNCTION__));
+      
+      World->SetNavigationSystem(nullptr);
   }
 }
 
@@ -1069,6 +1145,15 @@ void UBRGameInstance::Shutdown() {
     FWorldDelegates::OnWorldCleanup.Remove(OnWorldCleanupHandle);
     OnWorldCleanupHandle.Reset();
   }
+  FWorldDelegates::OnWorldCleanup.RemoveAll(this);
+  FWorldDelegates::OnPostWorldCleanup.RemoveAll(this);
+
+#if WITH_EDITOR
+  if (PrePIEEndedHandle.IsValid()) {
+    FEditorDelegates::PrePIEEnded.Remove(PrePIEEndedHandle);
+    PrePIEEndedHandle.Reset();
+  }
+#endif
 
   // PIE 종료 시 모든 PIE 월드에 대해 정리 (GetWorld()만 쓰면 맵 이동 후
   // null/다른 월드일 수 있음)

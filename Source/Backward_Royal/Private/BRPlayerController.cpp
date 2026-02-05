@@ -447,6 +447,8 @@ void ABRPlayerController::ClearUIForShutdown()
 		GEngine->OnNetworkFailure().RemoveAll(this);
 	}
 
+	OnPawnChanged.Clear();
+
 	if (MainScreenWidget && IsValid(MainScreenWidget))
 	{
 		MainScreenWidget->RemoveFromParent();
@@ -742,15 +744,31 @@ void ABRPlayerController::JoinRoom(int32 SessionIndex)
 	// 네트워크 모드 확인
 	ENetMode NetMode = World->GetNetMode();
 	
-	// ListenServer나 DedicatedServer는 JoinRoom을 실행할 수 없음
-	if (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer)
+	// DedicatedServer는 항상 참가 불가. ListenServer는 '현재 활성 세션이 있을 때만' 참가 불가.
+	// (호스트가 방을 나가 세션을 파괴한 뒤 메인 맵으로 돌아온 경우에는 세션이 없으므로 다른 방 참가 허용)
+	if (NetMode == NM_DedicatedServer)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미 서버이므로 다른 방에 참가할 수 없습니다."));
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 전용 서버는 다른 방에 참가할 수 없습니다."));
 		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
-		}
+			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 전용 서버는 참가할 수 없습니다!"));
 		return;
+	}
+	if (NetMode == NM_ListenServer)
+	{
+		bool bHasActiveSession = false;
+		if (AGameModeBase* GameMode = World->GetAuthGameMode())
+		{
+			if (ABRGameSession* BRGameSession = Cast<ABRGameSession>(GameMode->GameSession))
+				bHasActiveSession = BRGameSession->HasActiveSession();
+		}
+		if (bHasActiveSession)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미 서버이므로 다른 방에 참가할 수 없습니다."));
+			if (GEngine)
+				GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
+			return;
+		}
+		// 세션이 없음 = 방 나간 뒤 메인 맵에 있는 호스트 → 다른 방 참가 허용
 	}
 
 	// [수정] 클라이언트에서 직접 로컬 GameSession을 통해 참가 시도
@@ -1204,6 +1222,15 @@ void ABRPlayerController::ClientNotifyGameStarting_Implementation()
 			GI->ClearCachedRoomTitle();
 		}
 	}
+}
+
+void ABRPlayerController::ClientTravelToGameMap_Implementation(const FString& TravelURL)
+{
+	if (TravelURL.IsEmpty()) return;
+	UWorld* World = GetWorld();
+	if (!World || !IsLocalController()) return;
+	UE_LOG(LogTemp, Log, TEXT("[게임 시작] 클라이언트: 서버 지정 URL로 맵 이동: %s"), *TravelURL);
+	ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
 }
 
 void ABRPlayerController::ClientReceiveRoomTitle_Implementation(const FString& RoomTitle)

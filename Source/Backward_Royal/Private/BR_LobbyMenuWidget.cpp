@@ -48,7 +48,9 @@ void UBR_LobbyMenuWidget::NativeDestruct()
 	{
 		CachedGameState->OnPlayerListChanged.RemoveDynamic(this, &UBR_LobbyMenuWidget::HandlePlayerListChanged);
 		CachedGameState->OnTeamChanged.RemoveDynamic(this, &UBR_LobbyMenuWidget::HandleTeamChanged);
+		CachedGameState = nullptr;
 	}
+	CachedPlayerController = nullptr;
 
 	Super::NativeDestruct();
 }
@@ -255,10 +257,25 @@ void UBR_LobbyMenuWidget::HandlePlayerListChanged()
 	// 팀 슬롯(1P/2P) 자동 갱신: 인터페이스 구현체 찾아서 UpdateSlotDisplay 호출.
 	// 중첩된 UserWidget 트리까지 재귀 검색 (WBP_SelectTeam이 컨테이너 안에 있으면 그 안까지 찾음).
 	TArray<UUserWidget*> Visited;
-	std::function<void(UWidgetTree*)> UpdateTeamSlotsInTree;
-	UpdateTeamSlotsInTree = [this, &Visited, &UpdateTeamSlotsInTree](UWidgetTree* Tree)
+	TArray<UWidgetTree*> TreesToProcess;
+	TreesToProcess.Add(WidgetTree);
+
+	// 부모 위젯 트리도 추가 (WBP_SelectTeam이 형제 위젯일 수 있음)
+	for (UWidget* Ancestor = GetParent(); Ancestor; Ancestor = Ancestor->GetParent())
 	{
-		if (!Tree) return;
+		UUserWidget* ParentUserWidget = Cast<UUserWidget>(Ancestor);
+		if (ParentUserWidget && ParentUserWidget->WidgetTree)
+		{
+			TreesToProcess.Add(ParentUserWidget->WidgetTree);
+			break;
+		}
+	}
+
+	while (TreesToProcess.Num() > 0)
+	{
+		UWidgetTree* Tree = TreesToProcess.Pop();
+		if (!Tree) continue;
+
 		TArray<UWidget*> AllWidgets;
 		Tree->GetAllWidgets(AllWidgets);
 		for (UWidget* Widget : AllWidgets)
@@ -272,27 +289,13 @@ void UBR_LobbyMenuWidget::HandlePlayerListChanged()
 					{
 						IBR_LobbyTeamSlotDisplayInterface::Execute_UpdateSlotDisplay(UserWidget);
 					}
-					// 자식 UserWidget 트리도 검색 (2·3·4팀이 중첩 컨테이너 안에 있는 경우)
+					// 자식 UserWidget 트리도 검색
 					if (UserWidget->WidgetTree)
 					{
-						UpdateTeamSlotsInTree(UserWidget->WidgetTree);
+						TreesToProcess.Add(UserWidget->WidgetTree);
 					}
 				}
 			}
-		}
-	};
-
-	// 1) 자신의 위젯 트리 검색 (재귀 포함)
-	UpdateTeamSlotsInTree(WidgetTree);
-
-	// 2) 부모 위젯 트리도 검색 (WBP_SelectTeam이 형제 위젯일 수 있음)
-	for (UWidget* Ancestor = GetParent(); Ancestor; Ancestor = Ancestor->GetParent())
-	{
-		UUserWidget* ParentUserWidget = Cast<UUserWidget>(Ancestor);
-		if (ParentUserWidget && ParentUserWidget->WidgetTree)
-		{
-			UpdateTeamSlotsInTree(ParentUserWidget->WidgetTree);
-			break;
 		}
 	}
 

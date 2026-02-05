@@ -30,5 +30,11 @@ public class Backward_Royal : ModuleRules
 		
 		// Standalone 모드에서 Null Online Subsystem을 사용하기 위해 동적 로드
 		DynamicallyLoadedModuleNames.Add("OnlineSubsystemNull");
+
+		// PIE 종료 시 월드 참조 assertion 방지: PrePIEEnded에서 먼저 정리
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 	}
 }

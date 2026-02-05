@@ -92,6 +92,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientNotifyGameStarting();
 
+	/** PIE 등에서 ServerTravel이 클라이언트를 따라오지 않을 때, 서버가 지정한 URL로 직접 이동 */
+	UFUNCTION(Client, Reliable)
+	void ClientTravelToGameMap(const FString& TravelURL);
+
 	/** 입장 직후 방 제목 전달 (복제 대기 없이 "○○'s Game" 즉시 표시) */
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveRoomTitle(const FString& RoomTitle);
@@ -203,6 +207,7 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestChangePlayerTeam(int32 PlayerIndex, int32 NewTeamNumber);
 
+	/** 게임 시작 요청 (클라이언트→서버). 주의: 블루프린트에서 오버라이드 시 파라미터를 추가/변경하면 ReceivePropertiesForRPC Mismatch로 연결이 끊깁니다. 시그니처 변경 금지. */
 	UFUNCTION(Server, Reliable)
 	void ServerRequestStartGame();
 

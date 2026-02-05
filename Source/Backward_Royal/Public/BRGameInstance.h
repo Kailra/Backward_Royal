@@ -225,5 +225,10 @@ protected:
 
 	/** OnWorldCleanup 등록 해제용 (Shutdown에서 Remove) */
 	FDelegateHandle OnWorldCleanupHandle;
+
+#if WITH_EDITOR
+	/** PIE 종료 시 엔진 참조 검사보다 먼저 정리하기 위한 PrePIEEnded 핸들 */
+	FDelegateHandle PrePIEEndedHandle;
+#endif
 };
 
