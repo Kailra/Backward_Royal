@@ -688,6 +688,9 @@ void ABRPlayerController::FindRooms()
 {
 	UE_LOG(LogTemp, Log, TEXT("[방 찾기] 명령 실행"));
 	
+	// 한번 호스트였다가 방 나간 경우 ListenServer가 남아 있으면 방 찾기 전에 NetDriver 정리
+	TryShutdownListenServerForRoomSearch();
+	
 	// 화면에 디버그 메시지 표시
 	if (GEngine)
 	{
@@ -1913,6 +1916,11 @@ void ABRPlayerController::LeaveRoom()
 	// 호스트(ListenServer): 세션을 종료하고 메인 맵으로 이동 (모든 클라이언트도 함께 이동)
 	if (NetMode == NM_ListenServer)
 	{
+		// 방을 나가면 더 이상 방장이 아니므로 UserInfo/PlayerState의 bIsHost를 false로 갱신
+		if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+		{
+			BRPS->SetIsHost(false);
+		}
 		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{
 			if (ABRGameSession* GameSession = Cast<ABRGameSession>(GameMode->GameSession))

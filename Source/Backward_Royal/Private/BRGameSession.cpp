@@ -431,6 +431,16 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 	
 	bIsSearchingSessions = true;
 	
+	// 방 찾기 시점 NetMode 로그 (한번 호스트였던 경우 Standalone인지 확인용)
+	if (UWorld* World = GetWorld())
+	{
+		ENetMode NetMode = World->GetNetMode();
+		UE_LOG(LogTemp, Log, TEXT("[방 찾기] 검색 시작 - NetMode=%s"),
+			NetMode == NM_Standalone ? TEXT("Standalone") :
+			NetMode == NM_ListenServer ? TEXT("ListenServer") :
+			NetMode == NM_Client ? TEXT("Client") : TEXT("Other"));
+	}
+	
 	// 이전 검색 취소
 	SessionInterface->CancelFindSessions();
 	
@@ -638,17 +648,18 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 		Results = SessionSearch->SearchResults;
 		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 완료: %d개 세션 발견"), Results.Num());
 		
-		// 0건일 때 Steam이면 최대 2회 자동 재검색
+		// 0건일 때 Steam/Null 모두 최대 2회 자동 재검색 (한번 호스트였던 경우 OSS 지연 대응)
 		if (Results.Num() == 0)
 		{
 			IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
 			FString SubsystemName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("NULL");
 			
-			if (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase) &&
-				FindSessionsRetryCount < MaxFindSessionsRetries)
+			const bool bRetryAllowed = (SubsystemName.Equals(TEXT("Steam"), ESearchCase::IgnoreCase) || SubsystemName.Equals(TEXT("NULL"), ESearchCase::IgnoreCase))
+				&& FindSessionsRetryCount < MaxFindSessionsRetries;
+			if (bRetryAllowed)
 			{
 				FindSessionsRetryCount++;
-				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 세션 0건. 2초 후 재검색 (%d/%d)"), FindSessionsRetryCount, MaxFindSessionsRetries);
+				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 세션 0건. 2초 후 재검색 (%d/%d) [OSS=%s]"), FindSessionsRetryCount, MaxFindSessionsRetries, *SubsystemName);
 				if (UWorld* World = GetWorld())
 				{
 					World->GetTimerManager().SetTimer(FindSessionsRetryHandle, this, &ABRGameSession::FindSessionsRetryCallback, 2.0f, false);
