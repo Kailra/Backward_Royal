@@ -29,6 +29,36 @@
       "Name": "Armor_05",
       "DisplayName": "TestFoot",
       "EquipSlot": 4
+    },
+    {
+      "ID": 101,
+      "Name": "Armor_06",
+      "DisplayName": "MilitaryHead",
+      "EquipSlot": 0
+    },
+    {
+      "ID": 201,
+      "Name": "Armor_07",
+      "DisplayName": "MilitaryChest",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 301,
+      "Name": "Armor_08",
+      "DisplayName": "MilitaryHand",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 401,
+      "Name": "Armor_09",
+      "DisplayName": "MilitaryLeg",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 501,
+      "Name": "Armor_10",
+      "DisplayName": "MilitaryFoot",
+      "EquipSlot": 4
     }
   ]
 }
