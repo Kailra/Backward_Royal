@@ -33,6 +33,36 @@ APlayerCharacter::APlayerCharacter()
 	GetMesh()->bCastHiddenShadow = true;
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
+	TArray<USkeletalMeshComponent*> ArmorParts = { HeadMesh, ChestMesh, HandMesh, LegMesh, FootMesh };
+
+	for (USkeletalMeshComponent* Part : ArmorParts)
+	{
+		if (Part)
+		{
+			Part->SetOwnerNoSee(true); 
+			Part->bCastHiddenShadow = true;
+
+			// A. [틱 순서 고정] 
+			// "몸통(GetMesh)의 애니메이션/위치 계산이 완전히 끝난 뒤에 -> 갑옷(Part)을 처리해라"
+			// 이 설정이 없으면 몸통은 움직였는데 갑옷은 제자리에 있는 프레임이 섞여서 덜덜 떨립니다.
+			Part->AddTickPrerequisiteComponent(GetMesh());
+
+			// B. [부착 관계 확인]
+			// 갑옷은 반드시 'Root'나 'Capsule'이 아니라 'GetMesh()'에 붙어있어야 합니다.
+			// 왜냐하면 'GetMesh()'에는 네트워크 위치 보정(Smoothing)이 적용되는데, 
+			// 캡슐에 붙어있으면 이 보정을 못 받아서 갑옷만 따로 놉니다.
+			if (Part->GetAttachParent() != GetMesh())
+			{
+				Part->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale);
+				UE_LOG(LogTemp, Warning, TEXT("[%s] 파츠가 GetMesh에 붙어있지 않아 강제로 재부착했습니다."), *Part->GetName());
+			}
+
+			// C. [Leader Pose 재확인]
+			// 혹시라도 풀렸을 경우를 대비해 다시 연결
+			Part->SetLeaderPoseComponent(GetMesh());
+		}
+	}
+
 	// 1. 카메라 설정
 	RearCameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("RearCameraBoom"));
 	RearCameraBoom->SetupAttachment(RootComponent);
