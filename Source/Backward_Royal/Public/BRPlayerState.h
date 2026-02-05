@@ -74,6 +74,18 @@ public:
   UFUNCTION()
   void OnRep_MyProfile();
 
+  // 팀 번호 변경 시 호출되는 이벤트
+  UFUNCTION()
+  void OnRep_TeamNumber();
+
+  // 방장 상태 변경 시 호출되는 이벤트
+  UFUNCTION()
+  void OnRep_IsHost();
+
+  // 준비 상태 변경 시 호출되는 이벤트
+  UFUNCTION()
+  void OnRep_IsReady();
+
   // 플레이어 이름 설정
   UFUNCTION(BlueprintCallable, Category = "User Info")
   void SetPlayerNameString(const FString &NewPlayerName);
@@ -89,18 +101,6 @@ public:
   // 준비 상태 토글
   UFUNCTION(BlueprintCallable, Category = "Room")
   void ToggleReady();
-
-  // 팀 번호 변경 시 호출되는 이벤트
-  UFUNCTION()
-  void OnRep_TeamNumber();
-
-  // 방장 상태 변경 시 호출되는 이벤트
-  UFUNCTION()
-  void OnRep_IsHost();
-
-  // 준비 상태 변경 시 호출되는 이벤트
-  UFUNCTION()
-  void OnRep_IsReady();
 
   // 플레이어 역할 설정
   UFUNCTION(BlueprintCallable, Category = "Player Role")
