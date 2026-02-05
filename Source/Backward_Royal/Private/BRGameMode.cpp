@@ -63,51 +63,63 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 
 	if (BRPS && BRGameState)
 	{
-		// [보존] 플레이어 이름 설정 및 로그
-		FString PlayerName = BRPS->GetPlayerName();
-		UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin 진입 | bIsLocalPlayer 판단 전 | GetPlayerName()='%s'"), *PlayerName);
-
-		if (PlayerName.IsEmpty())
-		{
-			PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | PlayerName 비어있어 기본값 사용: '%s'"), *PlayerName);
-		}
-
-		// GameInstance 이름은 이 머신의 로컬 플레이어(호스트/Standalone)일 때만 적용.
-		// 클라이언트 입장 시 서버의 GI는 호스트 이름이므로, 원격 클라이언트에 호스트 이름을 덮어쓰지 않음.
+		int32 CurrentPlayerIndex = BRGameState->PlayerArray.Num() - 1;
 		UWorld* WorldForCheck = GetWorld();
 		const bool bIsLocalPlayer = WorldForCheck && (WorldForCheck->GetNetMode() == NM_Standalone || NewPlayer->IsLocalController());
 		UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
-		UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | bIsLocalPlayer=%d | NetMode=%d | IsLocalController=%d"),
-			bIsLocalPlayer ? 1 : 0, WorldForCheck ? (int32)WorldForCheck->GetNetMode() : -1, NewPlayer->IsLocalController() ? 1 : 0);
 
-		if (bIsLocalPlayer && GI)
+		// [UserInfo 보존] 게임 시작 Travel 직후 PostLogin인 경우 저장된 UserInfo 즉시 복원 (나머지는 RestorePendingRolesFromTravel에서)
+		bool bRestoredFromTravel = GI && GI->HasPendingUserInfoForIndex(CurrentPlayerIndex);
+		if (bRestoredFromTravel)
 		{
-			FString SavedPlayerName = GI->GetPlayerName();
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 로컬 플레이어 → GI->GetPlayerName()='%s'"), *SavedPlayerName);
-			if (!SavedPlayerName.IsEmpty())
+			GI->RestoreUserInfoToPlayerStateForPostLogin(BRPS, CurrentPlayerIndex);
+		}
+
+		// [보존] 플레이어 이름 설정 및 로그 (Travel 복원이 아닐 때만)
+		FString PlayerName = BRPS->GetPlayerName();
+		UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin 진입 | bIsLocalPlayer=%d | GetPlayerName()='%s' | bRestoredFromTravel=%d"),
+			bIsLocalPlayer ? 1 : 0, *PlayerName, bRestoredFromTravel ? 1 : 0);
+
+		if (!bRestoredFromTravel)
+		{
+			if (PlayerName.IsEmpty())
 			{
-				PlayerName = SavedPlayerName;
-				BRPS->SetPlayerName(PlayerName);
-				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 로컬: BRPS->SetPlayerName('%s') 적용"), *PlayerName);
+				PlayerName = FString::Printf(TEXT("Player %d"), BRGameState->PlayerArray.Num());
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | PlayerName 비어있어 기본값 사용: '%s'"), *PlayerName);
 			}
-		}
-		// 원격 클라이언트: 이름을 "Player N"으로 덮어쓰지 않음. 빈/PC이름이면 그대로 두고 ServerSetPlayerName 도착 시 실제 이름으로 갱신 → UI는 공란 후 PlayerName 표시
-		if (!bIsLocalPlayer)
-		{
-			const FString CurrentName = BRPS->GetPlayerName();
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName() 유지 '%s' (ServerSetPlayerName 도착 시 갱신)"), *CurrentName);
-		}
 
-		// UserUID 설정 (GameInstance에서 가져오거나 생성)
-		if (GI)
-		{
-			// UserUID가 비어있으면 자동 생성 (예: Steam ID, 계정 ID 등)
-			FString UserUID = FString::Printf(TEXT("Player_%d_%s"), 
-				BRGameState->PlayerArray.Num() - 1, 
-				*FDateTime::Now().ToString());
-			BRPS->SetUserUID(UserUID);
-			UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | SetUserUID('%s') | 최종 PlayerName='%s'"), *UserUID, *BRPS->GetPlayerName());
+			if (bIsLocalPlayer && GI)
+			{
+				FString SavedPlayerName = GI->GetPlayerName();
+				if (!SavedPlayerName.IsEmpty())
+				{
+					PlayerName = SavedPlayerName;
+					BRPS->SetPlayerName(PlayerName);
+					UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 로컬: BRPS->SetPlayerName('%s') 적용"), *PlayerName);
+				}
+			}
+			if (!bIsLocalPlayer)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | 원격 클라이언트: GetPlayerName()='%s' (ServerSetPlayerName 도착 시 갱신)"), *BRPS->GetPlayerName());
+			}
+
+			// UserUID 설정: GI에 저장된 값 우선 사용 (방 입장/게임 시작 시 초기화 방지)
+			if (GI)
+			{
+				FString UserUID;
+				if (bIsLocalPlayer && !GI->GetUserUID().IsEmpty())
+				{
+					UserUID = GI->GetUserUID();
+					UE_LOG(LogTemp, Log, TEXT("[UserInfo 보존] PostLogin | 로컬 GI UserUID 재사용: %s"), *UserUID);
+				}
+				else
+				{
+					UserUID = FString::Printf(TEXT("Player_%d_%s"), CurrentPlayerIndex, *FDateTime::Now().ToString());
+					if (bIsLocalPlayer) GI->SetUserUID(UserUID);
+				}
+				BRPS->SetUserUID(UserUID);
+				UE_LOG(LogTemp, Warning, TEXT("[로비이름] PostLogin | SetUserUID('%s') | 최종 PlayerName='%s'"), *UserUID, *BRPS->GetPlayerName());
+			}
 		}
 
 		// 클라이언트 연결 확인 — 방 생성(ListenServer/Dedicated) 시에만 상세 로그, Standalone은 최소 로그
@@ -141,8 +153,8 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 참고: 실제 방(세션)을 만들려면 'CreateRoom [방이름]' 명령어 또는 방 생성 버튼을 사용하세요."));
 		}
 
-		// [보존] 방장 설정 — ListenServer/DedicatedServer에서만 적용 (Standalone은 방 생성 버튼 누를 때만 방 생성)
-		if (BRGameState->PlayerArray.Num() == 1 && (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer))
+		// [보존] 방장 설정 — ListenServer/DedicatedServer에서만 적용 (Travel 복원 시 이미 복원됨)
+		if (!bRestoredFromTravel && BRGameState->PlayerArray.Num() == 1 && (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer))
 		{
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] 첫 번째 플레이어이므로 방장으로 설정됩니다."));
 			BRPS->SetIsHost(true);
@@ -170,9 +182,9 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] Standalone 모드 — 방 생성 버튼을 누르면 방장이 됩니다."));
 		}
 
-		// [보존] 플레이어 역할 할당 로직
-		int32 CurrentPlayerIndex = BRGameState->PlayerArray.Num() - 1;
-
+		// [보존] 플레이어 역할 할당 로직 (Travel 복원 시 RestorePendingRolesFromTravel에서 처리)
+		if (!bRestoredFromTravel)
+		{
 		if (CurrentPlayerIndex == 0 || CurrentPlayerIndex % 2 == 0)
 		{
 			// [하체]
@@ -247,6 +259,7 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 				}
 			}
 		}
+		} // if (!bRestoredFromTravel) 역할 할당 블록 끝
 	}
 
 	// [보존] 플레이어 목록 업데이트
@@ -386,12 +399,15 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	UWorld* World = GetWorld();
 	if (!World) return;
 
-	// 팀 순서 + 팀 내 하체 먼저: (TeamNumber, bIsLowerBody?0:1) 으로 정렬
+	// 관전자 제외, 팀 순서 + 팀 내 하체 먼저로 정렬 (팀당 하체/상체만 스폰)
 	TArray<ABRPlayerState*> SortedByTeam;
 	for (APlayerState* PS : BRGameState->PlayerArray)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			if (BRPS->bIsSpectatorSlot || BRPS->TeamNumber <= 0) continue; // 관전·대기열 제외
 			SortedByTeam.Add(BRPS);
+		}
 	}
 	Algo::Sort(SortedByTeam, [](const ABRPlayerState* A, const ABRPlayerState* B)
 	{
@@ -588,6 +604,21 @@ void ABRGameMode::StartGame()
 	{
 		if (ABRGameState* GS = GetGameState<ABRGameState>())
 		{
+			// 방만들고 바로 게임 시작한 경우: 아무도 1P/2P 선택을 안 하면 전원 기본값(하체)로 저장됨 → 게임에서 전원 하체로 나옴.
+			// 상체로 설정된 플레이어가 한 명도 없고 2명 이상이면, 자동으로 랜덤 팀 배정 후 저장.
+			int32 UpperBodyCount = 0;
+			for (APlayerState* PS : GS->PlayerArray)
+			{
+				if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+				{
+					if (!BRPS->bIsLowerBody) UpperBodyCount++;
+				}
+			}
+			if (UpperBodyCount == 0 && GS->PlayerArray.Num() >= 2)
+			{
+				GS->AssignRandomTeams();
+				UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 팀/역할 미선택 상태 → 자동 랜덤 팀 배정 후 저장"));
+			}
 			GI->SavePendingRolesForTravel(GS);
 			GI->SetPendingApplyRandomTeamRoles(true);  // 랜덤이 아니어도 로비 역할(1P=하체, 2P=상체) 적용을 위해 플래그 설정
 			UE_LOG(LogTemp, Warning, TEXT("[게임 시작] Travel 직전 역할 저장 완료 (GameMode), 게임 맵에서 상체/하체 적용 예정"));
@@ -680,19 +711,37 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망 확인: %s"), *VictimCharacter->GetName());
 
-	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
-	if (AController* Controller = VictimCharacter->GetController())
-	{
-		if (ABRPlayerState* PS = Controller->GetPlayerState<ABRPlayerState>())
-		{
-			// PlayerState에 사망 상태가 아직 반영 안 되었다면 여기서 확실히 처리
-			if (PS->CurrentStatus != EPlayerStatus::Dead)
-			{
-				PS->SetPlayerStatus(EPlayerStatus::Dead);
-			}
+	ABRGameState* GS = GetGameState<ABRGameState>();
+	if (!GS) return;
 
-			UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
-				*PS->GetPlayerName(), PS->TeamNumber);
+	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
+	AController* Controller = VictimCharacter->GetController();
+	if (!Controller) return;
+
+	ABRPlayerState* PS = Controller->GetPlayerState<ABRPlayerState>();
+	if (!PS) return;
+
+	// 1) 사망한 플레이어 → Dead + 관전(PlayerIndex 0)
+	if (PS->CurrentStatus != EPlayerStatus::Dead)
+	{
+		PS->SetPlayerStatus(EPlayerStatus::Dead);
+	}
+	PS->SetSpectator(true);
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 → 관전(PlayerIndex 0)으로 전환"),
+		*PS->GetPlayerName(), PS->TeamNumber);
+
+	// 2) 같은 팀 파트너(상체/하체)도 관전(PlayerIndex 0)으로 전환 (한 몸이므로 둘 다 탈락)
+	if (PS->ConnectedPlayerIndex >= 0 && GS->PlayerArray.IsValidIndex(PS->ConnectedPlayerIndex))
+	{
+		if (ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[PS->ConnectedPlayerIndex]))
+		{
+			if (PartnerPS->CurrentStatus != EPlayerStatus::Dead)
+			{
+				PartnerPS->SetPlayerStatus(EPlayerStatus::Spectating);
+			}
+			PartnerPS->SetSpectator(true);
+			UE_LOG(LogTemp, Log, TEXT("[GameMode] 파트너 %s (Team %d) → 관전(PlayerIndex 0)으로 전환"),
+				*PartnerPS->GetPlayerName(), PartnerPS->TeamNumber);
 		}
 	}
 

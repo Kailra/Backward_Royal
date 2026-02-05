@@ -67,14 +67,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Team")
 	void SetMyTeamNumber(int32 TeamNumber);
 
-	// 자신의 플레이어 역할 설정 (0=하체, 1=상체)
+	/** 자신의 플레이어 역할 설정. PlayerIndex 0=관전, 1=하체, 2=상체 */
 	UFUNCTION(BlueprintCallable, Category = "Player Role")
 	void SetMyPlayerRole(int32 PlayerIndex);
 
 	/**
-	 * 로비: WBP_SelectTeam_0~3 중 하나에서 1P 또는 2P 버튼 클릭 시 호출.
-	 * UserInfo 기준: TeamID 1~4 = 1팀~4팀, PlayerIndex 0=1P, 1=2P.
-	 * 호출한 플레이어를 해당 팀 슬롯에 배치하고, BRGameState/UserInfo에 그대로 반영 → 팀 선택 및 이름 표시.
+	 * 로비: WBP_SelectTeam_0~3 중 하나에서 관전/1P/2P 버튼 클릭 시 호출.
+	 * TeamID 1~4 = 1팀~4팀, PlayerIndex 0=관전, 1=1P(하체), 2=2P(상체).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Lobby")
 	void AssignMyPlayerToTeamSlot(int32 TeamID, int32 PlayerIndex);

@@ -1147,11 +1147,12 @@ void ABRPlayerController::RequestMoveMyPlayerToLobbyEntry()
 	if (!GS || !PS) return;
 	const int32 PlayerIndex = GS->PlayerArray.Find(PS);
 	if (PlayerIndex == INDEX_NONE) return;
+	const int32 SlotsPerTeam = 3;
 	for (int32 TeamIndex = 0; TeamIndex < 4; ++TeamIndex)
 	{
-		for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
+		for (int32 SlotIndex = 0; SlotIndex < SlotsPerTeam; ++SlotIndex)
 		{
-			const int32 Flat = TeamIndex * 2 + SlotIndex;
+			const int32 Flat = TeamIndex * SlotsPerTeam + SlotIndex;
 			if (GS->LobbyTeamSlots.IsValidIndex(Flat) && GS->LobbyTeamSlots[Flat] == PlayerIndex)
 			{
 				RequestMoveToLobbyEntry(TeamIndex, SlotIndex);

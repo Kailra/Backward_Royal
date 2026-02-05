@@ -72,7 +72,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Player Role")
 	void SetMyPlayerRole(bool bLowerBody);
 
-	/** 로비: Entry → SelectTeam 슬롯 배치 요청 (자신을 TeamIndex 팀의 SlotIndex 슬롯에 배치). TeamIndex 0~3=팀1~4, SlotIndex 0=1Player 1=2Player */
+	/** 로비: Entry → SelectTeam 슬롯 배치 요청. TeamIndex 0~3=팀1~4, SlotIndex 0=관전 1=1Player(하체) 2=2Player(상체) */
 	UFUNCTION(BlueprintCallable, Category = "Lobby")
 	void RequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex);
 

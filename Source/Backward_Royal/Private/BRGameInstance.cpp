@@ -543,8 +543,8 @@ void UBRGameInstance::ShowRoomInfo()
 // Seamless Travel 시 GameInstance가 달라질 수 있어, 프로세스 정적 저장소에 백업 (복원 시 사용)
 namespace
 {
-	TMap<FString, TTuple<int32, bool, int32>> G_PendingRoleByName;
-	TArray<TTuple<int32, bool, int32>> G_PendingRoleByIndex;
+	TMap<FString, FTravelUserInfoSave> G_PendingRoleByName;
+	TArray<FTravelUserInfoSave> G_PendingRoleByIndex;
 }
 
 void UBRGameInstance::SavePendingRolesForTravel(ABRGameState* GameState)
@@ -558,76 +558,146 @@ void UBRGameInstance::SavePendingRolesForTravel(ABRGameState* GameState)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
 		{
-			FString Key = BRPS->GetPlayerName();
-			if (Key.IsEmpty()) Key = BRPS->UserUID;
+			FTravelUserInfoSave Data;
+			Data.UserUID = BRPS->UserUID;
+			Data.PlayerName = BRPS->GetPlayerName();
+			Data.CustomizationData = BRPS->CustomizationData;
+			Data.bIsHost = BRPS->bIsHost;
+			Data.bIsReady = BRPS->bIsReady;
+			Data.TeamNumber = BRPS->TeamNumber;
+			Data.bIsSpectatorSlot = BRPS->bIsSpectatorSlot;
+			Data.bIsLowerBody = BRPS->bIsLowerBody;
+			Data.ConnectedPlayerIndex = BRPS->ConnectedPlayerIndex;
+
+			FString Key = Data.PlayerName.IsEmpty() ? Data.UserUID : Data.PlayerName;
 			if (!Key.IsEmpty())
 			{
-				TTuple<int32, bool, int32> Data(BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex);
 				PendingRoleRestoreByName.Add(Key, Data);
 				G_PendingRoleByName.Add(Key, Data);
 			}
-			G_PendingRoleByIndex.Add(TTuple<int32, bool, int32>(
-				BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
-			PendingRoleRestoreByIndex.Add(TTuple<int32, bool, int32>(
-				BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
+			PendingRoleRestoreByIndex.Add(Data);
+			G_PendingRoleByIndex.Add(Data);
 		}
 	}
-	UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] Seamless Travel 전 역할 저장: %d명 (정적+GI)"), G_PendingRoleByIndex.Num());
+	UE_LOG(LogTemp, Warning, TEXT("[UserInfo 보존] Seamless Travel 전 전체 UserInfo 저장: %d명"), PendingRoleRestoreByIndex.Num());
+}
+
+bool UBRGameInstance::HasPendingRoleRestore() const
+{
+	return PendingRoleRestoreByIndex.Num() > 0 || G_PendingRoleByIndex.Num() > 0;
+}
+
+bool UBRGameInstance::HasPendingUserInfoForIndex(int32 Index) const
+{
+	return PendingRoleRestoreByIndex.IsValidIndex(Index) || G_PendingRoleByIndex.IsValidIndex(Index);
+}
+
+void UBRGameInstance::RestoreUserInfoToPlayerStateForPostLogin(ABRPlayerState* BRPS, int32 Index)
+{
+	if (!BRPS) return;
+	const TArray<FTravelUserInfoSave>* Arr = PendingRoleRestoreByIndex.Num() > 0 ? &PendingRoleRestoreByIndex : &G_PendingRoleByIndex;
+	if (!Arr->IsValidIndex(Index)) return;
+
+	const FTravelUserInfoSave& Data = (*Arr)[Index];
+	if (!Data.UserUID.IsEmpty()) BRPS->SetUserUID(Data.UserUID);
+	if (!Data.PlayerName.IsEmpty()) BRPS->SetPlayerNameString(Data.PlayerName);
+	BRPS->CustomizationData = Data.CustomizationData;
+	BRPS->bIsHost = Data.bIsHost;
+	BRPS->OnRep_IsHost();
+	BRPS->bIsReady = Data.bIsReady;
+	BRPS->OnRep_IsReady();
+	UE_LOG(LogTemp, Log, TEXT("[UserInfo 보존] PostLogin 복원: Index=%d, Name=%s, UID=%s"), Index, *Data.PlayerName, *Data.UserUID);
 }
 
 void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
 {
 	if (!GameState)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 역할 복원 스킵: GameState 없음"));
+		UE_LOG(LogTemp, Warning, TEXT("[UserInfo 보존] 역할 복원 스킵: GameState 없음"));
 		return;
 	}
-	// GameInstance 데이터가 비어 있으면 정적 백업 사용 (멀티 PIE 등에서 GI가 달라질 수 있음)
 	bool bUseStatic = (PendingRoleRestoreByName.Num() == 0 && PendingRoleRestoreByIndex.Num() == 0);
 	if (bUseStatic && G_PendingRoleByIndex.Num() == 0 && G_PendingRoleByName.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 역할 복원 스킵: 저장된 역할 없음 (GI=%d, 정적=%d)"),
-			PendingRoleRestoreByIndex.Num(), G_PendingRoleByIndex.Num());
+		UE_LOG(LogTemp, Warning, TEXT("[UserInfo 보존] 역할 복원 스킵: 저장된 UserInfo 없음"));
 		return;
 	}
-	int32 Restored = 0;
+
 	auto& NameMap = bUseStatic ? G_PendingRoleByName : PendingRoleRestoreByName;
 	auto& IndexArr = bUseStatic ? G_PendingRoleByIndex : PendingRoleRestoreByIndex;
-	// 1) PlayerName으로 복원 시도
-	for (APlayerState* PS : GameState->PlayerArray)
+	const int32 NumPlayers = GameState->PlayerArray.Num();
+	int32 Restored = 0;
+
+	if (IndexArr.Num() == NumPlayers && NumPlayers > 0)
 	{
-		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
-		{
-			FString Key = BRPS->GetPlayerName();
-			if (Key.IsEmpty()) Key = BRPS->UserUID;
-			const TTuple<int32, bool, int32>* Found = NameMap.Find(Key);
-			if (Found)
-			{
-				BRPS->SetTeamNumber(Found->Get<0>());
-				BRPS->SetPlayerRole(Found->Get<1>(), Found->Get<2>());
-				Restored++;
-			}
-		}
-	}
-	// 2) 이름 매칭 실패 시 인덱스로 폴백
-	if (Restored == 0 && IndexArr.Num() > 0)
-	{
-		const int32 N = FMath::Min(IndexArr.Num(), GameState->PlayerArray.Num());
-		for (int32 i = 0; i < N; i++)
+		for (int32 i = 0; i < NumPlayers; i++)
 		{
 			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(GameState->PlayerArray[i]))
 			{
-				const TTuple<int32, bool, int32>& Data = IndexArr[i];
-				BRPS->SetTeamNumber(Data.Get<0>());
-				BRPS->SetPlayerRole(Data.Get<1>(), Data.Get<2>());
+				const FTravelUserInfoSave& Data = IndexArr[i];
+				if (!Data.UserUID.IsEmpty()) BRPS->SetUserUID(Data.UserUID);
+				if (!Data.PlayerName.IsEmpty()) BRPS->SetPlayerNameString(Data.PlayerName);
+				BRPS->CustomizationData = Data.CustomizationData;
+				BRPS->bIsHost = Data.bIsHost;
+				BRPS->OnRep_IsHost();
+				BRPS->bIsReady = Data.bIsReady;
+				BRPS->OnRep_IsReady();
+				BRPS->SetTeamNumber(Data.TeamNumber);
+				if (Data.bIsSpectatorSlot) BRPS->SetSpectator(true);
+				else BRPS->SetPlayerRole(Data.bIsLowerBody, Data.ConnectedPlayerIndex);
 				Restored++;
 			}
 		}
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명 (인덱스 폴백%s)"), Restored, bUseStatic ? TEXT(", 정적") : TEXT(""));
+		UE_LOG(LogTemp, Warning, TEXT("[UserInfo 보존] Seamless Travel 후 전체 UserInfo 복원: %d명 (인덱스)"), Restored);
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명 (이름 매칭%s)"), Restored, bUseStatic ? TEXT(", 정적") : TEXT(""));
+		for (APlayerState* PS : GameState->PlayerArray)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+			{
+				FString Key = BRPS->GetPlayerName();
+				if (Key.IsEmpty()) Key = BRPS->UserUID;
+				const FTravelUserInfoSave* Found = NameMap.Find(Key);
+				if (Found)
+				{
+					if (!Found->UserUID.IsEmpty()) BRPS->SetUserUID(Found->UserUID);
+					if (!Found->PlayerName.IsEmpty()) BRPS->SetPlayerNameString(Found->PlayerName);
+					BRPS->CustomizationData = Found->CustomizationData;
+					BRPS->bIsHost = Found->bIsHost;
+					BRPS->OnRep_IsHost();
+					BRPS->bIsReady = Found->bIsReady;
+					BRPS->OnRep_IsReady();
+					BRPS->SetTeamNumber(Found->TeamNumber);
+					if (Found->bIsSpectatorSlot) BRPS->SetSpectator(true);
+					else BRPS->SetPlayerRole(Found->bIsLowerBody, Found->ConnectedPlayerIndex);
+					Restored++;
+				}
+			}
+		}
+		if (Restored == 0 && IndexArr.Num() > 0)
+		{
+			const int32 N = FMath::Min(IndexArr.Num(), NumPlayers);
+			for (int32 i = 0; i < N; i++)
+			{
+				if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(GameState->PlayerArray[i]))
+				{
+					const FTravelUserInfoSave& Data = IndexArr[i];
+					if (!Data.UserUID.IsEmpty()) BRPS->SetUserUID(Data.UserUID);
+					if (!Data.PlayerName.IsEmpty()) BRPS->SetPlayerNameString(Data.PlayerName);
+					BRPS->CustomizationData = Data.CustomizationData;
+					BRPS->bIsHost = Data.bIsHost;
+					BRPS->OnRep_IsHost();
+					BRPS->bIsReady = Data.bIsReady;
+					BRPS->OnRep_IsReady();
+					BRPS->SetTeamNumber(Data.TeamNumber);
+					if (Data.bIsSpectatorSlot) BRPS->SetSpectator(true);
+					else BRPS->SetPlayerRole(Data.bIsLowerBody, Data.ConnectedPlayerIndex);
+					Restored++;
+				}
+			}
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[UserInfo 보존] Seamless Travel 후 UserInfo 복원: %d명"), Restored);
 	}
 	PendingRoleRestoreByName.Empty();
 	PendingRoleRestoreByIndex.Empty();
