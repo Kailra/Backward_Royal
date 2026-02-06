@@ -1,4 +1,4 @@
-﻿// SwitchOrb.cpp
+// SwitchOrb.cpp
 #include "SwitchOrb.h"
 #include "Components/SphereComponent.h"
 #include "PlayerCharacter.h"
@@ -39,8 +39,15 @@ void ASwitchOrb::OnOrbOverlap(UPrimitiveComponent* OverlappedComponent, AActor* 
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
 {
-    // [디버그] 오버랩 감지 자체는 되는지 확인
-    UE_LOG(LogSwitchOrb, Log, TEXT("OnOrbOverlap 호출됨! 대상: %s"), *GetNameSafe(OtherActor));
+    FString DebugMsg = FString::Printf(TEXT("Orb Touched by: %s (Authority: %s)"),
+        *GetNameSafe(OtherActor),
+        HasAuthority() ? TEXT("Server") : TEXT("Client"));
+
+    // Key: -1(새 줄), Time: 5초, Color: Red
+    if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, DebugMsg);
+
+    // 로그도 남김
+    UE_LOG(LogSwitchOrb, Log, TEXT("%s"), *DebugMsg);
 
     // 1. 권한 및 대상 확인
     if (!HasAuthority())
