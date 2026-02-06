@@ -494,79 +494,112 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 		}
 	}
 
-	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
+	// 기존 순차 스폰 타이머가 있으면 취소
+	World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
+	// 팀별로 딜레이를 두고 순차 스폰 (복제/메시 초기화 타이밍 버그 완화)
+	StagedSortedByTeam = SortedByTeam;
+	StagedNumTeams = NumTeams;
+	StagedCurrentTeamIndex = 0;
+	ApplyRoleChangesForRandomTeams_ApplyOneTeam();
+}
+
+void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
+{
+	if (!HasAuthority() || !GetWorld()) return;
+
+	UWorld* World = GetWorld();
+	if (StagedCurrentTeamIndex >= StagedNumTeams)
 	{
-		ABRPlayerState* LowerPS = SortedByTeam[2 * TeamIndex];
-		ABRPlayerState* UpperPS = SortedByTeam[2 * TeamIndex + 1];
-		// 역할이 서버에 올바르게 적용되었는지 확인 (하체→상체 순서)
-		if (LowerPS->bIsLowerBody == false || UpperPS->bIsLowerBody == true)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 역할 불일치 - 하체:%s 상체:%s, 스킵"), TeamIndex + 1,
-				LowerPS->bIsLowerBody ? TEXT("Y") : TEXT("N"), UpperPS->bIsLowerBody ? TEXT("Y") : TEXT("N"));
-			continue;
-		}
-		// PlayerState → Controller는 GetOwningController() 사용 (GetOwner()는 null일 수 있어 2팀 상체 등 빙의 실패 원인)
-		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwningController());
-		APlayerController* UpperPC = Cast<APlayerController>(UpperPS->GetOwningController());
-		if (!LowerPC || !UpperPC)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d Controller 없음 - 하체PC:%s 상체PC:%s, 스킵"),
-				TeamIndex + 1, LowerPC ? TEXT("O") : TEXT("X"), UpperPC ? TEXT("O") : TEXT("X"));
-			continue;
-		}
+		StagedSortedByTeam.Empty();
+		StagedNumTeams = 0;
+		StagedCurrentTeamIndex = 0;
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 순차 상체 스폰 완료"));
+		return;
+	}
 
-		// 하체 플레이어가 현재 소유한 Pawn 사용 (가입 순서가 아닌 역할 기준)
-		APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerPC->GetPawn());
-		if (!LowerChar || !IsValid(LowerChar))
+	const int32 TeamIndex = StagedCurrentTeamIndex;
+	ABRPlayerState* LowerPS = StagedSortedByTeam.IsValidIndex(2 * TeamIndex) ? StagedSortedByTeam[2 * TeamIndex] : nullptr;
+	ABRPlayerState* UpperPS = StagedSortedByTeam.IsValidIndex(2 * TeamIndex + 1) ? StagedSortedByTeam[2 * TeamIndex + 1] : nullptr;
+
+	if (!LowerPS || !UpperPS)
+	{
+		StagedCurrentTeamIndex++;
+		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
+		return;
+	}
+
+	if (LowerPS->bIsLowerBody == false || UpperPS->bIsLowerBody == true)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 역할 불일치 - 스킵"), TeamIndex + 1);
+		StagedCurrentTeamIndex++;
+		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
+		return;
+	}
+
+	APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwningController());
+	APlayerController* UpperPC = Cast<APlayerController>(UpperPS->GetOwningController());
+	if (!LowerPC || !UpperPC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d Controller 없음, 스킵"), TeamIndex + 1);
+		StagedCurrentTeamIndex++;
+		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
+		return;
+	}
+
+	APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerPC->GetPawn());
+	if (!LowerChar || !IsValid(LowerChar))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 하체 Pawn 없음, 스킵"), TeamIndex + 1);
+		StagedCurrentTeamIndex++;
+		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
+		return;
+	}
+
+	if (LowerPC->GetPawn() != LowerChar)
+	{
+		LowerPC->UnPossess();
+		LowerPC->Possess(LowerChar);
+	}
+
+	APawn* OldUpperPawn = UpperPC->GetPawn();
+	UpperPC->UnPossess();
+	if (OldUpperPawn)
+		OldUpperPawn->Destroy();
+
+	AUpperBodyPawn* OldUpperOnLower = nullptr;
+	for (TActorIterator<AUpperBodyPawn> It(World); It; ++It)
+	{
+		if (It->ParentBodyCharacter == LowerChar)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 하체 플레이어 %s의 Pawn 없음, 스킵"), TeamIndex + 1, *LowerPS->GetPlayerName());
-			continue;
-		}
-
-		// 하체가 해당 LowerChar를 소유하도록
-		if (LowerPC->GetPawn() != LowerChar)
-		{
-			LowerPC->UnPossess();
-			LowerPC->Possess(LowerChar);
-		}
-
-		// 상체가 갖고 있던 기존 Pawn 제거
-		APawn* OldUpperPawn = UpperPC->GetPawn();
-		UpperPC->UnPossess();
-		if (OldUpperPawn)
-			OldUpperPawn->Destroy();
-
-		// 이 하체에 붙어 있던 기존 상체 Pawn 제거 (이터레이터 중 Destroy 방지를 위해 수집 후 제거)
-		AUpperBodyPawn* OldUpperOnLower = nullptr;
-		for (TActorIterator<AUpperBodyPawn> It(World); It; ++It)
-		{
-			if (It->ParentBodyCharacter == LowerChar)
-			{
-				OldUpperOnLower = *It;
-				break;
-			}
-		}
-		if (OldUpperOnLower)
-			OldUpperOnLower->Destroy();
-
-		// 상체 Pawn 스폰 및 부착·빙의
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = UpperPC;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		AUpperBodyPawn* NewUpper = World->SpawnActor<AUpperBodyPawn>(
-			UpperBodyClass, LowerChar->GetActorLocation(), LowerChar->GetActorRotation(), SpawnParams);
-		if (NewUpper)
-		{
-			NewUpper->AttachToComponent(
-				LowerChar->HeadMountPoint,
-				FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-			NewUpper->ParentBodyCharacter = LowerChar;
-			LowerChar->SetUpperBodyPawn(NewUpper);
-			UpperPC->Possess(NewUpper);
-			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 팀 %d: %s 상체 스폰 후 빙의"), TeamIndex + 1, *UpperPS->GetPlayerName());
+			OldUpperOnLower = *It;
+			break;
 		}
 	}
+	if (OldUpperOnLower)
+		OldUpperOnLower->Destroy();
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = UpperPC;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AUpperBodyPawn* NewUpper = World->SpawnActor<AUpperBodyPawn>(
+		UpperBodyClass, LowerChar->GetActorLocation(), LowerChar->GetActorRotation(), SpawnParams);
+	if (NewUpper)
+	{
+		NewUpper->AttachToComponent(
+			LowerChar->HeadMountPoint,
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		NewUpper->ParentBodyCharacter = LowerChar;
+		LowerChar->SetUpperBodyPawn(NewUpper);
+		UpperPC->Possess(NewUpper);
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 팀 %d: %s 상체 스폰 후 빙의 (순차 %d/%d)"), TeamIndex + 1, *UpperPS->GetPlayerName(), TeamIndex + 1, StagedNumTeams);
+	}
+
+	StagedCurrentTeamIndex++;
+	if (StagedCurrentTeamIndex < StagedNumTeams)
+		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
+	else
+		ApplyRoleChangesForRandomTeams_ApplyOneTeam(); // 마지막 팀 처리 후 정리
 }
 
 void ABRGameMode::StartGame()

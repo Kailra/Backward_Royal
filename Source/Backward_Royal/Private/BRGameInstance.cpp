@@ -659,6 +659,40 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState *GameState) {
   G_PendingRoleByIndex.Empty();
 }
 
+bool UBRGameInstance::HasPendingRoleRestore() const {
+  return PendingRoleRestoreByName.Num() > 0 ||
+         PendingRoleRestoreByIndex.Num() > 0 || G_PendingRoleByName.Num() > 0 ||
+         G_PendingRoleByIndex.Num() > 0;
+}
+
+int32 UBRGameInstance::GetPendingRoleRestoreCount() const {
+  if (PendingRoleRestoreByIndex.Num() > 0)
+    return PendingRoleRestoreByIndex.Num();
+  return G_PendingRoleByIndex.Num();
+}
+
+bool UBRGameInstance::HasPendingUserInfoForIndex(int32 Index) const {
+  if (Index < 0)
+    return false;
+  if (PendingRoleRestoreByIndex.Num() > 0)
+    return Index < PendingRoleRestoreByIndex.Num();
+  return Index < G_PendingRoleByIndex.Num();
+}
+
+void UBRGameInstance::RestoreUserInfoToPlayerStateForPostLogin(
+    ABRPlayerState *BRPS, int32 Index) {
+  if (!BRPS || Index < 0)
+    return;
+  const TArray<TTuple<int32, bool, int32>> &Arr =
+      (PendingRoleRestoreByIndex.Num() > 0) ? PendingRoleRestoreByIndex
+                                           : G_PendingRoleByIndex;
+  if (Index >= Arr.Num())
+    return;
+  const TTuple<int32, bool, int32> &Data = Arr[Index];
+  BRPS->SetTeamNumber(Data.Get<0>());
+  BRPS->SetPlayerRole(Data.Get<1>(), Data.Get<2>());
+}
+
 /** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */
 void UBRGameInstance::ReloadAllConfigs() {
   GI_LOG(Display, TEXT("=== Starting Global Config Reload and Asset Sync ==="));

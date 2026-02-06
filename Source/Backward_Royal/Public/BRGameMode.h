@@ -3,7 +3,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "TimerManager.h"
 #include "BRGameMode.generated.h"
+
+class ABRPlayerState;
 
 UCLASS()
 class BACKWARD_ROYAL_API ABRGameMode : public AGameModeBase
@@ -58,6 +61,10 @@ public:
 	// 랜덤 팀 배정 후 상체/하체 Pawn 재배치 (상체 스폰 및 빙의)
 	void ApplyRoleChangesForRandomTeams();
 
+	// 팀별 상체 스폰 간격(초). 순차 스폰으로 복제/초기화 타이밍 버그 완화
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float SpawnDelayBetweenTeams = 0.25f;
+
 	// 플레이어 사망 시 호출되는 함수
 	void OnPlayerDied(class ABaseCharacter* VictimCharacter);
 
@@ -68,5 +75,14 @@ protected:
 	// 에디터(BP_BRGameMode)에서 BP_UpperBodyPawn을 할당할 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Classes")
 	TSubclassOf<class AUpperBodyPawn> UpperBodyClass;
+
+	// 순차 스폰용: 한 팀씩 상체 스폰 후 다음 팀 예약
+	void ApplyRoleChangesForRandomTeams_ApplyOneTeam();
+
+	// 순차 스폰 스테이징 (팀 인덱스만 저장, SortedByTeam는 매번 GameState에서 재구성하지 않고 캐시)
+	TArray<ABRPlayerState*> StagedSortedByTeam;
+	int32 StagedNumTeams = 0;
+	int32 StagedCurrentTeamIndex = 0;
+	FTimerHandle StagedApplyTimerHandle;
 };
 

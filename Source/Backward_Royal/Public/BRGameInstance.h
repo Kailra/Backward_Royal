@@ -217,10 +217,10 @@ protected:
 	/** 로비에서 랜덤 팀 배정 후, 게임 맵에서 ApplyRoleChangesForRandomTeams 호출 대기 */
 	bool bPendingApplyRandomTeamRoles = false;
 
-	/** Seamless Travel 후 전체 UserInfo 복원용 */
-	TMap<FString, FTravelUserInfoSave> PendingRoleRestoreByName;
+	/** Seamless Travel 후 역할 복원용 (TeamNumber, bIsLowerBody, ConnectedPlayerIndex) */
+	TMap<FString, TTuple<int32, bool, int32>> PendingRoleRestoreByName;
 	/** 인덱스 폴백용 */
-	TArray<FTravelUserInfoSave> PendingRoleRestoreByIndex;
+	TArray<TTuple<int32, bool, int32>> PendingRoleRestoreByIndex;
 
 	/** PIE 종료 시 월드 GC 방해 방지: OnStart에서 설정한 타이머 핸들 (Shutdown에서 명시적으로 클리어) */
 	FTimerHandle ListenServerTimerHandle;
