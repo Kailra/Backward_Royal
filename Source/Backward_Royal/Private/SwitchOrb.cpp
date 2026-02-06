@@ -39,20 +39,55 @@ void ASwitchOrb::OnOrbOverlap(UPrimitiveComponent* OverlappedComponent, AActor* 
     UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
     bool bFromSweep, const FHitResult& SweepResult)
 {
-    if (!HasAuthority() || !OtherActor) return;
+    // [디버그] 오버랩 감지 자체는 되는지 확인
+    UE_LOG(LogSwitchOrb, Log, TEXT("OnOrbOverlap 호출됨! 대상: %s"), *GetNameSafe(OtherActor));
+
+    // 1. 권한 및 대상 확인
+    if (!HasAuthority())
+    {
+        // 클라이언트라서 리턴되는 경우는 정상입니다 (서버에서만 처리)
+        return;
+    }
+
+    if (!OtherActor) return;
 
     APlayerCharacter* PlayerChar = Cast<APlayerCharacter>(OtherActor);
-    if (!PlayerChar) return;
+    if (!PlayerChar)
+    {
+        UE_LOG(LogSwitchOrb, Warning, TEXT("실패: 대상이 APlayerCharacter가 아님 (%s)"), *GetNameSafe(OtherActor));
+        return;
+    }
 
     ABRPlayerState* MyPS = PlayerChar->GetPlayerState<ABRPlayerState>();
-    if (!MyPS || MyPS->ConnectedPlayerIndex == -1) return;
+
+    // [중요 체크포인트] PlayerState 및 연결된 플레이어 확인
+    if (!MyPS)
+    {
+        UE_LOG(LogSwitchOrb, Warning, TEXT("실패: PlayerState가 없음"));
+        return;
+    }
+
+    if (MyPS->ConnectedPlayerIndex == -1)
+    {
+        UE_LOG(LogSwitchOrb, Error, TEXT("실패: ConnectedPlayerIndex가 -1임 (파트너 없음). 팀 배정이 되었나요?"));
+        return;
+    }
 
     // 파트너 찾기
     ABRGameState* GS = GetWorld()->GetGameState<ABRGameState>();
-    if (!GS || !GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex)) return;
+    if (!GS || !GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+    {
+        UE_LOG(LogSwitchOrb, Error, TEXT("실패: GameState가 없거나 인덱스가 범위를 벗어남 (Index: %d, ArrayNum: %d)"),
+            MyPS->ConnectedPlayerIndex, (GS ? GS->PlayerArray.Num() : -1));
+        return;
+    }
 
     ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
-    if (!PartnerPS) return;
+    if (!PartnerPS)
+    {
+        UE_LOG(LogSwitchOrb, Error, TEXT("실패: 파트너 PlayerState 캐스팅 실패"));
+        return;
+    }
 
     // [Step 1] 논리적 데이터 변경 (상체 <-> 하체)
     bool MyNewRole = !MyPS->bIsLowerBody;
