@@ -86,12 +86,6 @@ protected:
 	FTimerHandle StagedApplyTimerHandle;
 	FTimerHandle InitialRoleApplyTimerHandle;
 
-	/** 늦게 들어온 클라이언트 로비 UI 갱신용: PostLogin 후 0.6초/1.5초에 ClientRequestLobbyUIRefresh 호출 */
-	FTimerHandle LobbyRefreshRpcTimerHandle1;
-	FTimerHandle LobbyRefreshRpcTimerHandle2;
-	TWeakObjectPtr<APlayerController> PendingLobbyRefreshPC;
-	void SendLobbyRefreshRPCToJoinedPlayer();
-
 	/** 1.5초 폴백 타이머가 이미 예약되었으면 true (OnPossess 중복 예약 방지) */
 	bool bHasScheduledInitialRoleApply = false;
 public:
