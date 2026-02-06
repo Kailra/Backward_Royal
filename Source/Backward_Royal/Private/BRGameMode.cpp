@@ -49,12 +49,16 @@ void ABRGameMode::BeginPlay()
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
 	{
 		if (GI->GetPendingApplyRandomTeamRoles())
-		{
-			FTimerHandle H;
-			GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
-			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 게임 맵 로드됨 - 1.5초 후 상체/하체 Pawn 적용 예정"));
-		}
+			ScheduleInitialRoleApplyIfNeeded();
 	}
+}
+
+void ABRGameMode::ScheduleInitialRoleApplyIfNeeded()
+{
+	if (bHasScheduledInitialRoleApply || !GetWorld()) return;
+	bHasScheduledInitialRoleApply = true;
+	GetWorld()->GetTimerManager().SetTimer(InitialRoleApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
+	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 1.5초 후 상체/하체 Pawn 적용 예정 (한 번만 예약)"));
 }
 
 void ABRGameMode::PostLogin(APlayerController* NewPlayer)
@@ -387,6 +391,9 @@ void ABRGameMode::Logout(AController* Exiting)
 void ABRGameMode::ApplyRoleChangesForRandomTeams()
 {
 	if (!HasAuthority()) return;
+	// 순차 스폰 진행 중엔 재진입 금지 (OnPossess 등 다른 타이머가 Staged 상태를 덮어쓰지 않도록)
+	if (StagedNumTeams > 0)
+		return;
 	if (!UpperBodyClass)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[랜덤 팀 적용] UpperBodyClass가 설정되지 않았습니다. BP_MainGameMode(또는 사용 중인 GameMode 블루프린트)에서 Upper Body Class에 BP_UpperBodyPawn을 할당하세요."));
@@ -441,6 +448,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	if (NumTeams < 1)
 	{
 		GI->ClearPendingApplyRandomTeamRoles();
+		GI->ClearPendingRoleRestoreData();
 		return;
 	}
 
@@ -465,6 +473,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 대기 시간 초과(%d회), 적용 포기"), G_ApplyRolePawnWaitRetries);
 			G_ApplyRolePawnWaitRetries = 0;
 			GI->ClearPendingApplyRandomTeamRoles();
+			GI->ClearPendingRoleRestoreData();
 			return;
 		}
 		G_ApplyRolePawnWaitRetries++;
@@ -475,6 +484,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 	}
 	G_ApplyRolePawnWaitRetries = 0;
 	GI->ClearPendingApplyRandomTeamRoles();
+	GI->ClearPendingRoleRestoreData(); // 적용 성공 시에만 역할 저장 데이터 정리
 
 	// 상체로 지정된 플레이어들의 기존(하체) Pawn만 먼저 제거 → 팀당 1개 하체 몸통만 남김
 	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)

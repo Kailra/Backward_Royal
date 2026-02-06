@@ -173,6 +173,9 @@ public:
 	/** 게임 맵 로드 후 ApplyRoleChangesForRandomTeams 내부에서 호출: 저장된 팀/역할을 PlayerState에 복원 */
 	void RestorePendingRolesFromTravel(class ABRGameState* GameState);
 
+	/** 역할 복원용 저장 데이터 비우기 (적용 성공/포기 시 GameMode에서만 호출) */
+	void ClearPendingRoleRestoreData();
+
 	/** Travel 복원 대기 중인지 (게임 맵 PostLogin 직후 UpdatePlayerList에서 새 플레이어→대기열 초기화 스킵용) */
 	bool HasPendingRoleRestore() const;
 	/** 저장된 역할 복원 데이터 개수 (ApplyRoleChangesForRandomTeams 대기 조건용) */

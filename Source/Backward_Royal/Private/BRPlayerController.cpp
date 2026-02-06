@@ -379,25 +379,17 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 {
 	Super::OnPossess(aPawn);
 
-	// Seamless Travel 후 게임 맵에서 GameMode BeginPlay가 호출되지 않을 수 있음 → Possess 시점에 랜덤 팀 적용 예약 (폴백)
+	// Seamless Travel 후 게임 맵에서 GameMode BeginPlay가 호출되지 않을 수 있음 → Possess 시점에 랜덤 팀 적용 예약 (폴백, 이미 예약됐으면 한 번만)
 	if (HasAuthority() && aPawn)
 	{
-		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
+		if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance())) 
 		{
 			if (GI->GetPendingApplyRandomTeamRoles())
-				{
-					ABRGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ABRGameMode>() : nullptr;
-					if (GM)
-					{
-						FTimerHandle H;
-						GetWorld()->GetTimerManager().SetTimer(H, GM, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
-						UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] OnPossess 폴백 - 1.5초 후 상체/하체 Pawn 적용 예정"));
-					}
-					else
-					{
-						UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 게임 맵 GameMode가 ABRGameMode가 아님 - 상체/하체 적용이 되지 않을 수 있습니다."));
-					}
-				}
+			{
+				ABRGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<ABRGameMode>() : nullptr;
+				if (GM && !GM->HasScheduledInitialRoleApply())
+					GM->ScheduleInitialRoleApplyIfNeeded();
+			}
 		}
 	}
 
@@ -414,13 +406,19 @@ void ABRPlayerController::OnRep_Pawn()
 
 	// 상체 Pawn으로 복제 수신 시, BeginPlay가 Controller 설정 전에 호출될 수 있어
 	// 마우스(Look) 입력이 등록되지 않는 경우 방지: 여기서 입력/뷰 강제 설정
+	ApplyUpperBodyViewAndInput();
+
+	// 순차 스폰 시 복제 타이밍으로 한 클라이언트만 ViewTarget/입력이 누락되는 경우 방지: 한 틱 뒤 재적용
 	if (APawn* MyPawn = GetPawn())
 	{
 		if (IsLocalController() && MyPawn->IsA<AUpperBodyPawn>())
 		{
-			SetupRoleInput(false); // 상체 IMC 등록
-			SetViewTarget(MyPawn);
-			SetIgnoreMoveInput(true);
+			UWorld* W = GetWorld();
+			if (W)
+			{
+				W->GetTimerManager().ClearTimer(UpperBodyViewInputDelayHandle);
+				W->GetTimerManager().SetTimer(UpperBodyViewInputDelayHandle, this, &ABRPlayerController::ApplyUpperBodyViewAndInput, 0.05f, false);
+			}
 		}
 	}
 
@@ -428,6 +426,17 @@ void ABRPlayerController::OnRep_Pawn()
 	{
 		OnPawnChanged.Broadcast(GetPawn());
 	}
+}
+
+void ABRPlayerController::ApplyUpperBodyViewAndInput()
+{
+	APawn* MyPawn = GetPawn();
+	if (!MyPawn || !IsLocalController() || !MyPawn->IsA<AUpperBodyPawn>())
+		return;
+
+	SetupRoleInput(false); // 상체 IMC 등록
+	SetViewTarget(MyPawn);
+	SetIgnoreMoveInput(true);
 }
 
 void ABRPlayerController::TryShutdownListenServerForRoomSearch()
@@ -446,6 +455,7 @@ void ABRPlayerController::ClearUIForShutdown()
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+		World->GetTimerManager().ClearTimer(UpperBodyViewInputDelayHandle);
 		World->GetTimerManager().ClearTimer(ShutdownListenServerTimerHandle);
 		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{
@@ -477,17 +487,17 @@ void ABRPlayerController::ClearUIForShutdown()
 
 void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
+		World->GetTimerManager().ClearTimer(UpperBodyViewInputDelayHandle);
+		World->GetTimerManager().ClearTimer(ShutdownListenServerTimerHandle);
+	}
 	// PIE/서버 종료 시 위젯을 먼저 정리 — WBP_MainScreen·WBP_EntranceMenu 등이
 	// GetBRPlayerController → SetMainScreenWidget/CreateRoomWithPlayerName 호출 시
 	// PC가 이미 None이 되어 "Accessed None" 크래시가 나는 것을 줄이기 위함
 	ClearUIForShutdown();
-
-	// BeginPlay UI 타이머 해제 (open ?listen 맵 전환 시 파괴 후 콜백 크래시 방지)
-	if (UWorld* World = GetWorld())
-	{
-		World->GetTimerManager().ClearTimer(BeginPlayUITimerHandle);
-		World->GetTimerManager().ClearTimer(ShutdownListenServerTimerHandle);
-	}
 
 	// 네트워크 연결 실패 델리게이트 언바인딩
 	if (UEngine* Engine = GEngine)
@@ -496,7 +506,7 @@ void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	// GameSession 이벤트 언바인딩
-	if (UWorld* World = GetWorld())
+	if (World)
 	{
 		if (AGameModeBase* GameMode = World->GetAuthGameMode())
 		{

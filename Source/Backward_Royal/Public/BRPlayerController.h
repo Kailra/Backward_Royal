@@ -180,7 +180,10 @@ protected:
 
 	// 클라이언트에서 폰 정보가 복제되었을 때 호출됨
 	virtual void OnRep_Pawn() override;
-	
+
+	/** 상체 빙의 시 ViewTarget/입력 적용 (복제 타이밍에 따라 한 클라이언트만 누락되는 현상 방지용으로 다음 틱에도 재적용) */
+	void ApplyUpperBodyViewAndInput();
+
 	// 네트워크 연결 실패 감지
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 
@@ -245,6 +248,9 @@ private:
 
 	// BeginPlay UI 초기화 타이머 (EndPlay에서 해제하여 open ?listen 크래시 방지)
 	FTimerHandle BeginPlayUITimerHandle;
+
+	/** 상체 ViewTarget/입력 지연 재적용 타이머 (OnRep_Pawn 후 한 틱 뒤 재적용) */
+	FTimerHandle UpperBodyViewInputDelayHandle;
 
 	/** 호스트가 방 나가기 후 메인 맵에서 ListenServer NetDriver를 한 번만 종료해 Standalone으로 전환 (방 찾기 가능하도록) */
 	FTimerHandle ShutdownListenServerTimerHandle;

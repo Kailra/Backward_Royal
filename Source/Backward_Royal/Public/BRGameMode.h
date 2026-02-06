@@ -63,7 +63,7 @@ public:
 
 	// 팀별 상체 스폰 간격(초). 순차 스폰으로 복제/초기화 타이밍 버그 완화
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float SpawnDelayBetweenTeams = 0.25f;
+	float SpawnDelayBetweenTeams = 0.3f;
 
 	// 플레이어 사망 시 호출되는 함수
 	void OnPlayerDied(class ABaseCharacter* VictimCharacter);
@@ -84,5 +84,13 @@ protected:
 	int32 StagedNumTeams = 0;
 	int32 StagedCurrentTeamIndex = 0;
 	FTimerHandle StagedApplyTimerHandle;
+	FTimerHandle InitialRoleApplyTimerHandle;
+
+	/** 1.5초 폴백 타이머가 이미 예약되었으면 true (OnPossess 중복 예약 방지) */
+	bool bHasScheduledInitialRoleApply = false;
+public:
+	bool HasScheduledInitialRoleApply() const { return bHasScheduledInitialRoleApply; }
+	/** 1.5초 후 ApplyRoleChangesForRandomTeams 예약 (BeginPlay/OnPossess에서 한 번만 호출되도록 외부에서 HasScheduledInitialRoleApply 확인 후 호출) */
+	void ScheduleInitialRoleApplyIfNeeded();
 };
 

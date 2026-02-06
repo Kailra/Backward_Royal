@@ -653,6 +653,11 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState *GameState) {
         TEXT("[랜덤 팀 적용] Seamless Travel 후 역할 복원: %d명 (이름 매칭%s)"),
         Restored, bUseStatic ? TEXT(", 정적") : TEXT(""));
   }
+  // 저장 데이터는 즉시 비우지 않음. 재시도(하체 Pawn 대기) 시 다시 복원할 수 있도록 유지.
+  // 실제 클리어는 GameMode에서 적용 성공/포기 시 ClearPendingRoleRestoreData() 호출.
+}
+
+void UBRGameInstance::ClearPendingRoleRestoreData() {
   PendingRoleRestoreByName.Empty();
   PendingRoleRestoreByIndex.Empty();
   G_PendingRoleByName.Empty();
