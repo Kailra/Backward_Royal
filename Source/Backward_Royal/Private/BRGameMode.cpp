@@ -57,8 +57,10 @@ void ABRGameMode::ScheduleInitialRoleApplyIfNeeded()
 {
 	if (bHasScheduledInitialRoleApply || !GetWorld()) return;
 	bHasScheduledInitialRoleApply = true;
-	GetWorld()->GetTimerManager().SetTimer(InitialRoleApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 1.5f, false);
-	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 1.5초 후 상체/하체 Pawn 적용 예정 (한 번만 예약)"));
+	// Stage02_Bushes 등 로딩이 느린 맵에서 하체 스폰이 늦는 현상 완화
+	const float InitialDelay = 2.0f;
+	GetWorld()->GetTimerManager().SetTimer(InitialRoleApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, InitialDelay, false);
+	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] %.1f초 후 상체/하체 Pawn 적용 예정 (한 번만 예약)"), InitialDelay);
 }
 
 void ABRGameMode::PostLogin(APlayerController* NewPlayer)
@@ -552,6 +554,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 		StagedSortedByTeam.Empty();
 		StagedNumTeams = 0;
 		StagedCurrentTeamIndex = 0;
+		StagedPawnWaitRetriesForTeam = 0;
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 순차 상체 스폰 완료"));
 		return;
 	}
@@ -562,6 +565,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 
 	if (!LowerPS || !UpperPS)
 	{
+		StagedPawnWaitRetriesForTeam = 0;
 		StagedCurrentTeamIndex++;
 		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
 		return;
@@ -570,6 +574,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 	if (LowerPS->bIsLowerBody == false || UpperPS->bIsLowerBody == true)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 역할 불일치 - 스킵"), TeamIndex + 1);
+		StagedPawnWaitRetriesForTeam = 0;
 		StagedCurrentTeamIndex++;
 		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
 		return;
@@ -580,6 +585,7 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 	if (!LowerPC || !UpperPC)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d Controller 없음, 스킵"), TeamIndex + 1);
+		StagedPawnWaitRetriesForTeam = 0;
 		StagedCurrentTeamIndex++;
 		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
 		return;
@@ -588,11 +594,21 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 	APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerPC->GetPawn());
 	if (!LowerChar || !IsValid(LowerChar))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 하체 Pawn 없음, 스킵"), TeamIndex + 1);
+		// Stage02_Bushes 등 맵에서 하체 Pawn 스폰이 늦을 수 있음 → 같은 팀 재시도 (최대 8회, 0.3초 간격)
+		if (StagedPawnWaitRetriesForTeam < MaxStagedPawnWaitRetriesPerTeam)
+		{
+			StagedPawnWaitRetriesForTeam++;
+			World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, 0.3f, false);
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 팀 %d 하체 Pawn 대기 중 (%d/%d), 0.3초 후 재시도"), TeamIndex + 1, StagedPawnWaitRetriesForTeam, MaxStagedPawnWaitRetriesPerTeam);
+			return;
+		}
+		UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 %d 하체 Pawn 없음(재시도 %d회 초과), 스킵"), TeamIndex + 1, MaxStagedPawnWaitRetriesPerTeam);
+		StagedPawnWaitRetriesForTeam = 0;
 		StagedCurrentTeamIndex++;
 		World->GetTimerManager().SetTimer(StagedApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam, FMath::Max(0.01f, SpawnDelayBetweenTeams), false);
 		return;
 	}
+	StagedPawnWaitRetriesForTeam = 0; // 성공 시 재시도 카운트 초기화
 
 	if (LowerPC->GetPawn() != LowerChar)
 	{

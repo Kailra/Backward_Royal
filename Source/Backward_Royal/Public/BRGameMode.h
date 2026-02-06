@@ -83,6 +83,9 @@ protected:
 	TArray<ABRPlayerState*> StagedSortedByTeam;
 	int32 StagedNumTeams = 0;
 	int32 StagedCurrentTeamIndex = 0;
+	/** 팀별 상체 스폰 시 하체 Pawn 없을 때 같은 팀 재시도 횟수 (Stage02_Bushes 등 느린 맵 대응) */
+	int32 StagedPawnWaitRetriesForTeam = 0;
+	static constexpr int32 MaxStagedPawnWaitRetriesPerTeam = 8;
 	FTimerHandle StagedApplyTimerHandle;
 	FTimerHandle InitialRoleApplyTimerHandle;
 
