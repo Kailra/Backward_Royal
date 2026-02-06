@@ -193,84 +193,18 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] Standalone 모드 — 방 생성 버튼을 누르면 방장이 됩니다."));
 		}
 
-		// [보존] 플레이어 역할 할당 로직 (Travel 복원 시 RestorePendingRolesFromTravel에서 처리)
+		// [A안] 새 접속자는 접속 순(0,1/2,3) 역할 할당 없이 대기열(관전)만. 팀/역할은 랜덤 버튼 또는 1P·2P 선택으로만 설정.
+		// Travel 복원 시에는 RestorePendingRolesFromTravel / RestoreUserInfoToPlayerStateForPostLogin에서 처리.
 		if (!bRestoredFromTravel)
 		{
-		if (CurrentPlayerIndex == 0 || CurrentPlayerIndex % 2 == 0)
-		{
-			// [하체]
-			BRPS->SetPlayerRole(true, -1);
-			UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 하체 역할 할당"), *PlayerName);
-
+			BRPS->SetTeamNumber(0);
+			BRPS->SetSpectator(true); // 대기열 = 관전. UpdatePlayerList()에서 Entry 빈 자리에 배치됨.
 			if (APawn* NewPawn = NewPlayer->GetPawn())
 			{
-				NewPawn->SetOwner(NewPlayer); // RPC 권한 부여
+				NewPawn->SetOwner(NewPlayer);
 			}
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 대기열(관전) 배치 — 팀/역할은 랜덤 버튼 또는 팀 슬롯 선택으로 설정"), *PlayerName);
 		}
-		else
-		{
-			// [상체]
-			int32 LowerBodyPlayerIndex = CurrentPlayerIndex - 1;
-			if (BRGameState->PlayerArray.IsValidIndex(LowerBodyPlayerIndex))
-			{
-				if (ABRPlayerState* LowerBodyPS = Cast<ABRPlayerState>(BRGameState->PlayerArray[LowerBodyPlayerIndex]))
-				{
-					// NewPlayer가 처음 접속하며 자동으로 배정받은 기본 Pawn을 가져옵니다.
-					APawn* ProxyPawn = NewPlayer->GetPawn();
-					if (ProxyPawn)
-					{
-						UE_LOG(LogTemp, Warning, TEXT("[시스템] %s의 기존 Proxy Pawn(%s)을 삭제합니다."), *PlayerName, *ProxyPawn->GetName());
-						ProxyPawn->Destroy();
-					}
-
-					// 역할 데이터 업데이트
-					BRPS->SetPlayerRole(false, LowerBodyPlayerIndex);
-					LowerBodyPS->SetPlayerRole(true, CurrentPlayerIndex);
-
-					UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 상체 역할 할당 (하체 플레이어 인덱스: %d)"),
-						*PlayerName, LowerBodyPlayerIndex);
-
-					// -----------------------------------------------------------
-					// [추가 기능] 서버 권한 상체 스폰 및 소유권 부여
-					// -----------------------------------------------------------
-					APlayerController* LowerBodyController = Cast<APlayerController>(LowerBodyPS->GetOwningController());
-					if (LowerBodyController && UpperBodyClass)
-					{
-						APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerBodyController->GetPawn());
-						if (LowerChar)
-						{
-							FActorSpawnParameters SpawnParams;
-							SpawnParams.Owner = NewPlayer; // RPC 권한을 위한 소유자 설정
-							SpawnParams.Instigator = NewPlayer->GetPawn();
-							SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-							AUpperBodyPawn* NewUpper = GetWorld()->SpawnActor<AUpperBodyPawn>(
-								UpperBodyClass, LowerChar->GetActorLocation(), LowerChar->GetActorRotation(), SpawnParams
-							);
-
-							if (NewUpper)
-							{
-								// 물리적 부착
-								NewUpper->AttachToComponent(
-									LowerChar->HeadMountPoint,
-									FAttachmentTransformRules::SnapToTargetNotIncludingScale
-								);
-
-								// 상호 참조 연결
-								NewUpper->ParentBodyCharacter = LowerChar;
-								LowerChar->SetUpperBodyPawn(NewUpper);
-
-								// 상체 조종자가 이 Pawn을 직접 제어하도록 빙의
-								NewPlayer->Possess(NewUpper);
-
-								UE_LOG(LogTemp, Log, TEXT("[서버 생성] %s의 상체 Pawn이 생성되어 하체(Index %d)에 부착되었습니다."), *PlayerName, LowerBodyPlayerIndex);
-							}
-						}
-					}
-				}
-			}
-		}
-		} // if (!bRestoredFromTravel) 역할 할당 블록 끝
 	}
 
 	// [보존] 플레이어 목록 업데이트
@@ -483,64 +417,13 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 		return;
 	}
 
-	// 하체 플레이어에게 기본 Pawn이 스폰될 때까지 대기 (Seamless Travel 직후엔 Pawn이 아직 없을 수 있음)
-	static int32 G_ApplyRolePawnWaitRetries = 0;
-	const int32 MaxPawnWaitRetries = 20; // 0.5초 * 20 = 최대 10초 대기
-	bool bAllLowerHavePawns = true;
-	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
-	{
-		ABRPlayerState* LowerPS = SortedByTeam[2 * TeamIndex];
-		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwningController());
-		if (LowerPC && (!LowerPC->GetPawn() || !IsValid(LowerPC->GetPawn())))
-		{
-			bAllLowerHavePawns = false;
-			break;
-		}
-	}
-	if (!bAllLowerHavePawns)
-	{
-		if (G_ApplyRolePawnWaitRetries >= MaxPawnWaitRetries)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 하체 Pawn 대기 시간 초과(%d회), 적용 포기"), G_ApplyRolePawnWaitRetries);
-			G_ApplyRolePawnWaitRetries = 0;
-			GI->ClearPendingApplyRandomTeamRoles();
-			GI->ClearPendingRoleRestoreData();
-			return;
-		}
-		G_ApplyRolePawnWaitRetries++;
-		FTimerHandle H;
-		GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.5f, false);
-		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 하체 Pawn 대기 중 (%d/%d회), 0.5초 후 재시도"), G_ApplyRolePawnWaitRetries, MaxPawnWaitRetries);
-		return;
-	}
-	G_ApplyRolePawnWaitRetries = 0;
-	GI->ClearPendingApplyRandomTeamRoles();
-	GI->ClearPendingRoleRestoreData(); // 적용 성공 시에만 역할 저장 데이터 정리
-
-	// 상체로 지정된 플레이어들의 기존(하체) Pawn만 먼저 제거 → 팀당 1개 하체 몸통만 남김
-	for (int32 TeamIndex = 0; TeamIndex < NumTeams; TeamIndex++)
-	{
-		ABRPlayerState* UpperPS = SortedByTeam[2 * TeamIndex + 1];
-		if (UpperPS && !UpperPS->bIsLowerBody) // 상체인 경우만
-		{
-			// PlayerState → Controller는 GetOwningController() 사용 (GetOwner()는 PlayerState에서 설정되지 않을 수 있음)
-			APlayerController* UpperPC = Cast<APlayerController>(UpperPS->GetOwningController());
-			if (UpperPC)
-			{
-				APawn* OldPawn = UpperPC->GetPawn();
-				UpperPC->UnPossess();
-				if (OldPawn && IsValid(OldPawn))
-					OldPawn->Destroy();
-			}
-		}
-	}
-
+	// 순차 스폰: 1팀 하체 확인 → 1팀 상체 스폰 → 2팀 하체 확인 → 2팀 상체 스폰 … (앞사람이 전부 정상 스폰된 뒤 다음으로 진행)
 	// 기존 순차 스폰 타이머가 있으면 취소
 	World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
-	// 팀별로 딜레이를 두고 순차 스폰 (복제/메시 초기화 타이밍 버그 완화)
 	StagedSortedByTeam = SortedByTeam;
 	StagedNumTeams = NumTeams;
 	StagedCurrentTeamIndex = 0;
+	StagedPawnWaitRetriesForTeam = 0;
 	ApplyRoleChangesForRandomTeams_ApplyOneTeam();
 }
 
@@ -551,6 +434,11 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 	UWorld* World = GetWorld();
 	if (StagedCurrentTeamIndex >= StagedNumTeams)
 	{
+		if (UBRGameInstance* GI = GetGameInstance<UBRGameInstance>())
+		{
+			GI->ClearPendingApplyRandomTeamRoles();
+			GI->ClearPendingRoleRestoreData();
+		}
 		StagedSortedByTeam.Empty();
 		StagedNumTeams = 0;
 		StagedCurrentTeamIndex = 0;
