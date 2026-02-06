@@ -36,13 +36,28 @@ void UBR_LobbyMenuWidget::NativeConstruct()
 		HandleCanStartGameChanged();
 	}
 
-	// 초기 방 제목 표시
+	// 늦게 들어온 클라이언트 대응: 구독 시점에 이미 지나간 OnRep를 놓쳤을 수 있으므로
+	// 현재 GameState 기준으로 즉시 한 번 갱신
+	HandlePlayerListChanged();
+
+	// 복제가 0.45초 타이머보다 늦게 도착하는 경우를 위해, 짧은 지연 후 한 번 더 갱신
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(LateJoinerRefreshTimerHandle, this, &UBR_LobbyMenuWidget::HandlePlayerListChanged, 0.6f, false);
+	}
+
+	// 초기 방 제목 표시 (HandlePlayerListChanged에서도 호출되지만, 위에서 이미 한 번 호출함)
 	FString RoomTitle = UBRWidgetFunctionLibrary::GetRoomTitleForDisplay(this);
 	OnRoomTitleRefreshed(RoomTitle);
 }
 
 void UBR_LobbyMenuWidget::NativeDestruct()
 {
+	// 지연 갱신 타이머 해제
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LateJoinerRefreshTimerHandle);
+	}
 	// 이벤트 바인딩 해제
 	if (CachedGameState)
 	{

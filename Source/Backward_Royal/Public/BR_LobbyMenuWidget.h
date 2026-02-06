@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "TimerManager.h"
 #include "BR_LobbyMenuWidget.generated.h"
 
 class ABRPlayerController;
@@ -102,6 +103,9 @@ private:
 	// GameState 참조 (mutable로 선언하여 const 함수에서도 수정 가능)
 	UPROPERTY()
 	mutable ABRGameState* CachedGameState;
+
+	/** 늦게 들어온 클라이언트용: 복제가 늦게 도착해도 UI 갱신하기 위한 지연 갱신 타이머 */
+	FTimerHandle LateJoinerRefreshTimerHandle;
 
 	// 이벤트 바인딩 해제를 위한 함수들
 	UFUNCTION()
