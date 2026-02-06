@@ -276,6 +276,36 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 	{
 		BRGameState->UpdatePlayerList();
 	}
+
+	// 늦게 들어온 클라이언트(3·4번째 등) 로비 UI 동기화: 서버가 갱신 요청 RPC를 지연 호출
+	UWorld* WorldForNet = GetWorld();
+	ENetMode CurrentNetMode = WorldForNet ? WorldForNet->GetNetMode() : NM_Standalone;
+	if (BRGameState->PlayerArray.Num() > 1 && (CurrentNetMode == NM_ListenServer || CurrentNetMode == NM_DedicatedServer))
+	{
+		if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(NewPlayer))
+		{
+			// 로컬(호스트)가 아닌 원격 클라이언트만 대상
+			if (!NewPlayer->IsLocalController())
+			{
+				PendingLobbyRefreshPC = NewPlayer;
+				UWorld* W = GetWorld();
+				if (W)
+				{
+					W->GetTimerManager().SetTimer(LobbyRefreshRpcTimerHandle1, this, &ABRGameMode::SendLobbyRefreshRPCToJoinedPlayer, 0.6f, false);
+					W->GetTimerManager().SetTimer(LobbyRefreshRpcTimerHandle2, this, &ABRGameMode::SendLobbyRefreshRPCToJoinedPlayer, 1.5f, false);
+					UE_LOG(LogTemp, Log, TEXT("[로비 UI] 입장 클라이언트에게 0.6초·1.5초 후 로비 갱신 RPC 예약"));
+				}
+			}
+		}
+	}
+}
+
+void ABRGameMode::SendLobbyRefreshRPCToJoinedPlayer()
+{
+	if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PendingLobbyRefreshPC.Get()))
+	{
+		BRPC->ClientRequestLobbyUIRefresh();
+	}
 }
 
 void ABRGameMode::Logout(AController* Exiting)

@@ -100,6 +100,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientReceiveRoomTitle(const FString& RoomTitle);
 
+	/** 서버가 입장 직후 클라이언트에 로비 UI 갱신 요청 (늦게 들어온 3·4번째 클라이언트 UI 동기화용) */
+	UFUNCTION(Client, Reliable)
+	void ClientRequestLobbyUIRefresh();
+
 	// 역할에 따른 입력 매핑 교체 함수
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	void SetupRoleInput(bool bIsLower);

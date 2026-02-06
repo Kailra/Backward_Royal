@@ -1275,6 +1275,28 @@ void ABRPlayerController::ClientReceiveRoomTitle_Implementation(const FString& R
 	}
 }
 
+void ABRPlayerController::ClientRequestLobbyUIRefresh_Implementation()
+{
+	// 복제 타이밍을 놓친 클라이언트를 위해 서버가 요청한 로비 UI 갱신.
+	// 짧은 지연 후 GameState에서 Broadcast하여 이미 떠 있는 LobbyMenu가 갱신되도록 함.
+	UWorld* World = GetWorld();
+	if (!World || !IsLocalController()) return;
+
+	TWeakObjectPtr<ABRPlayerController> WeakThis(this);
+	FTimerHandle DummyHandle;
+	World->GetTimerManager().SetTimer(DummyHandle, [WeakThis]()
+	{
+		if (!WeakThis.IsValid()) return;
+		UWorld* W = WeakThis->GetWorld();
+		if (ABRGameState* GS = W ? W->GetGameState<ABRGameState>() : nullptr)
+		{
+			GS->OnPlayerListChanged.Broadcast();
+			GS->OnTeamChanged.Broadcast();
+			UE_LOG(LogTemp, Log, TEXT("[로비 UI] 서버 요청으로 로비 갱신 브로드캐스트 완료"));
+		}
+	}, 0.2f, false);
+}
+
 void ABRPlayerController::RequestRandomTeams()
 {
 	UWorld* World = GetWorld();
