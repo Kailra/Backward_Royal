@@ -89,11 +89,22 @@ void ABRGameState::UpdatePlayerList()
 		UBRGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UBRGameInstance>() : nullptr;
 		const bool bSkipEntryInit = GI && GI->HasPendingRoleRestore();
 
-		// 새로 들어온 플레이어를 Entry 첫 빈 자리에 배치 (로비 전용, 게임 맵 Travel 직후 스킵)
+		// 새로 들어온 플레이어를 Entry 첫 빈 자리에 배치 (Travel 직후 스킵)
 		if (!bSkipEntryInit)
 		{
 		for (int32 i = 0; i < PlayerArray.Num(); i++)
 		{
+			// [인게임 보호] 이미 유효한 팀에 배치된 플레이어(TeamNumber > 0)는 Entry 초기화 대상에서 제외
+			// → 스왑 등의 역할 변경 시 관전으로 리셋되지 않도록 보호
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PlayerArray[i]))
+			{
+				if (BRPS->TeamNumber > 0 && !BRPS->bIsSpectatorSlot)
+				{
+					// 이미 팀에 배치된 플레이어는 건너뛰기
+					continue;
+				}
+			}
+
 			bool bFound = false;
 			for (int32 k : LobbyEntrySlots) { if (k == i) { bFound = true; break; } }
 			if (!bFound)

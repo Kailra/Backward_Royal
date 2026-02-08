@@ -2,6 +2,7 @@
 #include "SwitchOrb.h"
 #include "Components/SphereComponent.h"
 #include "PlayerCharacter.h"
+#include "UpperBodyPawn.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "BRPlayerState.h"
@@ -58,9 +59,32 @@ void ASwitchOrb::OnOrbOverlap(UPrimitiveComponent* OverlappedComponent, AActor* 
 
     if (!OtherActor) return;
 
-    // 플레이어 직접 오버랩 + 무기/부착물·자식 액터 오버랩 시 소유자/부모로 플레이어 찾기 (인식 불안정 완화)
+    // [개선] 플레이어 찾기: PlayerCharacter 직접 또는 UpperBodyPawn의 ParentBody 또는 부모 체인
     APlayerCharacter* PlayerChar = Cast<APlayerCharacter>(OtherActor);
-    if (!PlayerChar)
+    ABRPlayerState* MyPS = nullptr;
+
+    // 1) 직접 PlayerCharacter인 경우
+    if (PlayerChar)
+    {
+        MyPS = PlayerChar->GetPlayerState<ABRPlayerState>();
+    }
+    // 2) UpperBodyPawn인 경우 - 조종하는 컨트롤러의 PlayerState 사용
+    else if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(OtherActor))
+    {
+        if (AController* Controller = UpperPawn->GetController())
+        {
+            MyPS = Controller->GetPlayerState<ABRPlayerState>();
+            // ParentBodyCharacter도 설정되어 있으면 그것을 PlayerChar로 사용
+            PlayerChar = UpperPawn->ParentBodyCharacter;
+        }
+        if (!MyPS || !PlayerChar)
+        {
+            UE_LOG(LogSwitchOrb, Warning, TEXT("UpperBodyPawn 감지되었으나 유효한 컨트롤러/ParentBody 없음 (%s)"), *GetNameSafe(OtherActor));
+            return;
+        }
+    }
+    // 3) 무기/부착물 등 - Owner/Instigator/부모 체인에서 PlayerCharacter 찾기
+    else
     {
         PlayerChar = Cast<APlayerCharacter>(OtherActor->GetOwner());
         if (!PlayerChar)
@@ -71,28 +95,39 @@ void ASwitchOrb::OnOrbOverlap(UPrimitiveComponent* OverlappedComponent, AActor* 
             {
                 PlayerChar = Cast<APlayerCharacter>(Parent);
                 if (PlayerChar) break;
+                // 부모 체인에서 UpperBodyPawn도 체크
+                if (AUpperBodyPawn* ParentUpper = Cast<AUpperBodyPawn>(Parent))
+                {
+                    PlayerChar = ParentUpper->ParentBodyCharacter;
+                    if (PlayerChar) break;
+                }
             }
         }
+        if (PlayerChar)
+        {
+            MyPS = PlayerChar->GetPlayerState<ABRPlayerState>();
+        }
     }
-    if (!PlayerChar)
+
+    if (!PlayerChar || !MyPS)
     {
         UE_LOG(LogSwitchOrb, Warning, TEXT("실패: 대상이 APlayerCharacter가 아님 (%s)"), *GetNameSafe(OtherActor));
         return;
     }
 
-    ABRPlayerState* MyPS = PlayerChar->GetPlayerState<ABRPlayerState>();
-
-    // [중요 체크포인트] PlayerState 확인
-    if (!MyPS)
-    {
-        UE_LOG(LogSwitchOrb, Warning, TEXT("실패: PlayerState가 없음"));
-        return;
-    }
+    // [디버깅] 플레이어 상태 로깅
+    UE_LOG(LogSwitchOrb, Log, TEXT("플레이어 감지: %s (TeamID=%d, bIsLowerBody=%s, bIsSpectatorSlot=%s, ConnectedPlayerIndex=%d)"),
+        *MyPS->GetPlayerName(),
+        MyPS->TeamNumber,
+        MyPS->bIsLowerBody ? TEXT("true") : TEXT("false"),
+        MyPS->bIsSpectatorSlot ? TEXT("true") : TEXT("false"),
+        MyPS->ConnectedPlayerIndex);
 
     // 관전이거나 팀 없음(TeamID 0)이면 파트너 없음
     if (MyPS->bIsSpectatorSlot || MyPS->TeamNumber <= 0)
     {
-        UE_LOG(LogSwitchOrb, Error, TEXT("실패: 관전이거나 팀이 없음 (TeamID=%d). 팀 배정이 되었나요?"), MyPS->TeamNumber);
+        UE_LOG(LogSwitchOrb, Error, TEXT("실패: 관전이거나 팀이 없음 (TeamID=%d, bIsSpectatorSlot=%s). 팀 배정이 되었나요?"),
+            MyPS->TeamNumber, MyPS->bIsSpectatorSlot ? TEXT("true") : TEXT("false"));
         return;
     }
 
