@@ -681,21 +681,73 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망 확인: %s"), *VictimCharacter->GetName());
 
 	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
-	if (AController* Controller = VictimCharacter->GetController())
-	{
-		if (ABRPlayerState* PS = Controller->GetPlayerState<ABRPlayerState>())
-		{
-			// PlayerState에 사망 상태가 아직 반영 안 되었다면 여기서 확실히 처리
-			if (PS->CurrentStatus != EPlayerStatus::Dead)
-			{
-				PS->SetPlayerStatus(EPlayerStatus::Dead);
-			}
+	AController* Controller = VictimCharacter->GetController();
+	ABRPlayerState* PS = Controller ? Controller->GetPlayerState<ABRPlayerState>() : nullptr;
 
-			UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
-				*PS->GetPlayerName(), PS->TeamNumber);
+	if (PS)
+	{
+		// PlayerState에 사망 상태가 아직 반영 안 되었다면 여기서 확실히 처리
+		if (PS->CurrentStatus != EPlayerStatus::Dead)
+		{
+			PS->SetPlayerStatus(EPlayerStatus::Dead);
 		}
+
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
+			*PS->GetPlayerName(), PS->TeamNumber);
 	}
 
 	// TODO: 여기에 남은 생존 팀 수를 확인하여 '게임 종료(우승)' 판정 로직 추가
 	// 예: CheckGameEndCondition();
+
+	// -----------------------------------------------------------
+	// [추가 기능] 2초 후 팀 전체 관전 모드 전환
+	// -----------------------------------------------------------
+	ABRPlayerController* VictimPC = Cast<ABRPlayerController>(Controller);
+	ABRPlayerController* PartnerPC = nullptr;
+
+	// 파트너 찾기 (TeamNumber 기준)
+	if (PS && GetGameState<ABRGameState>())
+	{
+		for (APlayerState* OtherPS : GetGameState<ABRGameState>()->PlayerArray)
+		{
+			ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
+			if (BRPS && BRPS != PS && BRPS->TeamNumber == PS->TeamNumber)
+			{
+				PartnerPC = Cast<ABRPlayerController>(BRPS->GetOwningController());
+
+				// 파트너도 사망 처리 (상태 동기화)
+				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
+				break;
+			}
+		}
+	}
+
+	// 타이머 설정 (2초 후 관전 전환)
+	// 피해자 혹은 파트너가 존재할 때만 타이머 실행
+	if (VictimPC || PartnerPC)
+	{
+		FTimerHandle SpecTimerHandle;
+		FTimerDelegate TimerDel;
+
+		// Weak Pointer로 변환하여 전달 (타이머 실행 시점에 객체 유효성 보장)
+		TWeakObjectPtr<ABRPlayerController> WeakVictimPC(VictimPC);
+		TWeakObjectPtr<ABRPlayerController> WeakPartnerPC(PartnerPC);
+
+		TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectator, WeakVictimPC, WeakPartnerPC);
+
+		GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle, TimerDel, 2.0f, false);
+	}
+}
+
+void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
+{
+	if (VictimPC.IsValid())
+	{
+		VictimPC->StartSpectatingMode();
+	}
+
+	if (PartnerPC.IsValid())
+	{
+		PartnerPC->StartSpectatingMode();
+	}
 }
