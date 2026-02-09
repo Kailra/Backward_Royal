@@ -94,8 +94,43 @@ void ABRGameMode::BeginPlay()
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
 	{
 		if (GI->GetPendingApplyRandomTeamRoles())
+		{
 			ScheduleInitialRoleApplyIfNeeded();
+		}
+		else
+		{
+			// 테스트 맵 직접 실행(로비 없음): 2초 후 저장된 역할 없고 전원 하체면 자동 랜덤 팀 배정 후 상체/하체 적용
+			GetWorld()->GetTimerManager().SetTimer(DirectStartRoleApplyTimerHandle, this, &ABRGameMode::TryApplyDirectStartRolesFallback, 2.0f, false);
+		}
 	}
+}
+
+void ABRGameMode::TryApplyDirectStartRolesFallback()
+{
+	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (!GI || !BRGameState || GI->GetPendingApplyRandomTeamRoles())
+		return;
+	if (BRGameState->PlayerArray.Num() < 2)
+		return;
+
+	int32 UpperBodyCount = 0;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			if (!BRPS->bIsLowerBody) UpperBodyCount++;
+		}
+	}
+	if (UpperBodyCount > 0)
+		return;
+
+	// 저장된 역할 없고 전원 하체 → 랜덤 팀 배정 후 저장·적용
+	BRGameState->AssignRandomTeams();
+	GI->SavePendingRolesForTravel(BRGameState);
+	GI->SetPendingApplyRandomTeamRoles(true);
+	UE_LOG(LogTemp, Warning, TEXT("[게임 맵 직접 실행] 팀/역할 미선택 → 자동 랜덤 팀 배정 후 상체/하체 적용"));
+	ApplyRoleChangesForRandomTeams();
 }
 
 void ABRGameMode::ScheduleInitialRoleApplyIfNeeded()
@@ -462,9 +497,34 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 		return;
 	}
 
+	// [강화] 전체 하체 Pawn이 준비될 때까지 대기 (로딩 빠른 맵에서 상체가 하체로 남는 현상 방지)
+	constexpr int32 MaxAllLowerReadyRetries = 20;  // 최대 6초 대기 (0.3초 × 20)
+	for (int32 i = 0; i < NumTeams; i++)
+	{
+		ABRPlayerState* LowerPS = SortedByTeam.IsValidIndex(2 * i) ? SortedByTeam[2 * i] : nullptr;
+		if (!LowerPS || !LowerPS->bIsLowerBody) continue;
+		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwningController());
+		if (!LowerPC) continue;
+		APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerPC->GetPawn());
+		if (!LowerChar || !IsValid(LowerChar))
+		{
+			if (StagedAllLowerReadyRetries < MaxAllLowerReadyRetries)
+			{
+				StagedAllLowerReadyRetries++;
+				World->GetTimerManager().SetTimer(StagedAllLowerReadyHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.3f, false);
+				UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 전체 하체 Pawn 대기 중 (%d/%d), 0.3초 후 재시도"), StagedAllLowerReadyRetries, MaxAllLowerReadyRetries);
+				return;
+			}
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 전체 하체 Pawn 대기 실패(재시도 %d회 초과), 팀 %d 스킵 가능"), MaxAllLowerReadyRetries, i + 1);
+			break;
+		}
+	}
+	StagedAllLowerReadyRetries = 0;
+
 	// 순차 스폰: 1팀 하체 확인 → 1팀 상체 스폰 → 2팀 하체 확인 → 2팀 상체 스폰 … (앞사람이 전부 정상 스폰된 뒤 다음으로 진행)
 	// 기존 순차 스폰 타이머가 있으면 취소
 	World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
+	World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
 	StagedSortedByTeam = SortedByTeam;
 	StagedNumTeams = NumTeams;
 	StagedCurrentTeamIndex = 0;
@@ -780,6 +840,16 @@ void ABRGameMode::StartGame()
 
 void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// 서버 안정성: 모든 타이머 해제로 장시간 구동 시 메모리/참조 누수 방지
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(InitialRoleApplyTimerHandle);
+		World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
+		World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
+		World->GetTimerManager().ClearTimer(DirectStartRoleApplyTimerHandle);
+	}
+
 	Super::EndPlay(EndPlayReason);
 	
 	// PIE 종료 시 NavigationSystem이 World를 참조하여 GC가 되지 않는 문제는
@@ -790,7 +860,6 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// World의 정리 순서에 문제가 있을 수 있습니다.
 	// 이 문제는 주로 비동기 네비게이션 메시 빌드가 진행 중일 때 발생합니다.
 	
-	UWorld* World = GetWorld();
 	if (World && World->IsPlayInEditor())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] PIE 종료 - NavigationSystem은 World 파괴 시 자동으로 정리됩니다."));
