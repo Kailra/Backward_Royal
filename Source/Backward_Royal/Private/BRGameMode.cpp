@@ -94,8 +94,43 @@ void ABRGameMode::BeginPlay()
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
 	{
 		if (GI->GetPendingApplyRandomTeamRoles())
+		{
 			ScheduleInitialRoleApplyIfNeeded();
+		}
+		else
+		{
+			// 테스트 맵 직접 실행(로비 없음): 2초 후 저장된 역할 없고 전원 하체면 자동 랜덤 팀 배정 후 상체/하체 적용
+			GetWorld()->GetTimerManager().SetTimer(DirectStartRoleApplyTimerHandle, this, &ABRGameMode::TryApplyDirectStartRolesFallback, 2.0f, false);
+		}
 	}
+}
+
+void ABRGameMode::TryApplyDirectStartRolesFallback()
+{
+	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (!GI || !BRGameState || GI->GetPendingApplyRandomTeamRoles())
+		return;
+	if (BRGameState->PlayerArray.Num() < 2)
+		return;
+
+	int32 UpperBodyCount = 0;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			if (!BRPS->bIsLowerBody) UpperBodyCount++;
+		}
+	}
+	if (UpperBodyCount > 0)
+		return;
+
+	// 저장된 역할 없고 전원 하체 → 랜덤 팀 배정 후 저장·적용
+	BRGameState->AssignRandomTeams();
+	GI->SavePendingRolesForTravel(BRGameState);
+	GI->SetPendingApplyRandomTeamRoles(true);
+	UE_LOG(LogTemp, Warning, TEXT("[게임 맵 직접 실행] 팀/역할 미선택 → 자동 랜덤 팀 배정 후 상체/하체 적용"));
+	ApplyRoleChangesForRandomTeams();
 }
 
 void ABRGameMode::ScheduleInitialRoleApplyIfNeeded()
@@ -812,6 +847,7 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(InitialRoleApplyTimerHandle);
 		World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
 		World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
+		World->GetTimerManager().ClearTimer(DirectStartRoleApplyTimerHandle);
 	}
 
 	Super::EndPlay(EndPlayReason);

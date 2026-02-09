@@ -94,6 +94,11 @@ protected:
 	static constexpr int32 MaxStagedPawnWaitRetriesPerTeam = 8;
 	FTimerHandle StagedApplyTimerHandle;
 	FTimerHandle InitialRoleApplyTimerHandle;
+	/** 테스트 맵 직접 실행(로비 없음) 시 2초 후 역할 적용 폴백용 */
+	FTimerHandle DirectStartRoleApplyTimerHandle;
+
+	/** 테스트 맵을 로비 없이 바로 실행했을 때: 저장된 역할이 없고 전원 하체면 랜덤 팀 배정 후 상체/하체 적용 */
+	void TryApplyDirectStartRolesFallback();
 
 	/** 1.5초 폴백 타이머가 이미 예약되었으면 true (OnPossess 중복 예약 방지) */
 	bool bHasScheduledInitialRoleApply = false;
