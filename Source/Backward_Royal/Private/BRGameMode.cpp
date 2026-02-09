@@ -462,9 +462,34 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 		return;
 	}
 
+	// [강화] 전체 하체 Pawn이 준비될 때까지 대기 (로딩 빠른 맵에서 상체가 하체로 남는 현상 방지)
+	constexpr int32 MaxAllLowerReadyRetries = 20;  // 최대 6초 대기 (0.3초 × 20)
+	for (int32 i = 0; i < NumTeams; i++)
+	{
+		ABRPlayerState* LowerPS = SortedByTeam.IsValidIndex(2 * i) ? SortedByTeam[2 * i] : nullptr;
+		if (!LowerPS || !LowerPS->bIsLowerBody) continue;
+		APlayerController* LowerPC = Cast<APlayerController>(LowerPS->GetOwningController());
+		if (!LowerPC) continue;
+		APlayerCharacter* LowerChar = Cast<APlayerCharacter>(LowerPC->GetPawn());
+		if (!LowerChar || !IsValid(LowerChar))
+		{
+			if (StagedAllLowerReadyRetries < MaxAllLowerReadyRetries)
+			{
+				StagedAllLowerReadyRetries++;
+				World->GetTimerManager().SetTimer(StagedAllLowerReadyHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.3f, false);
+				UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 전체 하체 Pawn 대기 중 (%d/%d), 0.3초 후 재시도"), StagedAllLowerReadyRetries, MaxAllLowerReadyRetries);
+				return;
+			}
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 전체 하체 Pawn 대기 실패(재시도 %d회 초과), 팀 %d 스킵 가능"), MaxAllLowerReadyRetries, i + 1);
+			break;
+		}
+	}
+	StagedAllLowerReadyRetries = 0;
+
 	// 순차 스폰: 1팀 하체 확인 → 1팀 상체 스폰 → 2팀 하체 확인 → 2팀 상체 스폰 … (앞사람이 전부 정상 스폰된 뒤 다음으로 진행)
 	// 기존 순차 스폰 타이머가 있으면 취소
 	World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
+	World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
 	StagedSortedByTeam = SortedByTeam;
 	StagedNumTeams = NumTeams;
 	StagedCurrentTeamIndex = 0;
