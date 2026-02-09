@@ -15,6 +15,8 @@
 #include "NavigationSystem.h"
 #include "Algo/Sort.h"
 #include "TimerManager.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/IAssetRegistry.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -31,6 +33,49 @@ ABRGameMode::ABRGameMode()
 void ABRGameMode::ClearGameSessionForPIEExit()
 {
 	GameSession = nullptr;
+}
+
+TArray<FString> ABRGameMode::GetAvailableStageMapPaths() const
+{
+	TArray<FString> Result;
+	if (StageFolderPath.IsEmpty())
+	{
+		return StageMapPathsFallback;
+	}
+
+	IAssetRegistry* AssetRegistry = IAssetRegistry::Get();
+	if (!AssetRegistry)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] Asset Registry를 사용할 수 없어 폴백 목록을 사용합니다."));
+		return StageMapPathsFallback;
+	}
+
+	TArray<FAssetData> AssetDataList;
+	const FName PackagePath(*StageFolderPath);
+	AssetRegistry->GetAssetsByPath(PackagePath, AssetDataList, true, false);
+
+	// UE5: 월드(맵) 에셋만 필터 (클래스 경로 /Script/Engine.World)
+	const FTopLevelAssetPath WorldClassPath(TEXT("/Script/Engine"), TEXT("World"));
+	for (const FAssetData& AssetData : AssetDataList)
+	{
+		if (AssetData.AssetClassPath == WorldClassPath)
+		{
+			FString PackageName = AssetData.PackageName.ToString();
+			if (!PackageName.IsEmpty())
+			{
+				Result.Add(PackageName);
+			}
+		}
+	}
+
+	if (Result.Num() > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Stage 맵] 폴더에서 %d개 맵 수집: %s"), Result.Num(), *StageFolderPath);
+		return Result;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] 폴더에서 맵을 찾지 못해 폴백 목록을 사용합니다. (폴더: %s)"), *StageFolderPath);
+	return StageMapPathsFallback;
 }
 
 void ABRGameMode::BeginPlay()
@@ -606,19 +651,18 @@ void ABRGameMode::StartGame()
 		}
 	}
 
-	// 맵 선택: 랜덤 맵 사용 여부에 따라 결정
+	// 맵 선택: Stage 폴더에서 수집한 맵 중 랜덤 선택 (수집 실패 시 폴백 목록 또는 GameMapPath)
+	TArray<FString> AvailableMaps = GetAvailableStageMapPaths();
 	FString SelectedMapPath;
-	if (bUseRandomMap && StageMapPaths.Num() > 0)
+	if (bUseRandomMap && AvailableMaps.Num() > 0)
 	{
-		// 랜덤으로 Stage 맵 중 하나 선택
-		int32 RandomIndex = FMath::RandRange(0, StageMapPaths.Num() - 1);
-		SelectedMapPath = StageMapPaths[RandomIndex];
-		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 랜덤 맵 선택: %s (인덱스: %d/%d)"), 
-			*SelectedMapPath, RandomIndex + 1, StageMapPaths.Num());
+		int32 RandomIndex = FMath::RandRange(0, AvailableMaps.Num() - 1);
+		SelectedMapPath = AvailableMaps[RandomIndex];
+		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 랜덤 맵 선택: %s (인덱스: %d/%d)"),
+			*SelectedMapPath, RandomIndex + 1, AvailableMaps.Num());
 	}
 	else
 	{
-		// 기존 GameMapPath 사용
 		SelectedMapPath = GameMapPath;
 		UE_LOG(LogTemp, Log, TEXT("[게임 시작] 기본 맵 사용: %s"), *SelectedMapPath);
 	}

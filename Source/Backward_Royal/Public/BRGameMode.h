@@ -29,17 +29,17 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (DisplayName = "로비 맵 경로"))
 	FString LobbyMapPath;
 
-	// 게임 시작 맵 경로 (레거시 - 랜덤 맵 선택 시 사용되지 않음)
+	// 게임 시작 맵 경로 (레거시 - 랜덤 맵 선택 시 폴백용)
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	FString GameMapPath = TEXT("/Game/Main/Level/Stage/Stage01_Temple");
 
-	// Stage 맵 목록 (랜덤 선택용)
+	/** Stage 폴더 경로. 이 경로 안의 모든 월드(맵) 에셋 중에서 랜덤 선택됩니다. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (DisplayName = "Stage 폴더 경로"))
+	FString StageFolderPath = TEXT("/Game/Main/Level/Stage");
+
+	/** Stage 맵 목록 (폴백용). Stage 폴더 자동 수집이 실패할 때만 사용됩니다. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
-	TArray<FString> StageMapPaths = {
-		//TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
-		TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
-		//TEXT("/Game/Main/Level/Stage/Stage03_Arena")
-	};
+	TArray<FString> StageMapPathsFallback;
 
 	// 랜덤 맵 선택 사용 여부
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
@@ -71,6 +71,9 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Stage 폴더에서 맵 목록을 수집하거나, 실패 시 StageMapPathsFallback 반환 */
+	TArray<FString> GetAvailableStageMapPaths() const;
 
 	// 에디터(BP_BRGameMode)에서 BP_UpperBodyPawn을 할당할 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Classes")
