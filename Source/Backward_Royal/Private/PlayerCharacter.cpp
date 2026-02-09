@@ -484,11 +484,13 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 
 void APlayerCharacter::ApplyMeshFromID(EArmorSlot Slot, int32 MeshID)
 {
+	LOG_PLAYER(Log, TEXT("ApplyMeshFromID 시작 - Slot: %d, ID: %d"), (int32)Slot, MeshID);
+
 	// 1. GameInstance 가져오기
 	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
 	if (!GI)
 	{
-		// 에디터 등에서 PIE 시작 전이거나 엣지 케이스
+		LOG_PLAYER(Error, TEXT("GameInstance를 찾을 수 없습니다."));
 		return;
 	}
 
