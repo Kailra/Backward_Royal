@@ -805,6 +805,15 @@ void ABRGameMode::StartGame()
 
 void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// 서버 안정성: 모든 타이머 해제로 장시간 구동 시 메모리/참조 누수 방지
+	UWorld* World = GetWorld();
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(InitialRoleApplyTimerHandle);
+		World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
+		World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
+	}
+
 	Super::EndPlay(EndPlayReason);
 	
 	// PIE 종료 시 NavigationSystem이 World를 참조하여 GC가 되지 않는 문제는
@@ -815,7 +824,6 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// World의 정리 순서에 문제가 있을 수 있습니다.
 	// 이 문제는 주로 비동기 네비게이션 메시 빌드가 진행 중일 때 발생합니다.
 	
-	UWorld* World = GetWorld();
 	if (World && World->IsPlayInEditor())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[GameMode] PIE 종료 - NavigationSystem은 World 파괴 시 자동으로 정리됩니다."));
