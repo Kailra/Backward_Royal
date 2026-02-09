@@ -61,9 +61,9 @@ public:
 	// 랜덤 팀 배정 후 상체/하체 Pawn 재배치 (상체 스폰 및 빙의)
 	void ApplyRoleChangesForRandomTeams();
 
-	// 팀별 상체 스폰 간격(초). 순차 스폰으로 복제/초기화 타이밍 버그 완화
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float SpawnDelayBetweenTeams = 0.3f;
+	// 팀별 상체 스폰 간격(초). 전 팀 상체 스폰/빙의 완료 후 다음 팀으로 (복제·초기화 완료 대기)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (ClampMin = "0.3", ClampMax = "1.5"))
+	float SpawnDelayBetweenTeams = 0.55f;
 
 	// 플레이어 사망 시 호출되는 함수
 	void OnPlayerDied(class ABaseCharacter* VictimCharacter);
@@ -86,11 +86,19 @@ protected:
 	TArray<ABRPlayerState*> StagedSortedByTeam;
 	int32 StagedNumTeams = 0;
 	int32 StagedCurrentTeamIndex = 0;
+	/** 전체 하체 Pawn 준비 대기 재시도 횟수 (로딩 빠른 맵에서 전원 하체 스폰 완료 후 상체 적용) */
+	int32 StagedAllLowerReadyRetries = 0;
+	FTimerHandle StagedAllLowerReadyHandle;
 	/** 팀별 상체 스폰 시 하체 Pawn 없을 때 같은 팀 재시도 횟수 (Stage02_Bushes 등 느린 맵 대응) */
 	int32 StagedPawnWaitRetriesForTeam = 0;
 	static constexpr int32 MaxStagedPawnWaitRetriesPerTeam = 8;
 	FTimerHandle StagedApplyTimerHandle;
 	FTimerHandle InitialRoleApplyTimerHandle;
+	/** 테스트 맵 직접 실행(로비 없음) 시 2초 후 역할 적용 폴백용 */
+	FTimerHandle DirectStartRoleApplyTimerHandle;
+
+	/** 테스트 맵을 로비 없이 바로 실행했을 때: 저장된 역할이 없고 전원 하체면 랜덤 팀 배정 후 상체/하체 적용 */
+	void TryApplyDirectStartRolesFallback();
 
 	/** 1.5초 폴백 타이머가 이미 예약되었으면 true (OnPossess 중복 예약 방지) */
 	bool bHasScheduledInitialRoleApply = false;
