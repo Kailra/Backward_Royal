@@ -1027,8 +1027,8 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
     if (ABRGameSession *GameSession =
             Cast<ABRGameSession>(GameMode->GameSession)) {
       GameSession->UnbindSessionDelegatesForPIEExit();
-      OnRoomTitleReceived.Clear();
     }
+    OnRoomTitleReceived.Clear();
   }
 
   // 2) GEngine/GameSession 델리게이트·위젯 정리 — PC가 월드를 잡지 않도록
