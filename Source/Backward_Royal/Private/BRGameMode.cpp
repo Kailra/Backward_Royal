@@ -29,13 +29,7 @@ ABRGameMode::ABRGameMode()
 	// 리슨 서버 설정
 	bUseSeamlessTravel = true;
 
-	// 게임 시작 시 이 4개 맵 중 랜덤 선택 (에디터/블루프린트에서 수정 가능)
-	StageMapPathsFallback = {
-		TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
-		TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
-		TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
-		TEXT("/Game/Main/Level/Stage/Stage04_Race")
-	};
+	// Stage 맵 폴백 기본값은 BRGameMode.h의 StageMapPathsFallback에서 관리 (GameMapPath, StageFolderPath와 동일)
 }
 
 void ABRGameMode::ClearGameSessionForPIEExit()
