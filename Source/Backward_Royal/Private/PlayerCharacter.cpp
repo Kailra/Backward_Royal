@@ -8,9 +8,11 @@
 #include "EnhancedInputSubsystems.h"
 #include "BRPlayerController.h"
 #include "Net/UnrealNetwork.h"
+#include "CustomizationInfo.h"
 #include "BRGameInstance.h"
 #include "BRPlayerState.h"
 #include "BRGameState.h"
+#include "ArmorTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 
@@ -98,7 +100,7 @@ APlayerCharacter::APlayerCharacter()
 
 void APlayerCharacter::BeginPlay()
 {
-	// GetMesh()->SetVisibility(false, false);  <- 몸 투명화
+	// GetMesh()->SetVisibility(false, false);  <- 몸 투명화 (필요 시 주석 해제)
 
 	if (StaminaComp)
 	{
@@ -125,9 +127,35 @@ void APlayerCharacter::BeginPlay()
 		}
 	}
 
-	if (GetPlayerState())
+	// -------------------------------------------------------------------------
+	// [수정됨] PlayerState 초기화 및 커스터마이징 연결 로직 통합
+	// -------------------------------------------------------------------------
+
+	// 1. PlayerState 가져오기 시도
+	ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>();
+
+	if (BRPS)
 	{
+		// 2. 이미 PlayerState가 있다면 초기화 로직 실행
+		// (OnRep_PlayerState 내부에서 TryApplyCustomization 바인딩 및 호출을 수행하도록 구성했다면 이 함수 호출만으로 충분합니다)
 		OnRep_PlayerState();
+	}
+	else
+	{
+		// 3. PlayerState가 아직 없다면(클라이언트 로딩 지연 등), 0.5초 뒤 재시도
+		FTimerHandle RetryHandle;
+		GetWorld()->GetTimerManager().SetTimer(RetryHandle, [this]()
+			{
+				// 람다 내부에서 다시 확인
+				if (ABRPlayerState* RetryPS = GetPlayerState<ABRPlayerState>())
+				{
+					// 재시도 성공 시 초기화 실행
+					// OnRep_PlayerState를 수동으로 호출하여 바인딩/적용 로직을 수행
+					OnRep_PlayerState();
+
+					UE_LOG(LogTemp, Log, TEXT("[Character] BeginPlay: PlayerState 뒤늦게 로드됨 -> 초기화 수행"));
+				}
+			}, 0.5f, false);
 	}
 }
 
@@ -339,17 +367,19 @@ void APlayerCharacter::OnRep_PlayerState()
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (MyPS)
 	{
-		// 1-1. 내 커마 정보가 오면 알려줘
+		// 1. 데이터 변경 감지 연결 (기존 코드에 이미 있음)
+		// 중복 등록 방지를 위해 Remove 후 Add 하는 것이 안전함
+		MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-		// 1-2. 내 역할(상/하체)이나 파트너가 정해지면 알려줘
-		// (기존 코드에 OnPlayerRoleChanged 델리게이트가 이미 있다고 가정)
+		// 2. 파트너 연결 (기존 코드 유지)
+		MyPS->OnPlayerRoleChanged.RemoveDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
-		// 혹시 이미 데이터가 와 있을 수도 있으니 한번 체크
+		// 3. 즉시 적용 시도
 		TryApplyCustomization();
 
-		// 혹시 이미 파트너가 정해져 있을 수도 있으니 체크
+		// 4. 파트너 바인딩 시도
 		if (MyPS->ConnectedPlayerIndex != -1)
 		{
 			BindToPartnerPlayerState(MyPS->bIsLowerBody);
@@ -401,32 +431,33 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
-	// 이미 둘 다 적용 끝났으면 더 이상 연산하지 않음 (최적화)
-	if (bUpperBodyApplied && bLowerBodyApplied) return;
+	// [삭제] 이 줄 때문에 한 번 적용되면 이후 변경사항(로비에서 커마 변경 등)이 무시됩니다.
+	// if (bUpperBodyApplied && bLowerBodyApplied) return;
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
 	// --- 1. 상체 적용 ---
-	// 아직 적용 안 됐고(false), 데이터가 존재하면(HeadID != 0) 적용
-	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.HeadID != 0)
+	// 상체 PS가 유효하다면 무조건 최신 데이터로 갱신 (ID가 0이면 장비 해제됨)
+	if (UpperPS)
 	{
+		// [중요] ApplyMeshFromID의 인자 순서는 (EArmorSlot, MeshID) 입니다.
 		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
 		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
 		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-		bUpperBodyApplied = true; // 완료 마킹 (이후에는 다시 적용 안 함)
-		LOG_PLAYER(Display, TEXT("Upper Body Customization Applied"));
+		bUpperBodyApplied = true;
+		// LOG_PLAYER(Display, TEXT("Upper Body Updated"));
 	}
 
 	// --- 2. 하체 적용 ---
-	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.LegID != 0)
+	if (LowerPS)
 	{
 		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
 		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-		bLowerBodyApplied = true; // 완료 마킹
-		LOG_PLAYER(Display, TEXT("Lower Body Customization Applied"));
+		bLowerBodyApplied = true;
+		// LOG_PLAYER(Display, TEXT("Lower Body Updated"));
 	}
 }
 
@@ -490,11 +521,13 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 
 void APlayerCharacter::ApplyMeshFromID(EArmorSlot Slot, int32 MeshID)
 {
+	LOG_PLAYER(Log, TEXT("ApplyMeshFromID 시작 - Slot: %d, ID: %d"), (int32)Slot, MeshID);
+
 	// 1. GameInstance 가져오기
 	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
 	if (!GI)
 	{
-		// 에디터 등에서 PIE 시작 전이거나 엣지 케이스
+		LOG_PLAYER(Error, TEXT("GameInstance를 찾을 수 없습니다."));
 		return;
 	}
 
