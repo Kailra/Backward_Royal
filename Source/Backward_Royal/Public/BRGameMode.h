@@ -79,6 +79,9 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	/** 생존 팀 확인 후 1팀만 남으면 결산 이벤트 호출 */
+	void CheckMatchWinner();
+
 	/** Stage 폴더에서 맵 목록을 수집하거나, 실패 시 StageMapPathsFallback 반환 */
 	TArray<FString> GetAvailableStageMapPaths() const;
 
