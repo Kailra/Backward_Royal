@@ -1,0 +1,649 @@
+﻿warning: in the working copy of 'Source/Backward_Royal/Private/BR_LobbyMenuWidget.cpp', LF will be replaced by CRLF the next time Git touches it
+diff --git a/Source/Backward_Royal/Backward_Royal.Build.cs b/Source/Backward_Royal/Backward_Royal.Build.cs
+index f332e4f..e96401a 100644
+--- a/Source/Backward_Royal/Backward_Royal.Build.cs
++++ b/Source/Backward_Royal/Backward_Royal.Build.cs
+@@ -30,5 +30,11 @@ public class Backward_Royal : ModuleRules
+
+                // Standalone 모드에서 Null Online Subsystem을 사용하기 위해 동 적 로드
+                DynamicallyLoadedModuleNames.Add("OnlineSubsystemNull");
++
++               // PIE 종료 시 월드 참조 assertion 방지: PrePIEEnded에서 먼저 정리
++               if (Target.bBuildEditor)
++               {
++                       PrivateDependencyModuleNames.Add("UnrealEd");
++               }
+        }
+ }
+diff --git a/Source/Backward_Royal/Private/BRGameInstance.cpp b/Source/Backward_Royal/Private/BRGameInstance.cpp
+index f3b7f2e..c254f4f 100644
+--- a/Source/Backward_Royal/Private/BRGameInstance.cpp
++++ b/Source/Backward_Royal/Private/BRGameInstance.cpp
+@@ -28,14 +28,12 @@
+ #include "UObject/UnrealType.h"
+
+ #if WITH_EDITOR
++#include "Editor/EditorEngine.h"
+ #include "UObject/SavePackage.h"
+ #endif
+
+ DEFINE_LOG_CATEGORY(LogBRGameInstance);
+
+-#define GI_LOG(Verbosity, Format, ...)                                         \
+-  UE_LOG(LogBRGameInstance, Verbosity, TEXT("%s: ") Format,                    \
+-         *FString(__FUNCTION__), ##__VA_ARGS__)
+
+ UBRGameInstance::UBRGameInstance() {}
+
+@@ -65,6 +63,27 @@ void UBRGameInstance::Init() {
+         }
+       });
+
++#if WITH_EDITOR
++  // PIE 종료 시 엔진의 '월드 참조 검사'(PlayLevel assertion)보다 먼저 실행되도록
++  // PrePIEEnded에서 정리. OnWorldCleanup만으로는 검사가 먼저 돌 수 있음.
++  TWeakObjectPtr<UBRGameInstance> SelfForPIE(this);
++  PrePIEEndedHandle = FEditorDelegates::PrePIEEnded.AddLambda(
++      [SelfForPIE](bool /* bSimulating */) {
++        if (!SelfForPIE.IsValid()) return;
++        UBRGameInstance *GI = SelfForPIE.Get();
++        if (GEngine) {
++          const auto &Contexts = GEngine->GetWorldContexts();
++          for (const FWorldContext &Context : Contexts) {
++            UWorld *World = Context.World();
++            if (World && World->IsPlayInEditor() &&
++                Context.OwningGameInstance == GI) {
++              GI->DoPIEExitCleanup(World);
++            }
++          }
++        }
++      });
++#endif
++
+   // 패킹된 게임에서 Standalone 모드로 시작하는 것을 방지하기 위해
+   // 명령줄 인자 확인 (이미 ?listen이 있으면 그대로 사용)
+   FString CommandLine = FCommandLine::Get();
+@@ -144,9 +163,7 @@ void UBRGameInstance::OnStart() {
+       // GEngine과 World가 유효한지 확인
+       if (GEngine && World && IsValid(World)) {
+         FString DebugMsg = FString::Printf(
+-            TEXT("[GameInstance] Standalone 모드 + PendingRoomName 감지!\n")
+-                TEXT("자동으로 ListenServer 모드로 전환합니다.\n")
+-                    TEXT("명령어: %s"),
++            TEXT("[GameInstance] Standalone 모드 + PendingRoomName 감지! 자동으로 ListenServer 모드로 전환합니다. 명령어: %s"),
+             *OpenCommand);
+         GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, DebugMsg);
+       }
+@@ -243,13 +260,9 @@ void UBRGameInstance::OnStart() {
+         UE_LOG(LogTemp, Warning, TEXT("[GameInstance] 명령어: %s"),
+                *OpenCommand);
+
+-        if (GEngine) {
+-          FString DebugMsg = FString::Printf(
+-              TEXT("[GameInstance] PendingRoomName 감지!\n")
+-                  TEXT("자동으로 ListenServer 모드로 전환합니다.\n")
+-                      TEXT("명령어: %s"));
+-          GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, DebugMsg);
+-        }
++        FString DebugMsg = FString::Printf(
++            TEXT("[GameInstance] PendingRoomName 감지! 자동으로 ListenServer 모드로 전환합니다. 명령어: %s"),
++            *OpenCommand);
+
+         // PlayerController를 통한 ConsoleCommand 실행
+         if (APlayerController *PC = World->GetFirstPlayerController()) {
+@@ -725,12 +738,10 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState* GameState)
+
+ /** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */
+ void UBRGameInstance::ReloadAllConfigs() {
+-  GI_LOG(Display, TEXT("=== Starting Global Config Reload and Asset Sync ==="));
++      UE_LOG(LogBRGameInstance, Display, TEXT("%s: === Starting Global Config Reload and Asset Sync ==="), *FString(__FUNCTION__));
+
+   if (ConfigDataMap.Num() == 0) {
+-    GI_LOG(
+-        Warning,
+-        TEXT("ConfigDataMap이 비어 있습니다. 에디터에서 설정이 필요합니다."));
++      UE_LOG(LogBRGameInstance, Warning, TEXT("%s: ConfigDataMap이 비어 있습니 다. 에디터에서 설정이 필요합니다."), *FString(__FUNCTION__));
+     return;
+   }
+
+@@ -764,7 +775,7 @@ void UBRGameInstance::ReloadAllConfigs() {
+     }
+   }
+
+-  GI_LOG(Display, TEXT("=== Global Config Reload Complete ==="));
++  UE_LOG(LogBRGameInstance, Display, TEXT("%s: === Global Config Reload Complete ==="), *FString(__FUNCTION__));
+ }
+
+ void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
+@@ -777,7 +788,7 @@ void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
+   FString JsonString;
+
+   if (!FFileHelper::LoadFileToString(JsonString, *FilePath)) {
+-    GI_LOG(Warning, TEXT("File not found: %s"), *FilePath);
++    UE_LOG(LogBRGameInstance, Warning, TEXT("%s: File not found: %s"), *FString(__FUNCTION__), *FilePath);
+     return;
+   }
+
+@@ -804,7 +815,7 @@ void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
+           // 수치 데이터 주입
+           FJsonObjectConverter::JsonObjectToUStruct(DataObj.ToSharedRef(),
+                                                     TableStruct, RowPtr);
+-          GI_LOG(Log, TEXT("[%s.json] Row Updated: %s"), *FileName,
++          UE_LOG(LogBRGameInstance, Log, TEXT("%s: [%s.json] Row Updated: %s"), *FString(__FUNCTION__), *FileName,
+                  *RowID.ToString());
+         }
+       }
+@@ -838,7 +849,7 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable *TargetTable,
+   FString JsonString;
+
+   if (!FFileHelper::LoadFileToString(JsonString, *FullPath)) {
+-    GI_LOG(Warning, TEXT("JSON 파일을 찾을 수 없습니다: %s"), *FullPath);
++    UE_LOG(LogBRGameInstance, Warning, TEXT("%s: JSON 파일을 찾을 수 없습니다: %s"), *FString(__FUNCTION__), *FullPath);
+     return;
+   }
+
+@@ -875,7 +886,7 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable *TargetTable,
+           // 추가된 행의 포인터를 다시 가져옴
+           RowPtr = TargetTable->FindRowUnchecked(RowName);
+
+-          GI_LOG(Log, TEXT("[%s] 새로운 행 생성됨: %s"), *FileName,
++          UE_LOG(LogBRGameInstance, Log, TEXT("%s: [%s] 새로운 행 생성됨: %s"), *FString(__FUNCTION__), *FileName,
+                  *RowName.ToString());
+         }
+
+@@ -884,7 +895,7 @@ void UBRGameInstance::UpdateDataTableFromJson(UDataTable *TargetTable,
+         if (RowPtr && TableStruct) {
+           FJsonObjectConverter::JsonObjectToUStruct(DataObj.ToSharedRef(),
+                                                     TableStruct, RowPtr);
+-          GI_LOG(Log, TEXT("[%s] 데이터 업데이트 완료: %s"), *FileName,
++          UE_LOG(LogBRGameInstance, Log, TEXT("%s: [%s] 데이터 업데이트 완료: %s"), *FString(__FUNCTION__), *FileName,
+                  *RowName.ToString());
+         }
+       }
+@@ -911,18 +922,18 @@ void UBRGameInstance::SaveDataTableToAsset(UDataTable *TargetTable) {
+   // 게임 실행 중이면 저장하지 않음 (Standalone, PIE 모드 등)
+   // GetWorld()가 있으면 게임이 실행 중인 것으로 간주
+   if (GetWorld()) {
+-    GI_LOG(Warning, TEXT("게임 실행 중이므로 Asset 저장을 건너뜁니다."));
++    UE_LOG(LogBRGameInstance, Warning, TEXT("%s: 게임 실행 중이므로 Asset 저장 을 건너뜜"), *FString(__FUNCTION__));
+     return;
+   }
+
+   if (!TargetTable) {
+-    GI_LOG(Error, TEXT("TargetTable이 유효하지 않습니다."));
++    UE_LOG(LogBRGameInstance, Error, TEXT("%s: TargetTable이 유효하지 않음"), *FString(__FUNCTION__));
+     return;
+   }
+
+   UPackage *Package = TargetTable->GetOutermost();
+   if (!Package) {
+-    GI_LOG(Error, TEXT("Package를 찾을 수 없습니다."));
++    UE_LOG(LogBRGameInstance, Error, TEXT("%s: Package를 찾을 수 없음"), *FString(__FUNCTION__));
+     return;
+   }
+
+@@ -935,13 +946,13 @@ void UBRGameInstance::SaveDataTableToAsset(UDataTable *TargetTable) {
+   SaveArgs.bForceByteSwapping = true;
+
+   if (UPackage::SavePackage(Package, TargetTable, *PackageFileName, SaveArgs)) {
+-    GI_LOG(Log, TEXT("Asset 영구 저장 성공: %s"), *PackageFileName);
++    UE_LOG(LogBRGameInstance, Log, TEXT("%s: Asset 영구 저장 성공: %s"), *FString(__FUNCTION__), *PackageFileName);
+   } else {
+-    GI_LOG(Error, TEXT("Asset 저장 실패: %s"), *PackageFileName);
++    UE_LOG(LogBRGameInstance, Error, TEXT("%s: Asset 저장 실패: %s"), *FString(__FUNCTION__), *PackageFileName);
+   }
+ #else
+   // 에디터가 아닌 환경에서는 저장하지 않음
+-  GI_LOG(Warning, TEXT("에디터가 아니므로 Asset 저장을 건너뜁니다."));
++  UE_LOG(LogBRGameInstance, Warning, TEXT("%s: 에디터가 아니므로 Asset 저장을  건너뜁니다."), *FString(__FUNCTION__));
+ #endif
+ }
+
+@@ -1004,16 +1015,16 @@ void UBRGameInstance::ApplyGlobalMultipliers() {
+           }
+         }
+
+-        GI_LOG(Display,
+-               TEXT("스태미나 세팅 적용. Stamina: Drain(%.1f), Jump(%.1f), "
+-                    "Regen(%.1f)"),
++        UE_LOG(LogBRGameInstance, Display,
++               TEXT("%s: 스태미나 세팅 적용. Stamina: Drain(%.1f), Jump(%.1f), Regen(%.1f)"),
++               *FString(__FUNCTION__),
+                UStaminaComponent::Global_SprintDrainRate,
+                UStaminaComponent::Global_JumpCost,
+                UStaminaComponent::Global_RegenRate);
+
+-        GI_LOG(Display,
+-               TEXT("무기 배율 세팅 적용. Weapon: Damage(%.1f), Impulse(%.1f), "
+-                    "AttackSpeed(%.1f)"),
++        UE_LOG(LogBRGameInstance, Display,
++               TEXT("%s: 무기 배율 세팅 적용. Weapon: Damage(%.1f), Impulse(%.1f), AttackSpeed(%.1f)"),
++               *FString(__FUNCTION__),
+                ABaseWeapon::GlobalDamageMultiplier,
+                ABaseWeapon::GlobalImpulseMultiplier,
+                ABaseWeapon::GlobalAttackSpeedMultiplier);
+@@ -1026,8 +1037,7 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
+   if (!World || !World->IsPlayInEditor()) {
+     return;
+   }
+-  GI_LOG(Warning,
+-         TEXT("PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"));
++  UE_LOG(LogBRGameInstance, Warning, TEXT("%s: PIE 종료 정리(DoPIEExitCleanup) - World 참조 사슬 해제"), *FString(__FUNCTION__));
+
+   // 1) SessionInterface→GameSession→World 참조를 가장 먼저 끊음 (UnrealEdEngine
+   // 경로의 참조 원인 제거)
+@@ -1038,9 +1048,10 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
+     }
+   }
+
+-  // 2) GEngine/GameSession 델리게이트·위젯 정리 — PC가 월드를 잡지 않도록
+-  if (APlayerController *PC = World->GetFirstPlayerController()) {
+-    if (ABRPlayerController *BRPC = Cast<ABRPlayerController>(PC)) {
++  // 2) GEngine/GameSession 델리게이트·위젯 정리 — 모든 PC가 월드를 잡지 않도록
++  for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator();
++       It; ++It) {
++    if (ABRPlayerController *BRPC = Cast<ABRPlayerController>(It->Get())) {
+       BRPC->ClearUIForShutdown();
+     }
+   }
+@@ -1054,11 +1065,76 @@ void UBRGameInstance::DoPIEExitCleanup(UWorld *World) {
+   // 참조가 남음
+   OnRoomTitleReceived.Clear();
+
+-  // 4) NavigationSystem 정리 (월드 파괴 직전 호출 시 크래시 가능성 있음 —
+-  // 마지막에 수행)
+-  if (UNavigationSystemV1 *NavSys =
+-          FNavigationSystem::GetCurrent<UNavigationSystemV1>(World)) {
+-    NavSys->CleanUp();
++  // 5) UserInfo 맵/배열 정리 (필요 시)
++  PendingRoleRestoreByName.Empty();
++  PendingRoleRestoreByIndex.Empty();
++  G_PendingRoleByName.Empty();
++  G_PendingRoleByIndex.Empty();
++
++  // 7) 모든 컴포넌트 Detach 유도 및 ChaosScene 정리 지원
++  if (World && !World->bIsTearingDown)
++  {
++      UE_LOG(LogBRGameInstance, Warning, TEXT("%s: 모든 액터 및 컴포넌트 강제  정리 시작"), *FString(__FUNCTION__));
++
++      // 1단계: 모든 액터의 계층 구조 끊기 및 티킹 중지
++      for (FActorIterator It(World); It; ++It)
++      {
++          AActor* Actor = *It;
++          if (IsValid(Actor) && !Actor->IsA<AWorldSettings>())
++          {
++              Actor->SetActorTickEnabled(false);
++              Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
++
++              TArray<UActorComponent*> Components;
++              Actor->GetComponents(Components);
++              for (UActorComponent* Comp : Components)
++              {
++                  if (Comp)
++                  {
++                      Comp->PrimaryComponentTick.bCanEverTick = false;
++                      if (USceneComponent* SceneComp = Cast<USceneComponent>(Comp))
++                      {
++                          SceneComp->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
++                      }
++                  }
++              }
++          }
++      }
++
++      // 2단계: 모든 컴포넌트 등록 해제 및 파괴 (ChaosScene 참조 제거 핵심)
++      for (FActorIterator It(World); It; ++It)
++      {
++          AActor* Actor = *It;
++          if (IsValid(Actor))
++          {
++              TArray<UActorComponent*> Components;
++              Actor->GetComponents(Components);
++              for (UActorComponent* Comp : Components)
++              {
++                  if (Comp)
++                  {
++                      if (Comp->IsRegistered())
++                      {
++                          Comp->UnregisterComponent();
++                      }
++                      Comp->DestroyComponent();
++                  }
++              }
++
++              if (!Actor->IsA<AWorldSettings>())
++              {
++                  Actor->Destroy();
++              }
++          }
++      }
++  }
++
++  // 8) NavigationSystem 및 CrowdManager 확실히 정리
++  if (UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
++  {
++      UE_LOG(LogBRGameInstance, Warning, TEXT("%s: NavigationSystem/CrowdManager 정리 시도"), *FString(__FUNCTION__));
++
++      World->SetNavigationSystem(nullptr);
+   }
+ }
+
+@@ -1069,6 +1145,15 @@ void UBRGameInstance::Shutdown() {
+     FWorldDelegates::OnWorldCleanup.Remove(OnWorldCleanupHandle);
+     OnWorldCleanupHandle.Reset();
+   }
++  FWorldDelegates::OnWorldCleanup.RemoveAll(this);
++  FWorldDelegates::OnPostWorldCleanup.RemoveAll(this);
++
++#if WITH_EDITOR
++  if (PrePIEEndedHandle.IsValid()) {
++    FEditorDelegates::PrePIEEnded.Remove(PrePIEEndedHandle);
++    PrePIEEndedHandle.Reset();
++  }
++#endif
+
+   // PIE 종료 시 모든 PIE 월드에 대해 정리 (GetWorld()만 쓰면 맵 이동 후
+   // null/다른 월드일 수 있음)
+diff --git a/Source/Backward_Royal/Private/BRGameMode.cpp b/Source/Backward_Royal/Private/BRGameMode.cpp
+index 9fc2fd9..af32cd5 100644
+--- a/Source/Backward_Royal/Private/BRGameMode.cpp
++++ b/Source/Backward_Royal/Private/BRGameMode.cpp
+@@ -672,15 +672,31 @@ void ABRGameMode::StartGame()
+                                {
+                                        if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+                                        {
+-                                               // 클라이언트에게 게임 시작 알림 (RPC)
+                                                BRPC->ClientNotifyGameStarting();
+                                        }
+                                }
+                        }
+
+-                       // PIE 환경에서는 ServerTravel이 클라이언트를 자동으로  따라오지 않을 수 있음
+-                       // 하지만 일반적으로 ServerTravel은 클라이언트가 자동으 로 따라옵니다
+-                       // 서버(호스트)는 ServerTravel 사용 - 클라이언트가 자동 으로 따라옵니다
++                       // PIE에서는 ServerTravel만으로는 클라이언트가 따라오지 않는 경우가 있으므로,
++                       // 원격 클라이언트에게 명시적으로 ClientTravel URL을 보 내서 같은 맵으로 이동시킴
++                       if (bIsPIE)
++                       {
++                               // PIE 서버는 ServerConnection이 없으므로 기본  주소 사용 (클라이언트는 이 주소로 접속)
++                               FString ServerAddr = TEXT("127.0.0.1:7777");
++                               // 클라이언트 이동 URL: "host:port/MapPath" (맵 경로는 /Game/... 형식)
++                               FString ClientTravelURL = ServerAddr + SelectedMapPath;
++                               for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
++                               {
++                                       APlayerController* PC = It->Get();
++                                       if (!PC || PC->IsLocalController()) continue;
++                                       if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
++                                       {
++                                               BRPC->ClientTravelToGameMap(ClientTravelURL);
++                                               UE_LOG(LogTemp, Log, TEXT("[게임 시작] PIE: 원격 클라이언트에게 ClientTravel 전송: %s"), *ClientTravelURL);
++                                       }
++                               }
++                       }
++
+                        World->ServerTravel(TravelURL, true);
+                }
+ }
+diff --git a/Source/Backward_Royal/Private/BRGameSession.cpp b/Source/Backward_Royal/Private/BRGameSession.cpp
+index b9bca66..2dfd64a 100644
+--- a/Source/Backward_Royal/Private/BRGameSession.cpp
++++ b/Source/Backward_Royal/Private/BRGameSession.cpp
+@@ -154,13 +154,12 @@ void ABRGameSession::EndPlay(const EEndPlayReason::Type EndPlayReason)
+                SessionInterface->OnDestroySessionCompleteDelegates.RemoveAll(this);
+                SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
+                SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
+-       }
+-
+-       // 검색 중이면 취소
+-       if (bIsSearchingSessions && SessionInterface.IsValid())
+-       {
+-               SessionInterface->CancelFindSessions();
+-               bIsSearchingSessions = false;
++
++               if (bIsSearchingSessions)
++               {
++                       SessionInterface->CancelFindSessions();
++                       bIsSearchingSessions = false;
++               }
+        }
+
+        // 타이머 정리
+@@ -183,16 +182,22 @@ void ABRGameSession::UnbindSessionDelegatesForPIEExit()
+                SessionInterface->OnDestroySessionCompleteDelegates.RemoveAll(this);
+                SessionInterface->OnFindSessionsCompleteDelegates.RemoveAll(this);
+                SessionInterface->OnJoinSessionCompleteDelegates.RemoveAll(this);
++
++               if (bIsSearchingSessions)
++               {
++                       SessionInterface->CancelFindSessions();
++                       bIsSearchingSessions = false;
++               }
++
+                // PIE 종료 시 남아 있던 세션 파괴 (Unbind 후 호출 — 콜백이 이  객체를 참조하지 않음)
+                if (SessionInterface->GetNamedSession(NAME_GameSession) != nullptr)
+                {
+                        SessionInterface->DestroySession(NAME_GameSession);
+                }
+-       }
+-       if (bIsSearchingSessions && SessionInterface.IsValid())
+-       {
+-               SessionInterface->CancelFindSessions();
+-               bIsSearchingSessions = false;
++
++               // 검색 및 설정 데이터 초기화 (World 참조 잔류 방지)
++               SessionSearch = nullptr;
++               SessionSettings = nullptr;
+        }
+        if (UWorld* World = GetWorld())
+        {
+@@ -509,7 +514,16 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
+                // NGDA 스타일: CreateSession 성공 후 반드시 StartSession 호출 → OnStartSessionComplete에서 ServerTravel
+                if (SessionInterface.IsValid())
+                {
+-                       SessionInterface->StartSession(InSessionName);
++                       auto Session = SessionInterface->GetNamedSession(InSessionName);
++                       if (Session && (Session->SessionState == EOnlineSessionState::Starting || Session->SessionState == EOnlineSessionState::InProgress))
++                       {
++                               UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션이 이미 시작 중이거나 진행 중입니다 (State: %s). OnStartSessionCompleteDelegate를  직접 호출합니다."), EOnlineSessionState::ToString(Session->SessionState));
++                               OnStartSessionCompleteDelegate(InSessionName, true);
++                       }
++                       else
++                       {
++                               SessionInterface->StartSession(InSessionName);
++                       }
+                }
+                else
+                {
+@@ -588,18 +602,17 @@ void ABRGameSession::OnDestroySessionCompleteDelegate(FName InSessionName, bool
+ {
+        UE_LOG(LogTemp, Warning, TEXT("[방 생성] 세션 제거 완료: %s"), bWasSuccessful ? TEXT("성공") : TEXT("실패"));
+
+-       // 방 나가기(호스트): 메인 맵으로 이동
++       // 방 나가기(호스트): 메인 맵으로 이동 (listen 없이 이동해 다른 방 참가 가능하도록 함)
+        if (bReturnToMainMenuAfterDestroy)
+        {
+                bReturnToMainMenuAfterDestroy = false;
+                UWorld* World = GetWorld();
+                if (World)
+                {
+-                       // 프로젝트 설정의 Game Default Map과 동일한 경로 사용 (DefaultEngine.ini)
++                       // 프로젝트 설정의 Game Default Map과 동일한 경로 사용. ?listen 제거 → 이 인스턴스는 더 이상 리슨하지 않음.
+                        FString DefaultMap = TEXT("/Game/Main/Level/Main_Scene.Main_Scene");
+-                       FString MapURL = DefaultMap + TEXT("?listen");
+-                       World->ServerTravel(MapURL, true);
+-                       UE_LOG(LogTemp, Log, TEXT("[방 나가기] 호스트: 메인 맵으로 이동: %s"), *MapURL);
++                       World->ServerTravel(DefaultMap, true);
++                       UE_LOG(LogTemp, Log, TEXT("[방 나가기] 호스트: 메인 맵으로 이동 (listen 해제): %s"), *DefaultMap);
+                }
+                return;
+        }
+diff --git a/Source/Backward_Royal/Private/BRPlayerController.cpp b/Source/Backward_Royal/Private/BRPlayerController.cpp
+index bfe7763..dacf88d 100644
+--- a/Source/Backward_Royal/Private/BRPlayerController.cpp
++++ b/Source/Backward_Royal/Private/BRPlayerController.cpp
+@@ -447,6 +447,8 @@ void ABRPlayerController::ClearUIForShutdown()
+                GEngine->OnNetworkFailure().RemoveAll(this);
+        }
+
++       OnPawnChanged.Clear();
++
+        if (MainScreenWidget && IsValid(MainScreenWidget))
+        {
+                MainScreenWidget->RemoveFromParent();
+@@ -742,15 +744,31 @@ void ABRPlayerController::JoinRoom(int32 SessionIndex)
+        // 네트워크 모드 확인
+        ENetMode NetMode = World->GetNetMode();
+
+-       // ListenServer나 DedicatedServer는 JoinRoom을 실행할 수 없음
+-       if (NetMode == NM_ListenServer || NetMode == NM_DedicatedServer)
++       // DedicatedServer는 항상 참가 불가. ListenServer는 '현재 활성 세션이 있을 때만' 참가 불가.
++       // (호스트가 방을 나가 세션을 파괴한 뒤 메인 맵으로 돌아온 경우에는 세션이 없으므로 다른 방 참가 허용)
++       if (NetMode == NM_DedicatedServer)
+        {
+-               UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미 서버이므 로 다른 방에 참가할 수 없습니다."));
++               UE_LOG(LogTemp, Warning, TEXT("[방 참가] 전용 서버는 다른 방에  참가할 수 없습니다."));
+                if (GEngine)
++                       GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 전용 서버는 참가할 수 없습니다!"));
++               return;
++       }
++       if (NetMode == NM_ListenServer)
++       {
++               bool bHasActiveSession = false;
++               if (AGameModeBase* GameMode = World->GetAuthGameMode())
+                {
+-                       GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
++                       if (ABRGameSession* BRGameSession = Cast<ABRGameSession>(GameMode->GameSession))
++                               bHasActiveSession = BRGameSession->HasActiveSession();
+                }
+-               return;
++               if (bHasActiveSession)
++               {
++                       UE_LOG(LogTemp, Warning, TEXT("[방 참가] 호스트는 이미  서버이므로 다른 방에 참가할 수 없습니다."));
++                       if (GEngine)
++                               GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[방 참가] 호스트는 다른 방에 참가할 수 없습니다!"));
++                       return;
++               }
++               // 세션이 없음 = 방 나간 뒤 메인 맵에 있는 호스트 → 다른 방 참가 허용
+        }
+
+        // [수정] 클라이언트에서 직접 로컬 GameSession을 통해 참가 시도
+@@ -1206,6 +1224,15 @@ void ABRPlayerController::ClientNotifyGameStarting_Implementation()
+        }
+ }
+
++void ABRPlayerController::ClientTravelToGameMap_Implementation(const FString& TravelURL)
++{
++       if (TravelURL.IsEmpty()) return;
++       UWorld* World = GetWorld();
++       if (!World || !IsLocalController()) return;
++       UE_LOG(LogTemp, Log, TEXT("[게임 시작] 클라이언트: 서버 지정 URL로 맵 이동: %s"), *TravelURL);
++       ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
++}
++
+ void ABRPlayerController::ClientReceiveRoomTitle_Implementation(const FString& RoomTitle)
+ {
+        UE_LOG(LogTemp, Log, TEXT("[방 제목] 클라이언트 수신: %s"), *RoomTitle);
+diff --git a/Source/Backward_Royal/Private/BR_LobbyMenuWidget.cpp b/Source/Backward_Royal/Private/BR_LobbyMenuWidget.cpp
+index d4bb107..9180570 100644
+--- a/Source/Backward_Royal/Private/BR_LobbyMenuWidget.cpp
++++ b/Source/Backward_Royal/Private/BR_LobbyMenuWidget.cpp
+@@ -48,7 +48,9 @@ void UBR_LobbyMenuWidget::NativeDestruct()
+        {
+                CachedGameState->OnPlayerListChanged.RemoveDynamic(this, &UBR_LobbyMenuWidget::HandlePlayerListChanged);
+                CachedGameState->OnTeamChanged.RemoveDynamic(this, &UBR_LobbyMenuWidget::HandleTeamChanged);
++               CachedGameState = nullptr;
+        }
++       CachedPlayerController = nullptr;
+
+        Super::NativeDestruct();
+ }
+@@ -255,10 +257,25 @@ void UBR_LobbyMenuWidget::HandlePlayerListChanged()
+        // 팀 슬롯(1P/2P) 자동 갱신: 인터페이스 구현체 찾아서 UpdateSlotDisplay 호출.
+        // 중첩된 UserWidget 트리까지 재귀 검색 (WBP_SelectTeam이 컨테이너 안에 있으면 그 안까지 찾음).
+        TArray<UUserWidget*> Visited;
+-       std::function<void(UWidgetTree*)> UpdateTeamSlotsInTree;
+-       UpdateTeamSlotsInTree = [this, &Visited, &UpdateTeamSlotsInTree](UWidgetTree* Tree)
++       TArray<UWidgetTree*> TreesToProcess;
++       TreesToProcess.Add(WidgetTree);
++
++       // 부모 위젯 트리도 추가 (WBP_SelectTeam이 형제 위젯일 수 있음)
++       for (UWidget* Ancestor = GetParent(); Ancestor; Ancestor = Ancestor->GetParent())
++       {
++               UUserWidget* ParentUserWidget = Cast<UUserWidget>(Ancestor);
++               if (ParentUserWidget && ParentUserWidget->WidgetTree)
++               {
++                       TreesToProcess.Add(ParentUserWidget->WidgetTree);
++                       break;
++               }
++       }
++
++       while (TreesToProcess.Num() > 0)
+        {
+-               if (!Tree) return;
++               UWidgetTree* Tree = TreesToProcess.Pop();
++               if (!Tree) continue;
++
+                TArray<UWidget*> AllWidgets;
+                Tree->GetAllWidgets(AllWidgets);
+                for (UWidget* Widget : AllWidgets)
+@@ -272,28 +289,14 @@ void UBR_LobbyMenuWidget::HandlePlayerListChanged()
+                                        {
+                                                IBR_LobbyTeamSlotDisplayInterface::Execute_UpdateSlotDisplay(UserWidget);
+                                        }
+-                                       // 자식 UserWidget 트리도 검색 (2·3·4팀 이 중첩 컨테이너 안에 있는 경우)
++                                       // 자식 UserWidget 트리도 검색
+                                        if (UserWidget->WidgetTree)
+                                        {
+-                                               UpdateTeamSlotsInTree(UserWidget->WidgetTree);
++                                               TreesToProcess.Add(UserWidget->WidgetTree);
+                                        }
+                                }
+                        }
+                }
+-       };
+-
+-       // 1) 자신의 위젯 트리 검색 (재귀 포함)
+-       UpdateTeamSlotsInTree(WidgetTree);
+-
+-       // 2) 부모 위젯 트리도 검색 (WBP_SelectTeam이 형제 위젯일 수 있음)
+-       for (UWidget* Ancestor = GetParent(); Ancestor; Ancestor = Ancestor->GetParent())
+-       {
+-               UUserWidget* ParentUserWidget = Cast<UUserWidget>(Ancestor);
+-               if (ParentUserWidget && ParentUserWidget->WidgetTree)
+-               {
+-                       UpdateTeamSlotsInTree(ParentUserWidget->WidgetTree);
+-                       break;
+-               }
+        }
+
+        // 방 제목 갱신 (C++에서 직접 호출 → 블루프린트 OnRoomTitleRefreshed 구 현 필요)
+diff --git a/Source/Backward_Royal/Public/BRGameInstance.h b/Source/Backward_Royal/Public/BRGameInstance.h
+index 62af071..bb20430 100644
+--- a/Source/Backward_Royal/Public/BRGameInstance.h
++++ b/Source/Backward_Royal/Public/BRGameInstance.h
+@@ -225,5 +225,10 @@ protected:
+
+        /** OnWorldCleanup 등록 해제용 (Shutdown에서 Remove) */
+        FDelegateHandle OnWorldCleanupHandle;
++
++#if WITH_EDITOR
++       /** PIE 종료 시 엔진 참조 검사보다 먼저 정리하기 위한 PrePIEEnded 핸들 */
++       FDelegateHandle PrePIEEndedHandle;
++#endif
+ };
+
+diff --git a/Source/Backward_Royal/Public/BRPlayerController.h b/Source/Backward_Royal/Public/BRPlayerController.h
+index 28ed495..b727661 100644
+--- a/Source/Backward_Royal/Public/BRPlayerController.h
++++ b/Source/Backward_Royal/Public/BRPlayerController.h
+@@ -92,6 +92,10 @@ public:
+        UFUNCTION(Client, Reliable)
+        void ClientNotifyGameStarting();
+
++       /** PIE 등에서 ServerTravel이 클라이언트를 따라오지 않을 때, 서버가 지정한 URL로 직접 이동 */
++       UFUNCTION(Client, Reliable)
++       void ClientTravelToGameMap(const FString& TravelURL);
++
+        /** 입장 직후 방 제목 전달 (복제 대기 없이 "○○'s Game" 즉시 표시) */
+        UFUNCTION(Client, Reliable)
+        void ClientReceiveRoomTitle(const FString& RoomTitle);

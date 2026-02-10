@@ -29,7 +29,7 @@ APlayerCharacter::APlayerCharacter()
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
-	GetMesh()->SetOwnerNoSee(true);
+	//GetMesh()->SetOwnerNoSee(true);  < 몸 투명화
 	GetMesh()->bCastHiddenShadow = true;
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
@@ -39,7 +39,7 @@ APlayerCharacter::APlayerCharacter()
 	{
 		if (Part)
 		{
-			Part->SetOwnerNoSee(true); 
+			//Part->SetOwnerNoSee(true);     <- 몸 투명화
 			Part->bCastHiddenShadow = true;
 
 			// A. [틱 순서 고정] 
@@ -82,17 +82,23 @@ APlayerCharacter::APlayerCharacter()
 	// 3. [신규] 스태미나 컴포넌트 생성
 	StaminaComp = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComp"));
 
-	// [네트워크]
+	// [네트워크] 클라이언트 예측/서버 보정 및 스무딩 튜닝 (고지연·패킷유실 환경 대응)
 	bReplicates = true;
 	SetNetUpdateFrequency(144.0f);
 	SetMinNetUpdateFrequency(100.0f);
 
-	GetCharacterMovement()->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	MoveComp->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
+	// 고지연(100ms+) 환경: 보정 허용 거리 확대 → 불필요한 보정·덜컹임 감소
+	MoveComp->NetworkMaxSmoothUpdateDistance = 256.0f;   // 이 거리 이하만 스무딩, 그 이상은 보정 허용
+	MoveComp->NetworkNoSmoothUpdateDistance = 0.0f;    // 0 = 작은 오차도 스무딩으로 흡수
+	// 서버-클라이언트 위치 오차가 이 값(단위: cm) 이하면 보정 생략 → 핑 높을 때 덜 튐
+	MoveComp->NetworkLargeClientCorrectionDistance = 500.0f;
 }
 
 void APlayerCharacter::BeginPlay()
 {
-	GetMesh()->SetVisibility(false, false);
+	// GetMesh()->SetVisibility(false, false);  <- 몸 투명화
 
 	if (StaminaComp)
 	{
