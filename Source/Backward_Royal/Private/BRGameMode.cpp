@@ -28,6 +28,14 @@ ABRGameMode::ABRGameMode()
 
 	// 리슨 서버 설정
 	bUseSeamlessTravel = true;
+
+	// 게임 시작 시 이 4개 맵 중 랜덤 선택 (에디터/블루프린트에서 수정 가능)
+	StageMapPathsFallback = {
+		TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
+		TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
+		TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
+		TEXT("/Game/Main/Level/Stage/Stage04_Race")
+	};
 }
 
 void ABRGameMode::ClearGameSessionForPIEExit()
@@ -37,24 +45,31 @@ void ABRGameMode::ClearGameSessionForPIEExit()
 
 TArray<FString> ABRGameMode::GetAvailableStageMapPaths() const
 {
+	// 개별 맵 목록이 있으면 그대로 사용 → 이 중에서 랜덤 선택
+	if (StageMapPathsFallback.Num() > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Stage 맵] 맵 목록 사용: %d개 (랜덤 선택 대상)"), StageMapPathsFallback.Num());
+		return StageMapPathsFallback;
+	}
+
+	// 목록이 비어 있을 때만 Stage 폴더 스캔
 	TArray<FString> Result;
 	if (StageFolderPath.IsEmpty())
 	{
-		return StageMapPathsFallback;
+		return Result;
 	}
 
 	IAssetRegistry* AssetRegistry = IAssetRegistry::Get();
 	if (!AssetRegistry)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] Asset Registry를 사용할 수 없어 폴백 목록을 사용합니다."));
-		return StageMapPathsFallback;
+		UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] Asset Registry를 사용할 수 없습니다."));
+		return Result;
 	}
 
 	TArray<FAssetData> AssetDataList;
 	const FName PackagePath(*StageFolderPath);
 	AssetRegistry->GetAssetsByPath(PackagePath, AssetDataList, true, false);
 
-	// UE5: 월드(맵) 에셋만 필터 (클래스 경로 /Script/Engine.World)
 	const FTopLevelAssetPath WorldClassPath(TEXT("/Script/Engine"), TEXT("World"));
 	for (const FAssetData& AssetData : AssetDataList)
 	{
@@ -70,12 +85,12 @@ TArray<FString> ABRGameMode::GetAvailableStageMapPaths() const
 
 	if (Result.Num() > 0)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[Stage 맵] 폴더에서 %d개 맵 수집: %s"), Result.Num(), *StageFolderPath);
+		UE_LOG(LogTemp, Log, TEXT("[Stage 맵] 폴더 스캔: %d개 맵 수집 (폴더: %s)"), Result.Num(), *StageFolderPath);
 		return Result;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] 폴더에서 맵을 찾지 못해 폴백 목록을 사용합니다. (폴더: %s)"), *StageFolderPath);
-	return StageMapPathsFallback;
+	UE_LOG(LogTemp, Warning, TEXT("[Stage 맵] 폴더에서 맵을 찾지 못했습니다. (폴더: %s)"), *StageFolderPath);
+	return Result;
 }
 
 void ABRGameMode::BeginPlay()
