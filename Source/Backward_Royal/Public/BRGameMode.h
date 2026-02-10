@@ -41,8 +41,8 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	TArray<FString> StageMapPathsFallback = { 
 		//TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
-		TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
-		//TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
+		//TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
+		TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
 		//TEXT("/Game/Main/Level/Stage/Stage04_Race") 
 		};
 
