@@ -291,6 +291,11 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 	if (BRGameState)
 	{
 		BRGameState->UpdatePlayerList();
+		// 방 찾기 리스트에 표시되는 현재 인원 갱신 (호스트 세션만)
+		if (ABRGameSession* BRSession = Cast<ABRGameSession>(GameSession))
+		{
+			BRSession->UpdateSessionPlayerCount(BRGameState->PlayerCount);
+		}
 	}
 
 	// 늦게 들어온 클라이언트(2·3·4번째 등) 로비 UI 동기화: 입장한 그 사람에게만 RPC가 가도록 람다로 캡처
@@ -403,6 +408,11 @@ void ABRGameMode::Logout(AController* Exiting)
 	if (BRGameState)
 	{
 		BRGameState->UpdatePlayerList();
+		// 방 찾기 리스트에 표시되는 현재 인원 갱신 (호스트 세션만)
+		if (ABRGameSession* BRSession = Cast<ABRGameSession>(GameSession))
+		{
+			BRSession->UpdateSessionPlayerCount(BRGameState->PlayerCount);
+		}
 
 		for (int32 i = 0; i < BRGameState->PlayerArray.Num(); i++)
 		{
