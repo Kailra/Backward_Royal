@@ -565,75 +565,35 @@ TMap<FString, TTuple<int32, bool, int32>> G_PendingRoleByName;
 TArray<TTuple<int32, bool, int32>> G_PendingRoleByIndex;
 } // namespace
 
-void UBRGameInstance::SavePendingRolesForTravel(ABRGameState* GameState)
-{
-    if (!GameState)
-        return;
-
-    // 1. 기존 데이터 초기화
-    PendingRoleRestoreByName.Empty();
-    PendingRoleRestoreByIndex.Empty();
-    G_PendingRoleByName.Empty();
-    G_PendingRoleByIndex.Empty();
-
-    // [신규] 커스터마이징 저장소 초기화
-    PendingCustomizationByIndex.Empty();
-
-    // 2. 현재 접속 중인 플레이어들의 상태 백업
-    for (int32 i = 0; i < GameState->PlayerArray.Num(); ++i) // 인덱스 기반 순회
-    {
-        APlayerState* PS = GameState->PlayerArray[i];
-        if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
-        {
-            // A. 이름/UID 기반 저장 (기존 로직)
-            FString Key = BRPS->GetPlayerName();
-            if (Key.IsEmpty())
-                Key = BRPS->UserUID;
-
-            if (!Key.IsEmpty())
-            {
-                TTuple<int32, bool, int32> Data(BRPS->TeamNumber, BRPS->bIsLowerBody,
-                    BRPS->ConnectedPlayerIndex);
-                PendingRoleRestoreByName.Add(Key, Data);
-                G_PendingRoleByName.Add(Key, Data);
-            }
-
-            // B. 인덱스 기반 저장 (기존 로직)
-            G_PendingRoleByIndex.Add(TTuple<int32, bool, int32>(
-                BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
-            PendingRoleRestoreByIndex.Add(TTuple<int32, bool, int32>(
-                BRPS->TeamNumber, BRPS->bIsLowerBody, BRPS->ConnectedPlayerIndex));
-
-            // C. [신규] 커스터마이징 데이터 저장 (GameInstance의 TMap에 백업)
-            PendingCustomizationByIndex.Add(i, BRPS->CustomizationData);
-
-            // 로그 확인 (커스텀 매크로 사용)
-            GI_LOG(Log, TEXT("[데이터 보존] Player[%d] (%s) 역할 및 커스터마이징 저장 완료 (HeadID: %d)"),
-                i, *BRPS->GetPlayerName(), BRPS->CustomizationData.HeadID);
-
-            // [화면 출력 추가] 개별 플레이어 저장 확인
-            if (GEngine)
-            {
-                FString DebugMsg = FString::Printf(TEXT("[데이터 보존] Player[%d] %s 저장: HeadID=%d"),
-                    i, *BRPS->GetPlayerName(), BRPS->CustomizationData.HeadID);
-                // Key -1: 새 줄에 추가, 15.0f: 15초간 표시, Green: 초록색
-                GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, DebugMsg);
-            }
-        }
+void UBRGameInstance::SavePendingRolesForTravel(ABRGameState *GameState) {
+  if (!GameState)
+    return;
+  PendingRoleRestoreByName.Empty();
+  PendingRoleRestoreByIndex.Empty();
+  G_PendingRoleByName.Empty();
+  G_PendingRoleByIndex.Empty();
+  for (APlayerState *PS : GameState->PlayerArray) {
+    if (ABRPlayerState *BRPS = Cast<ABRPlayerState>(PS)) {
+      TTuple<int32, bool, int32> Data(BRPS->TeamNumber, BRPS->bIsLowerBody,
+                                      BRPS->ConnectedPlayerIndex);
+      const FString LocalPlayerName = BRPS->GetPlayerName();
+      const FString LocalUserUID = BRPS->UserUID;
+      // Travel 후 복원 시 이름 복제가 늦을 수 있으므로, 이름과 UID 둘 다 키로 저장
+      if (!LocalPlayerName.IsEmpty()) {
+        PendingRoleRestoreByName.Add(LocalPlayerName, Data);
+        G_PendingRoleByName.Add(LocalPlayerName, Data);
+      }
+      if (!LocalUserUID.IsEmpty() && LocalUserUID != LocalPlayerName) {
+        PendingRoleRestoreByName.Add(LocalUserUID, Data);
+        G_PendingRoleByName.Add(LocalUserUID, Data);
+      }
+      G_PendingRoleByIndex.Add(Data);
+      PendingRoleRestoreByIndex.Add(Data);
     }
-
-    UE_LOG(LogTemp, Warning,
-        TEXT("[랜덤 팀 적용] Seamless Travel 전 데이터 저장: 역할 %d명, 커스터마이징 %d명"),
-        G_PendingRoleByIndex.Num(), PendingCustomizationByIndex.Num());
-
-    // [화면 출력 추가] 전체 저장 결과 요약
-    if (GEngine)
-    {
-        FString SummaryMsg = FString::Printf(TEXT("[Travel 저장 완료] 역할: %d명 / 커마: %d명"),
-            G_PendingRoleByIndex.Num(), PendingCustomizationByIndex.Num());
-        // Cyan: 하늘색으로 강조
-        GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, SummaryMsg);
-    }
+  }
+  UE_LOG(LogTemp, Warning,
+         TEXT("[랜덤 팀 적용] Seamless Travel 전 역할 저장: %d명 (정적+GI)"),
+         G_PendingRoleByIndex.Num());
 }
 
 void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState *GameState) {
@@ -670,6 +630,9 @@ void UBRGameInstance::RestorePendingRolesFromTravel(ABRGameState *GameState) {
         BRPS->SetTeamNumber(Found->Get<0>());
         BRPS->SetPlayerRole(Found->Get<1>(), Found->Get<2>());
         Restored++;
+        UE_LOG(LogTemp, Log, TEXT("[진단] 복원 매칭(이름/UID) 성공: Key='%s' -> 팀%d %s"), *Key, Found->Get<0>(), Found->Get<1>() ? TEXT("하체") : TEXT("상체"));
+      } else {
+        UE_LOG(LogTemp, Warning, TEXT("[진단] 복원 매칭 실패: GetPlayerName='%s' UserUID='%s' (NameMap %d개)"), *BRPS->GetPlayerName(), *BRPS->UserUID, NameMap.Num());
       }
     }
   }
@@ -726,57 +689,18 @@ bool UBRGameInstance::HasPendingUserInfoForIndex(int32 Index) const {
   return Index < G_PendingRoleByIndex.Num();
 }
 
-void UBRGameInstance::RestoreUserInfoToPlayerStateForPostLogin(ABRPlayerState* BRPS, int32 Index)
-{
-    if (!BRPS || Index < 0)
-        return;
-
-    // 1. 역할(Role) 정보 복구 (기존 로직)
-    const TArray<TTuple<int32, bool, int32>>& Arr =
-        (PendingRoleRestoreByIndex.Num() > 0) ? PendingRoleRestoreByIndex : G_PendingRoleByIndex;
-
-    if (Index < Arr.Num())
-    {
-        const TTuple<int32, bool, int32>& Data = Arr[Index];
-        BRPS->SetTeamNumber(Data.Get<0>());
-        BRPS->SetPlayerRole(Data.Get<1>(), Data.Get<2>());
-    }
-
-    // 2. [신규] 커스터마이징 정보 복구
-    if (PendingCustomizationByIndex.Contains(Index))
-    {
-        // 저장된 데이터 가져오기
-        FBRCustomizationData SavedData = PendingCustomizationByIndex[Index];
-
-        // PlayerState에 적용
-        BRPS->CustomizationData = SavedData;
-
-        // [중요] 서버 RPC 호출로 데이터 갱신을 확실히 처리 (OnRep 트리거 및 클라이언트 전파)
-        BRPS->ServerSetCustomizationData(SavedData);
-
-        // 로그
-        GI_LOG(Log, TEXT("[데이터 복구] Player[%d] 커스터마이징 복구 완료: Head(%d), Chest(%d), Hand(%d), Leg(%d), Foot(%d)"),
-            Index, SavedData.HeadID, SavedData.ChestID, SavedData.HandID, SavedData.LegID, SavedData.FootID);
-
-        // [화면 출력 추가] 복구 성공 메시지 (초록색)
-        if (GEngine)
-        {
-            FString DebugMsg = FString::Printf(TEXT("[데이터 복구 성공] Player[%d] HeadID=%d 복원됨"),
-                Index, SavedData.HeadID);
-            GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, DebugMsg);
-        }
-    }
-    else
-    {
-        GI_LOG(Warning, TEXT("[데이터 복구] Player[%d]에 대한 저장된 커스터마이징 데이터가 없습니다."), Index);
-
-        // [화면 출력 추가] 복구 실패 경고 (빨간색)
-        if (GEngine)
-        {
-            FString DebugMsg = FString::Printf(TEXT("[데이터 복구 실패] Player[%d] 저장된 커마 없음!"), Index);
-            GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, DebugMsg);
-        }
-    }
+void UBRGameInstance::RestoreUserInfoToPlayerStateForPostLogin(
+    ABRPlayerState *BRPS, int32 Index) {
+  if (!BRPS || Index < 0)
+    return;
+  const TArray<TTuple<int32, bool, int32>> &Arr =
+      (PendingRoleRestoreByIndex.Num() > 0) ? PendingRoleRestoreByIndex
+                                           : G_PendingRoleByIndex;
+  if (Index >= Arr.Num())
+    return;
+  const TTuple<int32, bool, int32> &Data = Arr[Index];
+  BRPS->SetTeamNumber(Data.Get<0>());
+  BRPS->SetPlayerRole(Data.Get<1>(), Data.Get<2>());
 }
 
 /** [핵심] JSON 데이터를 읽어 DT를 갱신하고 에셋으로 저장함 */
