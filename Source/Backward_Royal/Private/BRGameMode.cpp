@@ -873,39 +873,6 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망 확인: %s"), *VictimCharacter->GetName());
 
-<<<<<<< Updated upstream
-	ABRGameState* GS = GetGameState<ABRGameState>();
-	if (!GS) return;
-
-	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
-	AController* Controller = VictimCharacter->GetController();
-	if (!Controller) return;
-
-	ABRPlayerState* PS = Controller->GetPlayerState<ABRPlayerState>();
-	if (!PS) return;
-
-	// 1) 사망한 플레이어 → Dead + 관전(PlayerIndex 0)
-	if (PS->CurrentStatus != EPlayerStatus::Dead)
-	{
-		PS->SetPlayerStatus(EPlayerStatus::Dead);
-	}
-	PS->SetSpectator(true);
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 → 관전(PlayerIndex 0)으로 전환"),
-		*PS->GetPlayerName(), PS->TeamNumber);
-
-	// 2) 같은 팀 파트너(상체/하체)도 관전(PlayerIndex 0)으로 전환 (한 몸이므로 둘 다 탈락)
-	if (PS->ConnectedPlayerIndex >= 0 && GS->PlayerArray.IsValidIndex(PS->ConnectedPlayerIndex))
-	{
-		if (ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[PS->ConnectedPlayerIndex]))
-		{
-			if (PartnerPS->CurrentStatus != EPlayerStatus::Dead)
-			{
-				PartnerPS->SetPlayerStatus(EPlayerStatus::Spectating);
-			}
-			PartnerPS->SetSpectator(true);
-			UE_LOG(LogTemp, Log, TEXT("[GameMode] 파트너 %s (Team %d) → 관전(PlayerIndex 0)으로 전환"),
-				*PartnerPS->GetPlayerName(), PartnerPS->TeamNumber);
-=======
 	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
 	AController* Controller = VictimCharacter->GetController();
 	ABRPlayerState* PS = Controller ? Controller->GetPlayerState<ABRPlayerState>() : nullptr;
@@ -916,15 +883,11 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		if (PS->CurrentStatus != EPlayerStatus::Dead)
 		{
 			PS->SetPlayerStatus(EPlayerStatus::Dead);
->>>>>>> Stashed changes
 		}
 
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
 			*PS->GetPlayerName(), PS->TeamNumber);
 	}
-
-	// TODO: 여기에 남은 생존 팀 수를 확인하여 '게임 종료(우승)' 판정 로직 추가
-	// 예: CheckGameEndCondition();
 
 	// -----------------------------------------------------------
 	// [추가 기능] 2초 후 팀 전체 관전 모드 전환
@@ -943,7 +906,10 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 				PartnerPC = Cast<ABRPlayerController>(BRPS->GetOwningController());
 
 				// 파트너도 사망 처리 (상태 동기화)
-				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
+				if (BRPS->CurrentStatus != EPlayerStatus::Dead)
+				{
+					BRPS->SetPlayerStatus(EPlayerStatus::Dead);
+				}
 				break;
 			}
 		}
