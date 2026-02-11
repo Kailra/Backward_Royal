@@ -83,8 +83,6 @@ void ABaseCharacter::BeginPlay()
     {
         DefaultWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
     }
-
-    UpdateHPUI();
 }
 
 void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
