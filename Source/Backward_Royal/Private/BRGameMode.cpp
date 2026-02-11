@@ -1311,17 +1311,7 @@ void ABRGameMode::CheckAndEndGameIfWinner()
 	{
 		const int32 WinnerTeam = AliveTeamNumbers.Array()[0];
 		GS->EndGameWithWinner(WinnerTeam);
-
-		// 로비로 이동 (지연 후)
-		if (DelayBeforeReturnToLobby <= 0.0f)
-		{
-			TravelToLobby();
-		}
-		else
-		{
-			GetWorld()->GetTimerManager().SetTimer(ReturnToLobbyTimerHandle, this, &ABRGameMode::TravelToLobby, DelayBeforeReturnToLobby, false);
-			UE_LOG(LogTemp, Log, TEXT("[게임 종료] %.1f초 후 로비로 이동 예정"), DelayBeforeReturnToLobby);
-		}
+		// 승리 확인만 함. 로비 이동은 우승 UI에서 '다음' 버튼 시 TravelToLobby() 호출로 처리 예정.
 	}
 }
 
