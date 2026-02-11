@@ -28,6 +28,13 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ABRGameState, LobbyTeamSlots);
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
 	DOREPLIFETIME(ABRGameState, RoomTitle);
+	DOREPLIFETIME(ABRGameState, PendingTravelMapPath);
+	DOREPLIFETIME(ABRGameState, LevelRandomSeed);
+}
+
+FRandomStream ABRGameState::GetLevelRandomStream() const
+{
+	return FRandomStream(LevelRandomSeed);
 }
 
 void ABRGameState::BeginPlay()

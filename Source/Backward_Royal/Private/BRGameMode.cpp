@@ -82,11 +82,16 @@ void ABRGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// GameState에 최소/최대 플레이어 수 설정
+	// GameState에 최소/최대 플레이어 수 설정 + 맵별 랜덤 시드 (서버만 설정 → 복제되어 랜덤 기물 위치 동기화)
 	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
 	{
 		BRGameState->MinPlayers = MinPlayers;
 		BRGameState->MaxPlayers = MaxPlayers;
+		if (HasAuthority())
+		{
+			BRGameState->LevelRandomSeed = FMath::RandRange(1, 0x7FFE);
+			UE_LOG(LogTemp, Log, TEXT("[레벨 랜덤] 서버 시드 설정: %d (랜덤 기물은 이 시드 사용 또는 서버 전용 스폰+복제 권장)"), BRGameState->LevelRandomSeed);
+		}
 	}
 
 	// 로비에서 랜덤 팀 배정 후 예약된 경우: 게임 맵 로드 후 플레이어 스폰이 끝날 때까지 지연 후 적용
@@ -981,6 +986,12 @@ void ABRGameMode::StartGame()
 		return;
 	}
 	
+	// 서버가 선택한 맵 경로를 GameState에 설정 (복제로 단일 소스 오브 트루스)
+	if (ABRGameState* GS = GetGameState<ABRGameState>())
+	{
+		GS->PendingTravelMapPath = SelectedMapPath;
+	}
+	
 	// Travel 직전에 역할 저장 (로비에서 선택한 1P/2P·팀 포함) + 게임 맵 로드 후 상체/하체 Pawn 적용 예약
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance()))
 	{
@@ -1033,12 +1044,21 @@ void ABRGameMode::StartGame()
 			{
 				if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
 				{
-					// 클라이언트에게 게임 시작 알림 (RPC)
 					BRPC->ClientNotifyGameStarting();
 				}
 			}
 		}
-		
+		// 모든 원격 클라이언트에게 동일 맵 경로 전달 (동기화 보장)
+		for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+		{
+			APlayerController* PC = It->Get();
+			if (!PC || PC->IsLocalController()) continue;
+			if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+			{
+				BRPC->ClientTravelToGameMap(SelectedMapPath);
+				UE_LOG(LogTemp, Log, TEXT("[게임 시작] Seamless: 원격 클라이언트에게 맵 경로 전송: %s"), *SelectedMapPath);
+			}
+		}
 		// SeamlessTravel 사용 - 클라이언트가 부드럽게 따라옵니다
 		World->ServerTravel(TravelURL, true); // 두 번째 파라미터는 bAbsolute (true = 절대 경로)
 	}
@@ -1059,23 +1079,16 @@ void ABRGameMode::StartGame()
 				}
 			}
 			
-			// PIE에서는 ServerTravel만으로는 클라이언트가 따라오지 않는 경우가 있으므로,
-			// 원격 클라이언트에게 명시적으로 ClientTravel URL을 보내서 같은 맵으로 이동시킴
-			if (bIsPIE)
+			// 모든 원격 클라이언트에게 서버가 선택한 맵 경로를 전달하여 동일 맵으로 이동시킴
+			// (PIE/패키지 공통: ServerTravel 복제만으로는 맵이 어긋날 수 있으므로 명시적 ClientTravel 사용)
+			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
 			{
-				// PIE 서버는 ServerConnection이 없으므로 기본 주소 사용 (클라이언트는 이 주소로 접속)
-				FString ServerAddr = TEXT("127.0.0.1:7777");
-				// 클라이언트 이동 URL: "host:port/MapPath" (맵 경로는 /Game/... 형식)
-				FString ClientTravelURL = ServerAddr + SelectedMapPath;
-				for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+				APlayerController* PC = It->Get();
+				if (!PC || PC->IsLocalController()) continue;
+				if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
 				{
-					APlayerController* PC = It->Get();
-					if (!PC || PC->IsLocalController()) continue;
-					if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
-					{
-						BRPC->ClientTravelToGameMap(ClientTravelURL);
-						UE_LOG(LogTemp, Log, TEXT("[게임 시작] PIE: 원격 클라이언트에게 ClientTravel 전송: %s"), *ClientTravelURL);
-					}
+					BRPC->ClientTravelToGameMap(SelectedMapPath);
+					UE_LOG(LogTemp, Log, TEXT("[게임 시작] 원격 클라이언트에게 맵 경로 전송: %s"), *SelectedMapPath);
 				}
 			}
 

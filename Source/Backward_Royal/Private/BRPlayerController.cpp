@@ -1273,12 +1273,27 @@ void ABRPlayerController::ClientNotifyGameStarting_Implementation()
 	}
 }
 
-void ABRPlayerController::ClientTravelToGameMap_Implementation(const FString& TravelURL)
+void ABRPlayerController::ClientTravelToGameMap_Implementation(const FString& MapPath)
 {
-	if (TravelURL.IsEmpty()) return;
+	if (MapPath.IsEmpty()) return;
 	UWorld* World = GetWorld();
 	if (!World || !IsLocalController()) return;
-	UE_LOG(LogTemp, Log, TEXT("[게임 시작] 클라이언트: 서버 지정 URL로 맵 이동: %s"), *TravelURL);
+	// 클라이언트가 접속 중인 서버 주소 + 맵 경로로 URL 구성 → 모든 클라이언트가 동일 맵으로 이동
+	FString TravelURL;
+	if (UNetDriver* NetDriver = World->GetNetDriver())
+	{
+		if (UNetConnection* ServerConn = NetDriver->ServerConnection)
+		{
+			FString ServerAddr = ServerConn->LowLevelGetRemoteAddress(true);
+			TravelURL = ServerAddr + (MapPath.StartsWith(TEXT("/")) ? MapPath : (TEXT("/") + MapPath));
+		}
+	}
+	if (TravelURL.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[게임 시작] 클라이언트: 서버 연결 없음, 맵 이동 스킵. 맵 경로: %s"), *MapPath);
+		return;
+	}
+	UE_LOG(LogTemp, Log, TEXT("[게임 시작] 클라이언트: 서버 지정 맵으로 이동: %s"), *TravelURL);
 	ClientTravel(TravelURL, ETravelType::TRAVEL_Absolute);
 }
 
