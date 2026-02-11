@@ -683,39 +683,6 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 			NumTeams = NumPlayersInTeams / 2;
 		}
 	}
-	// [안전장치] 역할 복원 실패 등으로 팀 배정 0명이면 상체 스폰을 안 해서 '하체만 4명' 되는 현상 방지 → 한 번 더 랜덤 팀 배정 시도
-	if (NumTeams < 1)
-	{
-		int32 TotalBRPS = 0;
-		for (APlayerState* PS : BRGameState->PlayerArray)
-		{
-			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
-			{
-				if (!BRPS->bIsSpectatorSlot) TotalBRPS++;
-			}
-		}
-		if (TotalBRPS >= 2 && (TotalBRPS % 2 == 0))
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 팀 배정 0명(역할 복원 실패 등) → 전원 랜덤 팀/역할 재배정 후 상체 스폰 진행 (하체만 %d명 방지)"), TotalBRPS);
-			BRGameState->AssignRandomTeams();
-			SortedByTeam.Empty();
-			for (APlayerState* PS : BRGameState->PlayerArray)
-			{
-				if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
-				{
-					if (BRPS->bIsSpectatorSlot || BRPS->TeamNumber <= 0) continue;
-					SortedByTeam.Add(BRPS);
-				}
-			}
-			Algo::Sort(SortedByTeam, [](const ABRPlayerState* A, const ABRPlayerState* B)
-			{
-				if (A->TeamNumber != B->TeamNumber) return A->TeamNumber < B->TeamNumber;
-				return A->bIsLowerBody && !B->bIsLowerBody;
-			});
-			NumPlayersInTeams = SortedByTeam.Num();
-			NumTeams = NumPlayersInTeams / 2;
-		}
-	}
 	if (NumTeams < 1)
 	{
 		GI->ClearPendingApplyRandomTeamRoles();
