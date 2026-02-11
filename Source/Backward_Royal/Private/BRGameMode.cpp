@@ -1133,6 +1133,8 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
 		World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
 		World->GetTimerManager().ClearTimer(DirectStartRoleApplyTimerHandle);
+		World->GetTimerManager().ClearTimer(SpecTimerHandle_DeathSpectator);
+		World->GetTimerManager().ClearTimer(ReturnToLobbyTimerHandle);
 	}
 
 	Super::EndPlay(EndPlayReason);
@@ -1283,6 +1285,96 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 실행: VictimIndex=%d, PartnerIndex=%d"), VictimPlayerIndex, PartnerPlayerIndex);
 	TrySwitchToSpectator(PartnerPlayerIndex);
 	TrySwitchToSpectator(VictimPlayerIndex);
+
+	// 승리 조건 체크: 생존 팀이 1개면 해당 팀 승리
+	CheckAndEndGameIfWinner();
+}
+
+void ABRGameMode::CheckAndEndGameIfWinner()
+{
+	if (!GetWorld() || GetWorld()->GetNetMode() == NM_Client) return;
+
+	ABRGameState* GS = GetGameState<ABRGameState>();
+	if (!GS) return;
+
+	TSet<int32> AliveTeamNumbers;
+	for (APlayerState* PS : GS->PlayerArray)
+	{
+		ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS);
+		if (!BRPS || BRPS->bIsSpectatorSlot || BRPS->TeamNumber <= 0) continue;
+		if (BRPS->CurrentStatus == EPlayerStatus::Dead) continue;
+
+		AliveTeamNumbers.Add(BRPS->TeamNumber);
+	}
+
+	if (AliveTeamNumbers.Num() == 1)
+	{
+		const int32 WinnerTeam = AliveTeamNumbers.Array()[0];
+		GS->EndGameWithWinner(WinnerTeam);
+
+		// 로비로 이동 (지연 후)
+		if (DelayBeforeReturnToLobby <= 0.0f)
+		{
+			TravelToLobby();
+		}
+		else
+		{
+			GetWorld()->GetTimerManager().SetTimer(ReturnToLobbyTimerHandle, this, &ABRGameMode::TravelToLobby, DelayBeforeReturnToLobby, false);
+			UE_LOG(LogTemp, Log, TEXT("[게임 종료] %.1f초 후 로비로 이동 예정"), DelayBeforeReturnToLobby);
+		}
+	}
+}
+
+void ABRGameMode::TravelToLobby()
+{
+	if (!HasAuthority()) return;
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[게임 종료] 로비 이동 스킵: World 없음"));
+		return;
+	}
+
+	// LobbyMapPath가 블루프린트에서 비어 있으면 기본 로비 맵 사용 (BP_MainGameMode에서 미설정 시)
+	static const FString DefaultLobbyMapPath = TEXT("/Game/Main/Level/Main_Scene");
+	FString MapToUse = LobbyMapPath.IsEmpty() ? DefaultLobbyMapPath : LobbyMapPath;
+	if (LobbyMapPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[게임 종료] LobbyMapPath 비어 있음 — 기본 로비 맵 사용: %s"), *MapToUse);
+	}
+
+	ReturnToLobbyTimerHandle.Invalidate();
+
+	const bool bIsPIE = World->IsPlayInEditor();
+	const bool bShouldUseSeamlessTravel = bUseSeamlessTravel && !bIsPIE;
+	const FString TravelURL = MapToUse + TEXT("?listen");
+
+	UE_LOG(LogTemp, Warning, TEXT("[게임 종료] 로비로 이동: %s"), *MapToUse);
+
+	if (bShouldUseSeamlessTravel)
+	{
+		World->ServerTravel(TravelURL, true);
+	}
+	else
+	{
+		if (bIsPIE)
+		{
+			const FString ServerAddr = TEXT("127.0.0.1:7777");
+			const FString ClientTravelURL = ServerAddr + MapToUse;
+			for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+			{
+				APlayerController* PC = It->Get();
+				if (!PC || PC->IsLocalController()) continue;
+				if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC))
+				{
+					BRPC->ClientTravelToGameMap(ClientTravelURL);
+					UE_LOG(LogTemp, Log, TEXT("[게임 종료] PIE: 원격 클라이언트에게 로비 ClientTravel 전송"));
+				}
+			}
+		}
+		World->ServerTravel(TravelURL, true);
+	}
 }
 
 void ABRGameMode::SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber)
