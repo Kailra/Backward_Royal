@@ -595,19 +595,33 @@ void ABRPlayerController::StartSpectatingMode()
 {
 	if (!HasAuthority()) return;
 
-	// 1. 현재 폰 파괴 (선택 사항이지만 관전 모드 전환 시 깔끔하게 제거하거나 래그돌로 남길 수 있음)
-	// ChangeState(NAME_Spectating)을 호출하면 자동으로 UnPossess가 일어납니다.
+	// 1. PlayerState를 관전(PlayerIndex 0)으로 설정 — 하체/상체 동일 적용
+	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	{
+		BRPS->SetSpectator(true);
+	}
 
-	// 2. 관전 상태로 전환
-	// 이 함수는 APlayerController의 protected 멤버이지만, 상속받은 클래스 내부에서는 호출 가능합니다.
+	// 2. 현재 폰(하체 캐릭터 또는 상체 폰) 즉시 빙의 해제 — 상체가 시체에서 공격 모션 나오는 것 방지
+	if (APawn* CurrentPawn = GetPawn())
+	{
+		UnPossess();
+	}
+
+	// 3. 관전 상태로 전환 (추가 정리)
 	ChangeState(NAME_Spectating);
 
-	// 3. 클라이언트에게 UI 변경 알림
+	// 4. 클라이언트 UI 알림
 	ClientHandleSpectatorUI();
 }
 
 void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
 {
+	// 클라이언트에서도 폰 빙의 해제·관전 상태 적용 (상체 등 원격 클라이언트 뷰 전환 보장)
+	if (APawn* P = GetPawn())
+	{
+		UnPossess();
+	}
+	ChangeState(NAME_Spectating);
 	// 블루프린트에서 구현된 이벤트 호출 (HUD 숨기기 등)
 	OnEnterSpectatorMode();
 }

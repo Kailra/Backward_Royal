@@ -1149,9 +1149,23 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망 확인: %s"), *VictimCharacter->GetName());
 
-	// 캐릭터에서 PlayerController 및 PlayerState 가져오기
+	// 캐릭터에서 Controller 가져오기 (없으면 PlayerState에서 시도 — 하체/상체 공유 폰 등)
 	AController* Controller = VictimCharacter->GetController();
-	ABRPlayerState* PS = Controller ? Controller->GetPlayerState<ABRPlayerState>() : nullptr;
+	ABRPlayerState* PS = nullptr;
+	if (Controller)
+	{
+		PS = Controller->GetPlayerState<ABRPlayerState>();
+	}
+	if (!PS && VictimCharacter)
+	{
+		// 폰에 붙은 PlayerState가 있다면 그 소유 컨트롤러 사용 (네트워크/공유 폰 대비)
+		PS = VictimCharacter->GetPlayerState<ABRPlayerState>();
+		if (PS)
+		{
+			Controller = PS->GetOwningController();
+			UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망자 Controller를 PlayerState 소유자로 보정"));
+		}
+	}
 
 	if (PS)
 	{
@@ -1166,46 +1180,43 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	}
 
 	// -----------------------------------------------------------
-	// [추가 기능] 2초 후 팀 전체 관전 모드 전환
+	// 팀 탈락: 같은 팀 파트너도 사망 처리 후, 2초 뒤 피해자·파트너(하체+상체) 둘 다 관전 전환
+	// (인덱스로 예약해 콜백에서 팀 번호 복제 이슈 없이 전원 전환 보장)
 	// -----------------------------------------------------------
-	ABRPlayerController* VictimPC = Cast<ABRPlayerController>(Controller);
-	ABRPlayerController* PartnerPC = nullptr;
-
-	// 파트너 찾기 (TeamNumber 기준)
-	if (PS && GetGameState<ABRGameState>())
+	ABRGameState* GS = GetGameState<ABRGameState>();
+	if (!GS || !PS)
 	{
-		for (APlayerState* OtherPS : GetGameState<ABRGameState>()->PlayerArray)
-		{
-			ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
-			if (BRPS && BRPS != PS && BRPS->TeamNumber == PS->TeamNumber)
-			{
-				PartnerPC = Cast<ABRPlayerController>(BRPS->GetOwningController());
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환 스킵: GameState 또는 피해자 PS 없음"));
+		return;
+	}
 
-				// 파트너도 사망 처리 (상태 동기화)
-				if (BRPS->CurrentStatus != EPlayerStatus::Dead)
-				{
-					BRPS->SetPlayerStatus(EPlayerStatus::Dead);
-				}
-				break;
+	const int32 VictimPlayerIndex = GS->PlayerArray.Find(PS);
+	if (VictimPlayerIndex == INDEX_NONE)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환 스킵: 피해자 PlayerArray 인덱스 없음"));
+		return;
+	}
+
+	int32 PartnerPlayerIndex = INDEX_NONE;
+	for (APlayerState* OtherPS : GS->PlayerArray)
+	{
+		ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
+		if (BRPS && BRPS != PS && BRPS->TeamNumber == PS->TeamNumber)
+		{
+			PartnerPlayerIndex = GS->PlayerArray.Find(BRPS);
+			if (BRPS->CurrentStatus != EPlayerStatus::Dead)
+			{
+				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
 			}
+			break;
 		}
 	}
 
-	// 타이머 설정 (2초 후 관전 전환)
-	// 피해자 혹은 파트너가 존재할 때만 타이머 실행
-	if (VictimPC || PartnerPC)
-	{
-		FTimerHandle SpecTimerHandle;
-		FTimerDelegate TimerDel;
-
-		// Weak Pointer로 변환하여 전달 (타이머 실행 시점에 객체 유효성 보장)
-		TWeakObjectPtr<ABRPlayerController> WeakVictimPC(VictimPC);
-		TWeakObjectPtr<ABRPlayerController> WeakPartnerPC(PartnerPC);
-
-		TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectator, WeakVictimPC, WeakPartnerPC);
-
-		GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle, TimerDel, 2.0f, false);
-	}
+	FTimerDelegate TimerDel;
+	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectatorByPlayerIndices, VictimPlayerIndex, PartnerPlayerIndex);
+	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (VictimIdx=%d, PartnerIdx=%d)"),
+		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
@@ -1219,4 +1230,76 @@ void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> Vict
 	{
 		PartnerPC->StartSpectatingMode();
 	}
+}
+
+void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, int32 PartnerPlayerIndex)
+{
+	ABRGameState* GS = GetGameState<ABRGameState>();
+	if (!GS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: GameState 없음"));
+		return;
+	}
+
+	auto TrySwitchToSpectator = [this, GS](int32 PlayerIndex) -> bool
+	{
+		if (PlayerIndex == INDEX_NONE || !GS->PlayerArray.IsValidIndex(PlayerIndex)) return false;
+		ABRPlayerState* BRPS = Cast<ABRPlayerState>(GS->PlayerArray[PlayerIndex]);
+		if (!BRPS) return false;
+		ABRPlayerController* PC = Cast<ABRPlayerController>(BRPS->GetOwningController());
+		// 상체 등 원격 플레이어에서 OwningController가 비어 있을 수 있음 → 월드에서 해당 PlayerState 소유 컨트롤러 검색
+		if (!PC && GetWorld())
+		{
+			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+			{
+				APlayerController* C = It->Get();
+				if (C && C->GetPlayerState<ABRPlayerState>() == BRPS)
+				{
+					PC = Cast<ABRPlayerController>(C);
+					if (PC) break;
+				}
+			}
+		}
+		if (!PC)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s Controller 없음"), *BRPS->GetPlayerName());
+			return false;
+		}
+		PC->StartSpectatingMode();
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 완료: %s (Index %d)"), *BRPS->GetPlayerName(), PlayerIndex);
+		return true;
+	};
+
+	// 상체(파트너) 먼저 전환 → 시체에 붙은 상체 폰이 공격 모션 재생하는 것 방지
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 실행: VictimIndex=%d, PartnerIndex=%d"), VictimPlayerIndex, PartnerPlayerIndex);
+	TrySwitchToSpectator(PartnerPlayerIndex);
+	TrySwitchToSpectator(VictimPlayerIndex);
+}
+
+void ABRGameMode::SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber)
+{
+	ABRGameState* GS = GetGameState<ABRGameState>();
+	if (!GS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: GameState 없음"));
+		return;
+	}
+
+	int32 SwitchedCount = 0;
+	for (APlayerState* OtherPS : GS->PlayerArray)
+	{
+		ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
+		if (!BRPS || BRPS->TeamNumber != EliminatedTeamNumber) continue;
+
+		ABRPlayerController* PC = Cast<ABRPlayerController>(BRPS->GetOwningController());
+		if (!PC)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s (팀%d) Controller 없음"), *BRPS->GetPlayerName(), EliminatedTeamNumber);
+			continue;
+		}
+		PC->StartSpectatingMode();
+		SwitchedCount++;
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 탈락 관전 전환: %s (%s)"), *BRPS->GetPlayerName(), BRPS->bIsLowerBody ? TEXT("하체") : TEXT("상체"));
+	}
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 하체·상체 전원 관전 전환 완료 (%d명)"), EliminatedTeamNumber, SwitchedCount);
 }

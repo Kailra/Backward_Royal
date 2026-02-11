@@ -72,8 +72,14 @@ public:
 	// 플레이어 사망 시 호출되는 함수
 	void OnPlayerDied(class ABaseCharacter* VictimCharacter);
 
-	// 2초 후 팀 전체를 관전 모드로 전환하는 함수
+	// 2초 후 팀 전체를 관전 모드로 전환 (WeakPtr 버전, 레거시)
 	void SwitchTeamToSpectator(TWeakObjectPtr<class ABRPlayerController> VictimPC, TWeakObjectPtr<class ABRPlayerController> PartnerPC);
+
+	/** 사망 팀 관전 전환 — PlayerArray 인덱스로 호출 (타이머 콜백용, 인덱스로 컨트롤러 재조회) */
+	void SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, int32 PartnerPlayerIndex);
+
+	/** 탈락한 팀 번호 기준으로 해당 팀 전원(하체+상체) 관전 전환 */
+	void SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber);
 
 protected:
 	virtual void BeginPlay() override;
@@ -110,6 +116,8 @@ protected:
 	FTimerHandle InitialRoleApplyTimerHandle;
 	/** 테스트 맵 직접 실행(로비 없음) 시 2초 후 역할 적용 폴백용 */
 	FTimerHandle DirectStartRoleApplyTimerHandle;
+	/** 사망 후 2초 뒤 관전 전환용 (인덱스 콜백 사용) */
+	FTimerHandle SpecTimerHandle_DeathSpectator;
 
 	/** 테스트 맵을 로비 없이 바로 실행했을 때: 저장된 역할이 없고 전원 하체면 랜덤 팀 배정 후 상체/하체 적용 */
 	void TryApplyDirectStartRolesFallback();
