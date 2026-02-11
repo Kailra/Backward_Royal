@@ -117,6 +117,12 @@ protected:
 	/** 플레이어 대기 재시도 횟수. 최대 초과 시 현재 인원으로 진행해 상체 스폰 시도 (하체만 4명 방지) */
 	int32 InitialPlayerWaitRetries = 0;
 	static constexpr int32 MaxInitialPlayerWaitRetries = 24;  // 0.5초×24 = 12초
+	/** 2명 미만일 때 재시도 횟수. Seamless Travel 직후 클라이언트 재접속 전에 타이머가 돌면 하체만 스폰되므로, 2명 될 때까지 0.5초 간격 재시도 */
+	int32 MinPlayerWaitRetries = 0;
+	static constexpr int32 MaxMinPlayerWaitRetries = 24;  // 0.5초×24 = 12초
+	/** ExpectedCount==0일 때 2명에서 바로 진행하면 나중에 들어온 3·4번째가 전부 하체로 남음. 2명일 때만 추가로 잠시 대기(0.5초×6=3초) */
+	int32 ExpectedZeroWaitRetries = 0;
+	static constexpr int32 MaxExpectedZeroWaitRetries = 6;
 
 	/** 1.5초 폴백 타이머가 이미 예약되었으면 true (OnPossess 중복 예약 방지) */
 	bool bHasScheduledInitialRoleApply = false;

@@ -465,16 +465,33 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 		return;
 
 	ABRGameState* BRGameState = GetGameState<ABRGameState>();
-	if (!BRGameState || BRGameState->PlayerArray.Num() < 2)
+	if (!BRGameState)
 		return;
+	// Seamless Travel 직후 2초 타이머가 클라이언트 재접속 전에 돌면 PlayerArray가 1명(호스트만) → 상체 적용 스킵 → 하체만 스폰. 2명 될 때까지 0.5초 간격 재시도
+	if (BRGameState->PlayerArray.Num() < 2)
+	{
+		if (MinPlayerWaitRetries >= MaxMinPlayerWaitRetries)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 플레이어 2명 대기 %d회 초과 → 상체/하체 적용 포기 (현재 %d명)"), MaxMinPlayerWaitRetries, BRGameState->PlayerArray.Num());
+			MinPlayerWaitRetries = 0;
+			return;
+		}
+		MinPlayerWaitRetries++;
+		FTimerHandle H;
+		GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.5f, false);
+		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 플레이어 2명 대기 중 (현재 %d명), 0.5초 후 재시도 (%d/%d)"), BRGameState->PlayerArray.Num(), MinPlayerWaitRetries, MaxMinPlayerWaitRetries);
+		return;
+	}
+	MinPlayerWaitRetries = 0;
 
 	// 저장된 인원 수만큼 플레이어가 다 들어올 때까지 짧게 대기 (전원 하체로 나오는 현상 방지). 최대 재시도 후에는 현재 인원으로 진행
 	const int32 ExpectedCount = GI->GetPendingRoleRestoreCount();
-	if (ExpectedCount > 0 && BRGameState->PlayerArray.Num() < ExpectedCount)
+	const int32 CurrentNum = BRGameState->PlayerArray.Num();
+	if (ExpectedCount > 0 && CurrentNum < ExpectedCount)
 	{
 		if (InitialPlayerWaitRetries >= MaxInitialPlayerWaitRetries)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 플레이어 대기 %d회 초과 → 현재 인원(%d명)으로 상체/하체 적용 진행 (하체만 스폰 방지)"), MaxInitialPlayerWaitRetries, BRGameState->PlayerArray.Num());
+			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 플레이어 대기 %d회 초과 → 현재 인원(%d명)으로 상체/하체 적용 진행 (하체만 스폰 방지)"), MaxInitialPlayerWaitRetries, CurrentNum);
 			InitialPlayerWaitRetries = 0;
 		}
 		else
@@ -482,13 +499,27 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams()
 			InitialPlayerWaitRetries++;
 			FTimerHandle H;
 			GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.5f, false);
-			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 플레이어 대기 중 (%d/%d), 0.5초 후 재시도 (%d/%d)"), BRGameState->PlayerArray.Num(), ExpectedCount, InitialPlayerWaitRetries, MaxInitialPlayerWaitRetries);
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 플레이어 대기 중 (%d/%d), 0.5초 후 재시도 (%d/%d)"), CurrentNum, ExpectedCount, InitialPlayerWaitRetries, MaxInitialPlayerWaitRetries);
 			return;
 		}
+	}
+	else if (ExpectedCount == 0 && CurrentNum == 2)
+	{
+		// 저장 인원 수가 0(예: PIE GI 비어 있음)이면 2명에서 바로 진행 → 1팀만 적용 후 3·4번째가 들어오면 전부 하체로 남음. 2명일 때만 3초 더 대기
+		if (ExpectedZeroWaitRetries < MaxExpectedZeroWaitRetries)
+		{
+			ExpectedZeroWaitRetries++;
+			FTimerHandle H;
+			GetWorld()->GetTimerManager().SetTimer(H, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, 0.5f, false);
+			UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 저장 인원 없음·현재 2명 → 4명 올 때까지 0.5초 후 재시도 (%d/%d)"), ExpectedZeroWaitRetries, MaxExpectedZeroWaitRetries);
+			return;
+		}
+		ExpectedZeroWaitRetries = 0;
 	}
 	else
 	{
 		InitialPlayerWaitRetries = 0;
+		ExpectedZeroWaitRetries = 0;
 	}
 
 	// 플래그는 하체 Pawn 확인 통과 후에만 클리어 (Pawn 없이 재시도할 때 플래그 유지)
