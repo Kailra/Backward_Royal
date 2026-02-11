@@ -1518,14 +1518,11 @@ void ABRPlayerController::SetupRoleInput(bool bIsLower)
 		}
 	}
 
-	// [추가] 하체 캐릭터라면 입력 바인딩(함수 연결)을 강제로 다시 시키기
-	if (bIsLower)
+	// 하체 캐릭터라면 입력 바인딩(함수 연결)을 강제로 다시 시키기
+	if (APawn* P = GetPawn())
 	{
-		if (APawn* P = GetPawn())
-		{
-			// 클라이언트에게 입력 시스템 재시작 명령
-			ClientRestart(P);
-		}
+		// 클라이언트에게 입력 시스템 재시작 명령 (SetupPlayerInputComponent 재호출 유도)
+		ClientRestart(P);
 	}
 }
 
