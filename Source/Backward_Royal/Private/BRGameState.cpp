@@ -28,11 +28,29 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ABRGameState, LobbyTeamSlots);
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
 	DOREPLIFETIME(ABRGameState, RoomTitle);
+	DOREPLIFETIME(ABRGameState, WinningTeamNumber);
 }
 
 void ABRGameState::BeginPlay()
 {
 	Super::BeginPlay();
+}
+
+void ABRGameState::OnRep_WinningTeamNumber()
+{
+	if (WinningTeamNumber > 0)
+	{
+		OnGameEndedWithWinner.Broadcast(WinningTeamNumber);
+	}
+}
+
+void ABRGameState::EndGameWithWinner(int32 WinnerTeamNumber)
+{
+	if (!HasAuthority() || WinnerTeamNumber <= 0) return;
+
+	WinningTeamNumber = WinnerTeamNumber;
+	UE_LOG(LogTemp, Warning, TEXT("[GameState] 게임 종료 — 팀 %d 승리!"), WinnerTeamNumber);
+	OnGameEndedWithWinner.Broadcast(WinningTeamNumber);
 }
 
 void ABRGameState::UpdatePlayerList()
