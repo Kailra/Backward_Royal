@@ -610,7 +610,10 @@ void ABRPlayerController::StartSpectatingMode()
 	// 3. 관전 상태로 전환 (추가 정리)
 	ChangeState(NAME_Spectating);
 
-	// 4. 클라이언트 UI 알림
+	// 4. 상체가 플레이 중이던 SetIgnoreMoveInput(true) 해제 (서버 쪽 동기화)
+	SetIgnoreMoveInput(false);
+
+	// 5. 클라이언트 UI·입력 전환 알림
 	ClientHandleSpectatorUI();
 }
 
@@ -622,6 +625,23 @@ void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
 		UnPossess();
 	}
 	ChangeState(NAME_Spectating);
+
+	// 상체는 플레이 중 SetIgnoreMoveInput(true)로 WASD가 막혀 있음 → 관전 시 해제
+	SetIgnoreMoveInput(false);
+
+	// 관전 시 Enhanced Input: 상체 전용 컨텍스트만 있으면 WASD 없음 → 하체와 동일한 이동 가능 컨텍스트로 교체
+	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+		{
+			Subsystem->ClearAllMappings();
+			if (LowerBodyContext)
+			{
+				Subsystem->AddMappingContext(LowerBodyContext, 0);
+			}
+		}
+	}
+
 	// 블루프린트에서 구현된 이벤트 호출 (HUD 숨기기 등)
 	OnEnterSpectatorMode();
 }
