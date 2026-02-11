@@ -3,7 +3,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameStateBase.h"
-#include "Math/UnrealMathUtility.h"
 #include "BRUserInfo.h"
 #include "BRGameState.generated.h"
 
@@ -90,21 +89,6 @@ public:
 	/** 서버에서 설정·복제되는 방 제목 (예: "○○'s Game"). 입장한 클라이언트도 동일하게 표시됨 */
 	UPROPERTY(ReplicatedUsing = OnRep_RoomTitle, BlueprintReadOnly, Category = "Room")
 	FString RoomTitle;
-
-	/** 게임 시작 시 서버가 선택한 맵 경로 (복제). Travel 직전에 설정되어 모든 클라이언트가 동일 맵으로 이동하는 데 사용 */
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Room")
-	FString PendingTravelMapPath;
-
-	/** 맵 로드 시 서버가 정한 랜덤 시드 (복제). 랜덤 생성 기물 위치를 서버·클라이언트 동일하게 맞추려면 이 시드를 사용하거나, 서버에서만 스폰 후 복제 권장 */
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Room")
-	int32 LevelRandomSeed = 0;
-
-	/** 레벨 랜덤 시드로 만든 랜덤 스트림 (C++용). 같은 시드로 동일 순서 호출 시 서버·클라이언트 동일 결과. 블루프린트는 GetLevelRandomSeed 사용 */
-	UFUNCTION(BlueprintCallable, Category = "Room", meta = (DisplayName = "Get Level Random Seed"))
-	int32 GetLevelRandomSeed() const { return LevelRandomSeed; }
-
-	/** C++ 전용: LevelRandomSeed로 초기화된 스트림. 랜덤 기물 위치 등에 사용 시 호출 순서를 서버·클라이언트 동일하게 유지할 것 */
-	FRandomStream GetLevelRandomStream() const;
 
 	/** 방 제목 표시용. RoomTitle이 있으면 그대로 반환, 없으면 GetHostPlayerName() + "'s Game" (블루프린트/UI에서 사용) */
 	UFUNCTION(BlueprintCallable, Category = "Room", meta = (DisplayName = "Get Room Title Display"))

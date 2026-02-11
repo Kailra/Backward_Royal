@@ -92,9 +92,9 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientNotifyGameStarting();
 
-	/** 서버가 선택한 맵 경로로 이동. 클라이언트가 자신의 서버 주소 + MapPath로 URL을 만들어 동기화된 맵으로 이동 */
+	/** PIE 등에서 ServerTravel이 클라이언트를 따라오지 않을 때, 서버가 지정한 URL로 직접 이동 */
 	UFUNCTION(Client, Reliable)
-	void ClientTravelToGameMap(const FString& MapPath);
+	void ClientTravelToGameMap(const FString& TravelURL);
 
 	/** 입장 직후 방 제목 전달 (복제 대기 없이 "○○'s Game" 즉시 표시) */
 	UFUNCTION(Client, Reliable)
