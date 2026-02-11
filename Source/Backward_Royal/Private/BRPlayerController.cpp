@@ -255,6 +255,11 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		}
 	}
 
+	if (IsLocalController())
+	{
+		ApplyUpperBodyViewAndInput();
+	}
+
 	if (OnPawnChanged.IsBound())
 	{
 		OnPawnChanged.Broadcast(aPawn);
