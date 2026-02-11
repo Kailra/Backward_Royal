@@ -1,4 +1,4 @@
-# 통합 분석 보고서: UserInfo, GameInstance, PlayerState, GameState
+# 데이터 흐름 분석 보고서: UserInfo, GameInstance, PlayerState, GameState
 
 이 문서는 Backward Royal 프로젝트의 핵심 데이터 클래스인 `UserInfo`, `GameInstance`, `PlayerState`, `GameState`에 대한 상세 분석 내용을 통합한 것입니다.
 
