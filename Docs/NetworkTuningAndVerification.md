@@ -15,7 +15,7 @@
 | 1 | **서버(방장)** 또는 **클라이언트**에서 게임 실행 중 **`~`(틸드) 키**로 콘솔 열기 |
 | 2 | **`stat net`** 입력 → 화면에 네트워크 통계 표시 |
 | 3 | 확인할 값: **Ping**(ms), **InLost** / **OutLost**(유실 패킷), **InPackets** / **OutPackets** |
-| 4 | (선택) **`net pktlag 100`** 입력 후 플레이 → 100ms 지연 환경 체감·튐 현상 확인 |
+| 4 | (선택) **`NetEmulation.PktLag 100`** 입력 후 플레이 → 100ms 지연 환경 체감·튐 현상 확인 (에디터에서 **Edit > Editor Preferences > Play > Multiplayer Options > Enable Network Emulation** 체크 필요) |
 | 5 | **`stat net`** 한 번 더 입력하면 통계 숨김(토글) |
 
 - **Ping**이 계속 100ms 이상이면 고지연 환경. **InLost/OutLost**가 계속 늘어나면 패킷 유실 있음.
@@ -61,7 +61,7 @@
 ## 2. 핑 100ms 이상 환경에서 위치 동기화 오차 확인
 
 ### 테스트 방법
-1. **인위적 지연**: 콘솔에서 `net pktlag 100` (100ms 지연).
+1. **인위적 지연**: 콘솔에서 `NetEmulation.PktLag 100` (100ms 지연). (Network Emulation이 에디터 설정에서 활성화되어 있어야 함.)
 2. **플레이**: 이동·점프·전투 후 캐릭터가 자주 “튀는지” 관찰.
 3. **통계**: `stat net` 입력 후 다음 확인:
    - **OutPackets / InPackets**: 패킷 수.
@@ -176,6 +176,6 @@
 |------|------|
 | 팀/플레이어 인덱스·하체만 4명 | 서버 로그에서 `[진단]` 검색 → 복원/SortedByTeam/역할 불일치 확인, 안전장치 동작 여부 확인 |
 | 예측/보정 튜닝 | `PlayerCharacter` CMC 값 + `DefaultGame.ini` GameNetworkManager |
-| 100ms+ 핑 오차 확인 | `net pktlag 100` + `stat net` + 플레이 관찰 |
+| 100ms+ 핑 오차 확인 | `NetEmulation.PktLag 100` + `stat net` + 플레이 관찰 |
 | 서버 메모리/안정성 | `BRGameMode::EndPlay` 타이머 정리, `stat memory`·장시간 구동 검증 |
 | 패킷 유실/보간 | ServerMove 버퍼 재전송(엔진 기본), Exponential 스무딩 + CMC 거리 파라미터, `net pktloss` 테스트 |
