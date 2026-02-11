@@ -1102,6 +1102,64 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 }
 
+void ABRGameMode::CheckMatchWinner()
+{
+	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (!BRGameState) return;
+
+	// 생존 팀(TeamNumber) 수집
+	TSet<int32> AliveTeams;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			// 팀 번호가 있고(>0), 살아있는 경우
+			if (BRPS->TeamNumber > 0 && BRPS->CurrentStatus == EPlayerStatus::Alive)
+			{
+				AliveTeams.Add(BRPS->TeamNumber);
+			}
+		}
+	}
+
+	// 오직 1팀만 살아있다면 우승
+	if (AliveTeams.Num() == 1)
+	{
+		int32 WinnerTeamID = AliveTeams.Array()[0];
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 우승 팀 결정: Team %d"), WinnerTeamID);
+
+		FString UpperName;
+		FString LowerName;
+		FVector WinnerLocation = FVector::ZeroVector;
+
+		// 우승 팀 정보 수집 (상체 이름, 하체 이름, 하체 Pawn 위치)
+		for (APlayerState* PS : BRGameState->PlayerArray)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+			{
+				if (BRPS->TeamNumber == WinnerTeamID)
+				{
+					if (BRPS->bIsLowerBody)
+					{
+						LowerName = BRPS->GetPlayerName();
+						// 위치는 하체(Control Pawn) 기준
+						if (APawn* MyPawn = BRPS->GetPawn())
+						{
+							WinnerLocation = MyPawn->GetActorLocation();
+						}
+					}
+					else
+					{
+						UpperName = BRPS->GetPlayerName();
+					}
+				}
+			}
+		}
+
+		// 결산 이벤트 브로드캐스트
+		BRGameState->OnMatchEnded.Broadcast(WinnerLocation, UpperName, LowerName);
+	}
+}
+
 void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 {
 	if (!VictimCharacter) return;
@@ -1149,6 +1207,9 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 			}
 		}
 	}
+
+	// 생존 팀 확인 및 우승 처리
+	CheckMatchWinner();
 
 	// 타이머 설정 (2초 후 관전 전환)
 	// 피해자 혹은 파트너가 존재할 때만 타이머 실행

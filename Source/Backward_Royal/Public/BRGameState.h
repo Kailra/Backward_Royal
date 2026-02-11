@@ -8,6 +8,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerListChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTeamChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMatchEnded, FVector, WinnerLocation, FString, UpperName, FString, LowerName);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABRGameState : public AGameStateBase
@@ -52,6 +53,10 @@ public:
 	// 팀 변경 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnTeamChanged OnTeamChanged;
+
+	// 매치 종료(우승 팀 결정) 이벤트
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnMatchEnded OnMatchEnded;
 
 	// 플레이어 목록 업데이트
 	UFUNCTION(BlueprintCallable, Category = "Room")
