@@ -54,6 +54,10 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_PlayerRole, BlueprintReadOnly, Category = "Player Role")
 	int32 ConnectedPlayerIndex;
 
+	/** 연결된 파트너 PlayerState (하체↔상체). 복제됨. 있으면 GetUpperBody/GetLowerBody에서 인덱스 대신 사용 */
+	UPROPERTY(ReplicatedUsing = OnRep_PlayerRole, BlueprintReadOnly, Category = "Player Role")
+	TObjectPtr<ABRPlayerState> PartnerPlayerState;
+
 	// 사용자 고유 ID (예: Steam ID, 계정 ID 등)
 	UPROPERTY(ReplicatedUsing = OnRep_UserUID, BlueprintReadWrite, Category = "User Info")
 	FString UserUID;

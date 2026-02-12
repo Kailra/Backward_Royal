@@ -9,6 +9,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerListChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnTeamChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameEndedWithWinner, int32, WinningTeamNumber);
+/** 매치 종료 시 (위치, 상체 이름, 하체 이름). MulticastMatchEnded에서 브로드캐스트 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMatchEnded, FVector, WinnerLocation, FString, UpperName, FString, LowerName);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABRGameState : public AGameStateBase
@@ -61,6 +63,10 @@ public:
 	/** 게임 종료(승리 확정) 시 브로드캐스트. WinningTeamNumber 전달 */
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnGameEndedWithWinner OnGameEndedWithWinner;
+
+	/** 매치 종료 시 브로드캐스트 (승리 위치, 상체 플레이어 이름, 하체 플레이어 이름). MulticastMatchEnded에서 사용 */
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnMatchEnded OnMatchEnded;
 
 	// 플레이어 목록 업데이트
 	UFUNCTION(BlueprintCallable, Category = "Room")
