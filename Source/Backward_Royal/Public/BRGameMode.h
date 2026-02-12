@@ -77,6 +77,9 @@ public:
 	// 플레이어 사망 시 호출되는 함수
 	void OnPlayerDied(class ABaseCharacter* VictimCharacter);
 
+	/** 생존 팀이 1개일 때 승리 처리. SwitchTeamToSpectatorByPlayerIndices에서 호출 */
+	void CheckAndEndGameIfWinner();
+
 	// 2초 후 팀 전체를 관전 모드로 전환 (WeakPtr 버전, 레거시)
 	void SwitchTeamToSpectator(TWeakObjectPtr<class ABRPlayerController> VictimPC, TWeakObjectPtr<class ABRPlayerController> PartnerPC);
 
@@ -86,12 +89,16 @@ public:
 	/** 탈락한 팀 번호 기준으로 해당 팀 전원(하체+상체) 관전 전환 */
 	void SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber);
 
+	/** 로비 맵으로 모든 플레이어 이동 (승리 시 WBP_LobbyMenu/WBP_Entry 표시) */
+	void TravelToLobby();
+
+	/** 승리 후 로비 이동 전 대기 시간(초). 0이면 즉시 이동 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (ClampMin = "0.0", ClampMax = "10.0"))
+	float DelayBeforeReturnToLobby = 2.0f;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-	/** 생존 팀 확인 후 1팀만 남으면 결산 이벤트 호출 */
-	void CheckMatchWinner();
 
 	/** Stage 폴더에서 맵 목록을 수집하거나, 실패 시 StageMapPathsFallback 반환 */
 	TArray<FString> GetAvailableStageMapPaths() const;
@@ -126,6 +133,8 @@ protected:
 	FTimerHandle DirectStartRoleApplyTimerHandle;
 	/** 사망 후 2초 뒤 관전 전환용 (인덱스 콜백 사용) */
 	FTimerHandle SpecTimerHandle_DeathSpectator;
+	/** 승리 후 로비 이동용 타이머 */
+	FTimerHandle ReturnToLobbyTimerHandle;
 
 	/** 테스트 맵을 로비 없이 바로 실행했을 때: 저장된 역할이 없고 전원 하체면 랜덤 팀 배정 후 상체/하체 적용 */
 	void TryApplyDirectStartRolesFallback();

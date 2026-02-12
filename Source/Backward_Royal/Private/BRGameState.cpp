@@ -28,6 +28,7 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ABRGameState, LobbyTeamSlots);
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
 	DOREPLIFETIME(ABRGameState, RoomTitle);
+	DOREPLIFETIME(ABRGameState, WinningTeamNumber);
 }
 
 void ABRGameState::BeginPlay()
@@ -511,10 +512,13 @@ bool ABRGameState::AssignPlayerToLobbyTeam(int32 PlayerIndex, int32 TeamIndex, i
 	LobbyTeamSlots[Flat] = PlayerIndex;
 	if (!bFoundInEntry)
 	{
-		// 이미 팀 다른 슬롯에 있었을 수 있음 → 그 슬롯 비우기
+		// 이미 팀 다른 슬롯에 있었을 수 있음 → 그 슬롯 비우기 (방금 할당한 Flat 제외)
 		for (int32 i = 0; i < LobbyTeamSlots.Num(); i++)
 		{
-			if (LobbyTeamSlots[i] == PlayerIndex) LobbyTeamSlots[i] = -1;
+			if (i != Flat && LobbyTeamSlots[i] == PlayerIndex)
+			{
+				LobbyTeamSlots[i] = -1;
+			}
 		}
 	}
 
@@ -582,11 +586,15 @@ bool ABRGameState::MovePlayerToLobbyEntry(int32 TeamIndex, int32 SlotIndex)
 				{
 					if (ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(PlayerArray[PartnerIndex]))
 					{
+						PartnerPS->PartnerPlayerState = nullptr;
+						PartnerPS->ConnectedPlayerIndex = -1;
 						PartnerPS->SetPlayerRole(PartnerPS->bIsLowerBody, -1);
 					}
 				}
 			}
 		}
+		BRPS->PartnerPlayerState = nullptr;
+		BRPS->ConnectedPlayerIndex = -1;
 	}
 
 	// 같은 플레이어가 이미 대기열에 있으면 제거 (중복 표시 방지: 대기열 버튼 이중 호출 등)
@@ -645,6 +653,19 @@ void ABRGameState::OnRep_RoomTitle()
 	// UI 갱신 시 활용 가능
 }
 
+void ABRGameState::OnRep_WinningTeamNumber()
+{
+	// 승리 팀 복제 수신 시 UI 갱신용
+}
+
+void ABRGameState::EndGameWithWinner(int32 WinnerTeamNumber)
+{
+	if (!HasAuthority()) return;
+	WinningTeamNumber = WinnerTeamNumber;
+	OnGameEndedWithWinner.Broadcast(WinningTeamNumber);
+	UE_LOG(LogTemp, Log, TEXT("[게임 종료] 승리 팀: %d"), WinningTeamNumber);
+}
+
 FString ABRGameState::GetRoomTitleDisplay() const
 {
 	if (!RoomTitle.IsEmpty())
@@ -657,4 +678,11 @@ FString ABRGameState::GetRoomTitleDisplay() const
 		return FString(TEXT("Host's Game"));
 	}
 	return HostName + TEXT("'s Game");
+}
+
+void ABRGameState::MulticastMatchEnded_Implementation(FVector WinnerLocation, const FString& UpperName, const FString& LowerName)
+{
+	// 모든 클라이언트(서버 포함)에서 실행됨
+	// BlueprintAssignable 델리게이트 브로드캐스트 -> 위젯 등에서 수신
+	OnMatchEnded.Broadcast(WinnerLocation, UpperName, LowerName);
 }
