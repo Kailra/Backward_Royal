@@ -415,7 +415,7 @@ void ABaseCharacter::OnRep_CurrentHP()
     if (CurrentHP <= 0.0f)
     {
         // 사망 처리 등 클라이언트 측 가시적 효과가 필요하다면 여기서 호출 가능
-        // Die(); 
+        // Die();
     }
 
     CHAR_LOG(Log, TEXT("HP가 복제되었습니다. 현재 HP: %.1f"), CurrentHP);
