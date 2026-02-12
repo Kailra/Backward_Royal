@@ -1104,7 +1104,7 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ABRGameMode::CheckMatchWinner()
 {
-	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	ABRGameState* BRGameState = Cast<ABRGameState>(GameState);
 	if (!BRGameState) return;
 
 	// 생존 팀(TeamNumber) 수집
@@ -1155,8 +1155,8 @@ void ABRGameMode::CheckMatchWinner()
 			}
 		}
 
-		// 결산 이벤트 브로드캐스트
-		BRGameState->OnMatchEnded.Broadcast(WinnerLocation, UpperName, LowerName);
+		// 결산 이벤트 브로드캐스트 (모든 클라이언트에 전파)
+		BRGameState->MulticastMatchEnded(WinnerLocation, UpperName, LowerName);
 	}
 }
 
