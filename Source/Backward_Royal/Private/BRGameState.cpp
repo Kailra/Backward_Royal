@@ -28,29 +28,11 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ABRGameState, LobbyTeamSlots);
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
 	DOREPLIFETIME(ABRGameState, RoomTitle);
-	DOREPLIFETIME(ABRGameState, WinningTeamNumber);
 }
 
 void ABRGameState::BeginPlay()
 {
 	Super::BeginPlay();
-}
-
-void ABRGameState::OnRep_WinningTeamNumber()
-{
-	if (WinningTeamNumber > 0)
-	{
-		OnGameEndedWithWinner.Broadcast(WinningTeamNumber);
-	}
-}
-
-void ABRGameState::EndGameWithWinner(int32 WinnerTeamNumber)
-{
-	if (!HasAuthority() || WinnerTeamNumber <= 0) return;
-
-	WinningTeamNumber = WinnerTeamNumber;
-	UE_LOG(LogTemp, Warning, TEXT("[GameState] 게임 종료 — 팀 %d 승리!"), WinnerTeamNumber);
-	OnGameEndedWithWinner.Broadcast(WinningTeamNumber);
 }
 
 void ABRGameState::UpdatePlayerList()
@@ -569,8 +551,6 @@ bool ABRGameState::AssignPlayerToLobbyTeam(int32 PlayerIndex, int32 TeamIndex, i
 
 	CheckCanStartGame();
 	CompactLobbyEntrySlots();
-	// 슬롯 변경 시 이름 표시를 위해 PlayerListForDisplay 최신화 후 브로드캐스트 (두 번째부터 이름 안 나오는 현상 방지)
-	UpdatePlayerList();
 	OnPlayerListChanged.Broadcast();
 	return true;
 }
@@ -626,7 +606,6 @@ bool ABRGameState::MovePlayerToLobbyEntry(int32 TeamIndex, int32 SlotIndex)
 			LobbyEntrySlots[i] = PlayerIndex;
 			// 대기열에 넣은 뒤 압축해서 순서 유지 (뒤에 빈 칸이 있으면 당겨서 채움)
 			CompactLobbyEntrySlots();
-			UpdatePlayerList();
 			OnPlayerListChanged.Broadcast();
 			return true;
 		}
@@ -678,4 +657,11 @@ FString ABRGameState::GetRoomTitleDisplay() const
 		return FString(TEXT("Host's Game"));
 	}
 	return HostName + TEXT("'s Game");
+}
+
+void ABRGameState::MulticastMatchEnded_Implementation(FVector WinnerLocation, const FString& UpperName, const FString& LowerName)
+{
+	// 모든 클라이언트(서버 포함)에서 실행됨
+	// BlueprintAssignable 델리게이트 브로드캐스트 -> 위젯 등에서 수신
+	OnMatchEnded.Broadcast(WinnerLocation, UpperName, LowerName);
 }
