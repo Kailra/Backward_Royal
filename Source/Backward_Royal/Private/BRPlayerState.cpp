@@ -30,6 +30,7 @@ void ABRPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(ABRPlayerState, bIsSpectatorSlot);
 	DOREPLIFETIME(ABRPlayerState, bIsLowerBody);
 	DOREPLIFETIME(ABRPlayerState, ConnectedPlayerIndex);
+	DOREPLIFETIME(ABRPlayerState, PartnerPlayerState);
 	DOREPLIFETIME(ABRPlayerState, UserUID);
 	DOREPLIFETIME(ABRPlayerState, CustomizationData);
 	DOREPLIFETIME(ABRPlayerState, CurrentStatus);
@@ -144,6 +145,22 @@ void ABRPlayerState::SetPlayerRole(bool bLowerBody, int32 ConnectedIndex)
 		bIsSpectatorSlot = false;
 		bIsLowerBody = bLowerBody;
 		ConnectedPlayerIndex = ConnectedIndex;
+		PartnerPlayerState = nullptr;
+		if (ConnectedIndex >= 0 && GetWorld())
+		{
+			if (ABRGameState* GS = GetWorld()->GetGameState<ABRGameState>())
+			{
+				if (GS->PlayerArray.IsValidIndex(ConnectedIndex))
+				{
+					PartnerPlayerState = Cast<ABRPlayerState>(GS->PlayerArray[ConnectedIndex]);
+					// 상대편에도 나를 파트너로 설정 (양방향 참조)
+					if (PartnerPlayerState)
+					{
+						PartnerPlayerState->PartnerPlayerState = this;
+					}
+				}
+			}
+		}
 		FString PlayerName = GetPlayerName();
 		if (PlayerName.IsEmpty())
 		{
@@ -165,6 +182,7 @@ void ABRPlayerState::SetSpectator(bool bSpectator)
 		if (bSpectator)
 		{
 			ConnectedPlayerIndex = -1;
+			PartnerPlayerState = nullptr;
 			FString PlayerName = GetPlayerName();
 			if (PlayerName.IsEmpty()) PlayerName = TEXT("Unknown Player");
 			UE_LOG(LogTemp, Log, TEXT("[플레이어 역할] %s: 관전(PlayerIndex 0)으로 설정"), *PlayerName);
