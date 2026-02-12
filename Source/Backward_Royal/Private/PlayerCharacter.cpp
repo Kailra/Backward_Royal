@@ -361,15 +361,14 @@ void APlayerCharacter::OnRep_PlayerState()
 	if (MyPS)
 	{
 		// 1-1. 내 커마 정보가 오면 알려줘
-		if (!bUpperBodyApplied || !bLowerBodyApplied)
-		{
-			MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-			MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-			// 파트너 바인딩은 로직 유지를 위해 남겨둠 (필요에 따라 이것도 막을 수 있음)
-			MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
-		}
+		// 1-2. 내 역할(상/하체)이나 파트너가 정해지면 알려줘
+		// (기존 코드에 OnPlayerRoleChanged 델리게이트가 이미 있다고 가정)
+		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
+		// 혹시 이미 데이터가 와 있을 수도 있으니 한번 체크
 		TryApplyCustomization();
 
 		// 혹시 이미 파트너가 정해져 있을 수도 있으니 체크
@@ -436,44 +435,32 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
+	// 이미 둘 다 적용 끝났으면 더 이상 연산하지 않음 (최적화)
+	if (bUpperBodyApplied && bLowerBodyApplied) return;
+
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
-	// --- [상체] ---
-	// 1. 아직 적용 안 됨 (!bUpperBodyApplied)
-	// 2. PlayerState 존재함 (UpperPS)
-	// 3. [핵심] 데이터가 유효함 (bIsDataValid == true)
-	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.bIsDataValid)
+	// --- 1. 상체 적용 ---
+	// 아직 적용 안 됐고(false), 데이터가 존재하면(HeadID != 0) 적용
+	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.HeadID != 0)
 	{
 		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
 		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
 		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-		// 이제 진짜 데이터를 입었으니 잠금
-		bUpperBodyApplied = true;
-
-		// 델리게이트 해제 (더 이상 업데이트 안 함)
-		UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-
-		LOG_PLAYER(Display, TEXT("Upper Body Locked with VALID Data"));
-	}
-	else if (UpperPS && !UpperPS->CustomizationData.bIsDataValid)
-	{
-		// 디버깅용: PS는 왔는데 데이터가 아직 안 온 상태
-		// LOG_PLAYER(Warning, TEXT("Upper PS found but Data Invalid (Waiting...)"));
+		bUpperBodyApplied = true; // 완료 마킹 (이후에는 다시 적용 안 함)
+		LOG_PLAYER(Display, TEXT("Upper Body Customization Applied"));
 	}
 
-	// --- [하체] ---
-	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.bIsDataValid)
+	// --- 2. 하체 적용 ---
+	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.LegID != 0)
 	{
 		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
 		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-		bLowerBodyApplied = true;
-
-		LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-
-		LOG_PLAYER(Display, TEXT("Lower Body Locked with VALID Data"));
+		bLowerBodyApplied = true; // 완료 마킹
+		LOG_PLAYER(Display, TEXT("Lower Body Customization Applied"));
 	}
 }
 
