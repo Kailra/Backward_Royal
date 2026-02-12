@@ -436,44 +436,56 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (!MyPS) return;
+
+	// [핵심 수정] 파트너 정보가 아직 도착하지 않았다면 절대 적용하지 말고 리턴할 것!
+	// (혼자 테스트하는 경우를 대비해 ConnectedPlayerIndex가 -1이 아닐 때만 체크)
+	if (MyPS->ConnectedPlayerIndex != -1 && MyPS->PartnerPlayerState == nullptr)
+	{
+		// 아직 파트너 포인터가 리플리케이션 되지 않음 -> 역할 판단이 부정확할 수 있음 -> 보류
+		// (나중에 OnRep_PartnerPlayerState -> OnRep_PlayerState -> 이 함수가 다시 호출됨)
+		return;
+	}
+
+	// [기존 로직 유지]
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
-	// --- [상체] ---
-	// 1. 아직 적용 안 됨 (!bUpperBodyApplied)
-	// 2. PlayerState 존재함 (UpperPS)
-	// 3. [핵심] 데이터가 유효함 (bIsDataValid == true)
+	// 1. 상체 적용 (유효한 데이터가 있고, 아직 적용 안 됐을 때)
 	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.bIsDataValid)
 	{
-		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
-		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
-		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+		// [추가 검증] 가져온 PS가 진짜 상체 역할인지 더블 체크
+		if (!UpperPS->bIsLowerBody)
+		{
+			ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
+			ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
+			ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-		// 이제 진짜 데이터를 입었으니 잠금
-		bUpperBodyApplied = true;
+			bUpperBodyApplied = true;
 
-		// 델리게이트 해제 (더 이상 업데이트 안 함)
-		UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+			// 델리게이트 해제
+			UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-		LOG_PLAYER(Display, TEXT("Upper Body Locked with VALID Data"));
-	}
-	else if (UpperPS && !UpperPS->CustomizationData.bIsDataValid)
-	{
-		// 디버깅용: PS는 왔는데 데이터가 아직 안 온 상태
-		// LOG_PLAYER(Warning, TEXT("Upper PS found but Data Invalid (Waiting...)"));
+			LOG_PLAYER(Display, TEXT("Upper Body Locked (Owner: %s)"), *UpperPS->GetPlayerName());
+		}
 	}
 
-	// --- [하체] ---
+	// 2. 하체 적용
 	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.bIsDataValid)
 	{
-		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+		// [추가 검증] 가져온 PS가 진짜 하체 역할인지 더블 체크
+		if (LowerPS->bIsLowerBody)
+		{
+			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
+			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-		bLowerBodyApplied = true;
+			bLowerBodyApplied = true;
 
-		LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+			LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-		LOG_PLAYER(Display, TEXT("Lower Body Locked with VALID Data"));
+			LOG_PLAYER(Display, TEXT("Lower Body Locked (Owner: %s)"), *LowerPS->GetPlayerName());
+		}
 	}
 }
 
@@ -484,9 +496,11 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS)
 	{
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
+		if (UWorld* World = GetWorld())
+		{
+			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
+			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
+		}
 		return;
 	}
 
@@ -496,9 +510,11 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	// 포인터가 아직 안 왔는데, 연결된 인덱스는 있다? -> 로딩 중이니 재시도
 	if (!PartnerPS && MyPS->ConnectedPlayerIndex != -1)
 	{
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
+		if (UWorld* World = GetWorld())
+		{
+			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
+			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
+		}
 		return;
 	}
 
