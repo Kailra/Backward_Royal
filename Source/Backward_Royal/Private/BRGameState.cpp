@@ -658,3 +658,10 @@ FString ABRGameState::GetRoomTitleDisplay() const
 	}
 	return HostName + TEXT("'s Game");
 }
+
+void ABRGameState::MulticastMatchEnded_Implementation(FVector WinnerLocation, const FString& UpperName, const FString& LowerName)
+{
+	// 모든 클라이언트(서버 포함)에서 실행됨
+	// BlueprintAssignable 델리게이트 브로드캐스트 -> 위젯 등에서 수신
+	OnMatchEnded.Broadcast(WinnerLocation, UpperName, LowerName);
+}
