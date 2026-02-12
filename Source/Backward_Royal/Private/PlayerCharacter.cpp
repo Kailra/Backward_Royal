@@ -29,7 +29,7 @@ APlayerCharacter::APlayerCharacter()
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
-	//GetMesh()->SetOwnerNoSee(true);  < 몸 투명화
+	//GetMesh()->SetOwnerNoSee(true); // <- 몸 투명화
 	GetMesh()->bCastHiddenShadow = true;
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
@@ -39,7 +39,7 @@ APlayerCharacter::APlayerCharacter()
 	{
 		if (Part)
 		{
-			//Part->SetOwnerNoSee(true);     <- 몸 투명화
+			//Part->SetOwnerNoSee(true);   //  <- 몸 투명화
 			Part->bCastHiddenShadow = true;
 
 			// A. [틱 순서 고정] 
@@ -93,12 +93,12 @@ APlayerCharacter::APlayerCharacter()
 	MoveComp->NetworkMaxSmoothUpdateDistance = 256.0f;   // 이 거리 이하만 스무딩, 그 이상은 보정 허용
 	MoveComp->NetworkNoSmoothUpdateDistance = 0.0f;    // 0 = 작은 오차도 스무딩으로 흡수
 	// 서버-클라이언트 위치 오차가 이 값(단위: cm) 이하면 보정 생략 → 핑 높을 때 덜 튐
-	MoveComp->NetworkLargeClientCorrectionDistance = 500.0f;
+	MoveComp->NetworkLargeClientCorrectionDistance = 120.0f;
 }
 
 void APlayerCharacter::BeginPlay()
 {
-	// GetMesh()->SetVisibility(false, false);  <- 몸 투명화
+	//GetMesh()->SetVisibility(false, false); //  <- 몸 투명화
 
 	if (StaminaComp)
 	{
@@ -125,9 +125,30 @@ void APlayerCharacter::BeginPlay()
 		}
 	}
 
-	if (GetPlayerState())
+	ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>();
+
+	if (BRPS)
 	{
+		// 2. 이미 PlayerState가 있다면 초기화 로직 실행
+		// (OnRep_PlayerState 내부에서 TryApplyCustomization 바인딩 및 호출을 수행하도록 구성했다면 이 함수 호출만으로 충분합니다)
 		OnRep_PlayerState();
+	}
+	else
+	{
+		// 3. PlayerState가 아직 없다면(클라이언트 로딩 지연 등), 0.5초 뒤 재시도
+		FTimerHandle RetryHandle;
+		GetWorld()->GetTimerManager().SetTimer(RetryHandle, [this]()
+			{
+				// 람다 내부에서 다시 확인
+				if (ABRPlayerState* RetryPS = GetPlayerState<ABRPlayerState>())
+				{
+					// 재시도 성공 시 초기화 실행
+					// OnRep_PlayerState를 수동으로 호출하여 바인딩/적용 로직을 수행
+					OnRep_PlayerState();
+
+					UE_LOG(LogTemp, Log, TEXT("[Character] BeginPlay: PlayerState 뒤늦게 로드됨 -> 초기화 수행"));
+				}
+			}, 0.5f, false);
 	}
 }
 
@@ -340,13 +361,15 @@ void APlayerCharacter::OnRep_PlayerState()
 	if (MyPS)
 	{
 		// 1-1. 내 커마 정보가 오면 알려줘
-		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		if (!bUpperBodyApplied || !bLowerBodyApplied)
+		{
+			MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+			MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-		// 1-2. 내 역할(상/하체)이나 파트너가 정해지면 알려줘
-		// (기존 코드에 OnPlayerRoleChanged 델리게이트가 이미 있다고 가정)
-		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+			// 파트너 바인딩은 로직 유지를 위해 남겨둠 (필요에 따라 이것도 막을 수 있음)
+			MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+		}
 
-		// 혹시 이미 데이터가 와 있을 수도 있으니 한번 체크
 		TryApplyCustomization();
 
 		// 혹시 이미 파트너가 정해져 있을 수도 있으니 체크
@@ -357,16 +380,22 @@ void APlayerCharacter::OnRep_PlayerState()
 	}
 }
 
+// [★수정★] 포인터 우선 사용
 ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
 {
-	// 현재 캐릭터의 PlayerState (보통 하체/Movement 담당이 소유)
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS) return nullptr;
 
-	// 만약 내가 상체 역할이라면 -> 내 PS 반환
+	// 내가 상체면 -> 나
 	if (!MyPS->bIsLowerBody) return MyPS;
 
-	// 만약 내가 하체 역할이라면 -> 연결된 파트너(상체)의 PS를 찾아야 함
+	// 내가 하체면 -> 파트너 (포인터가 있으면 100% 확실함)
+	if (MyPS->PartnerPlayerState)
+	{
+		return MyPS->PartnerPlayerState;
+	}
+
+	// (기존 방식 폴백: 포인터가 없을 때만 인덱스 사용)
 	if (MyPS->ConnectedPlayerIndex != -1)
 	{
 		AGameStateBase* GS = UGameplayStatics::GetGameState(this);
@@ -378,16 +407,22 @@ ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
 	return nullptr;
 }
 
+// [★수정★] 포인터 우선 사용
 ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 {
-	// 현재 캐릭터의 PlayerState
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS) return nullptr;
 
-	// 내가 하체라면 -> 내 PS 반환
+	// 내가 하체면 -> 나
 	if (MyPS->bIsLowerBody) return MyPS;
 
-	// 내가 상체라면 -> 파트너(하체) PS 찾기
+	// 내가 상체면 -> 파트너
+	if (MyPS->PartnerPlayerState)
+	{
+		return MyPS->PartnerPlayerState;
+	}
+
+	// (기존 방식 폴백)
 	if (MyPS->ConnectedPlayerIndex != -1)
 	{
 		AGameStateBase* GS = UGameplayStatics::GetGameState(this);
@@ -401,82 +436,92 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
-	// 이미 둘 다 적용 끝났으면 더 이상 연산하지 않음 (최적화)
-	if (bUpperBodyApplied && bLowerBodyApplied) return;
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (!MyPS) return;
 
+	// [핵심 수정] 파트너 정보가 아직 도착하지 않았다면 절대 적용하지 말고 리턴할 것!
+	// (혼자 테스트하는 경우를 대비해 ConnectedPlayerIndex가 -1이 아닐 때만 체크)
+	if (MyPS->ConnectedPlayerIndex != -1 && MyPS->PartnerPlayerState == nullptr)
+	{
+		// 아직 파트너 포인터가 리플리케이션 되지 않음 -> 역할 판단이 부정확할 수 있음 -> 보류
+		// (나중에 OnRep_PartnerPlayerState -> OnRep_PlayerState -> 이 함수가 다시 호출됨)
+		return;
+	}
+
+	// [기존 로직 유지]
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
-	// --- 1. 상체 적용 ---
-	// 아직 적용 안 됐고(false), 데이터가 존재하면(HeadID != 0) 적용
-	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.HeadID != 0)
+	// 1. 상체 적용 (유효한 데이터가 있고, 아직 적용 안 됐을 때)
+	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.bIsDataValid)
 	{
-		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
-		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
-		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+		// [추가 검증] 가져온 PS가 진짜 상체 역할인지 더블 체크
+		if (!UpperPS->bIsLowerBody)
+		{
+			ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
+			ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
+			ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-		bUpperBodyApplied = true; // 완료 마킹 (이후에는 다시 적용 안 함)
-		LOG_PLAYER(Display, TEXT("Upper Body Customization Applied"));
+			bUpperBodyApplied = true;
+
+			// 델리게이트 해제
+			UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+			LOG_PLAYER(Display, TEXT("Upper Body Locked (Owner: %s)"), *UpperPS->GetPlayerName());
+		}
 	}
 
-	// --- 2. 하체 적용 ---
-	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.LegID != 0)
+	// 2. 하체 적용
+	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.bIsDataValid)
 	{
-		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+		// [추가 검증] 가져온 PS가 진짜 하체 역할인지 더블 체크
+		if (LowerPS->bIsLowerBody)
+		{
+			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
+			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-		bLowerBodyApplied = true; // 완료 마킹
-		LOG_PLAYER(Display, TEXT("Lower Body Customization Applied"));
+			bLowerBodyApplied = true;
+
+			LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+			LOG_PLAYER(Display, TEXT("Lower Body Locked (Owner: %s)"), *LowerPS->GetPlayerName());
+		}
 	}
 }
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
-	// 1. 이미 바인딩 완료면 패스
 	if (bBoundToPartner) return;
 
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
-
-	// 내 PS조차 없으면 -> 아주 찰나의 순간일 수 있으니 이것도 재시도 대상
 	if (!MyPS)
 	{
-		// 0.5초 뒤 재시도
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
+		if (UWorld* World = GetWorld())
+		{
+			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
+			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
+		}
 		return;
 	}
 
-	// 파트너가 아예 없는 솔로/매칭 전 상태라면 재시도 불필요
-	if (MyPS->ConnectedPlayerIndex == -1) return;
+	// 1순위: 포인터 확인
+	ABRPlayerState* PartnerPS = MyPS->PartnerPlayerState;
 
-	AGameStateBase* GS = GetWorld()->GetGameState();
-
-	// 2. 파트너 인덱스가 유효하지 않거나, 아직 배열에 안 들어왔다면?
-	if (!GS || !GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+	// 포인터가 아직 안 왔는데, 연결된 인덱스는 있다? -> 로딩 중이니 재시도
+	if (!PartnerPS && MyPS->ConnectedPlayerIndex != -1)
 	{
-		// [중요] 포기하지 말고 0.5초 뒤에 다시 확인하러 온다!
-		// 로그: 아직 파트너가 로딩 안됨, 재시도 예약...
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
+		if (UWorld* World = GetWorld())
+		{
+			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
+			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
+		}
 		return;
 	}
 
-	ABRPlayerState* PartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
+	// 파트너가 아예 없는 경우
+	if (!PartnerPS) return;
 
-	// 3. 인덱스는 유효한데 캐스팅이 안되거나 null인 경우 (드물지만 안전장치)
-	if (!PartnerPS)
-	{
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
-		return;
-	}
-
-	// --- 성공 시 ---
-
-	// 혹시 재시도 타이머가 돌고 있다면 취소
+	// --- 성공 ---
 	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
 
 	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
