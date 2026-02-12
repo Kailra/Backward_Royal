@@ -1102,9 +1102,24 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 }
 
+void ABRGameMode::ReturnToLobby()
+{
+	// 10초 후 로비 맵으로 심리스 트래블 (세션 유지)
+	if (LobbyMapPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 로비 맵 경로(LobbyMapPath)가 비어있어 로비로 복귀할 수 없습니다."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 매치 종료: 10초 경과, 로비 맵으로 이동합니다 (%s)"), *LobbyMapPath);
+	GetWorld()->ServerTravel(LobbyMapPath + TEXT("?listen"));
+}
+
 void ABRGameMode::CheckMatchWinner()
 {
-	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (bMatchEnded) return;
+
+	ABRGameState* BRGameState = Cast<ABRGameState>(GameState);
 	if (!BRGameState) return;
 
 	// 생존 팀(TeamNumber) 수집
@@ -1155,8 +1170,14 @@ void ABRGameMode::CheckMatchWinner()
 			}
 		}
 
-		// 결산 이벤트 브로드캐스트
-		BRGameState->OnMatchEnded.Broadcast(WinnerLocation, UpperName, LowerName);
+		// 결산 이벤트 브로드캐스트 (모든 클라이언트에 전파)
+		BRGameState->MulticastMatchEnded(WinnerLocation, UpperName, LowerName);
+
+		// 우승자 확정 -> 중복 실행 방지
+		bMatchEnded = true;
+
+		// 10초 후 로비 복귀 타이머 시작
+		GetWorld()->GetTimerManager().SetTimer(ReturnToLobbyTimerHandle, this, &ABRGameMode::ReturnToLobby, 10.0f, false);
 	}
 }
 
