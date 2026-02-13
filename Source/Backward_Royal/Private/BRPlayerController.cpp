@@ -1622,26 +1622,25 @@ void ABRPlayerController::ShowRoomInfo()
 
 void ABRPlayerController::SetupRoleInput(bool bIsLower)
 {
-	ULocalPlayer* LocalPlayer = GetLocalPlayer();
-	if (!LocalPlayer) return;
+    ULocalPlayer* LocalPlayer = GetLocalPlayer();
+    if (!LocalPlayer) return;
 
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
-	{
-		Subsystem->ClearAllMappings();
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+    {
+        Subsystem->ClearAllMappings();
 
-		UInputMappingContext* TargetContext = bIsLower ? LowerBodyContext : UpperBodyContext;
-		if (TargetContext)
-		{
-			Subsystem->AddMappingContext(TargetContext, 0);
-		}
-	}
+        UInputMappingContext* TargetContext = bIsLower ? LowerBodyContext : UpperBodyContext;
+        if (TargetContext)
+        {
+            Subsystem->AddMappingContext(TargetContext, 0);
+        }
+    }
 
-	// 입력 바인딩을 강제로 다시 시키기
-	if (APawn* P = GetPawn())
-	{
-		// 클라이언트에게 입력 시스템 재시작 명령
-		ClientRestart(P);
-	}
+    if (APawn* P = GetPawn())
+    {
+        // 클라이언트에게 입력 시스템 재시작 명령 (SetupPlayerInputComponent 재호출 유도)
+        ClientRestart(P);
+    }
 }
 
 // ========== UI 관리 함수 구현 ==========
