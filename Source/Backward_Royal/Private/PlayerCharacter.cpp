@@ -418,38 +418,85 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
-	// [유지] SwitchOrb 등으로 PlayerState가 교체될 때 재적용을 막기 위한 보호막
-	if (bUpperBodyApplied && bLowerBodyApplied) return;
+	// [1] 이미 적용 완료된 파트는 절대 건드리지 않음 (SwitchOrb 방어)
+	if (bUpperBodyApplied && bLowerBodyApplied)
+	{
+		// 이미 완료되었으므로 혹시 돌아가고 있을 재시도 타이머가 있다면 해제
+		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryCustomization);
+		return;
+	}
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
+	bool bNeedRetry = false; // 하나라도 적용 안 되면 재시도 예약
 
-	// --- 1. 상체 적용 ---
-	if (!bUpperBodyApplied && UpperPS)
+	// ====================================================
+	// 1. 상체 적용 로직
+	// ====================================================
+	if (!bUpperBodyApplied)
 	{
-		// [핵심 수정] 데이터가 유효한지(bIsDataValid) 확인
-		if (UpperPS->CustomizationData.bIsDataValid)
+		if (UpperPS && UpperPS->CustomizationData.bIsDataValid)
 		{
-			// 진짜 데이터가 도착했으므로 적용하고 잠금(Lock)
+			// 유효한 데이터 도착 -> 적용 및 잠금
 			ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
 			ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
 			ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-			bUpperBodyApplied = true; // 유효한 데이터이므로 이제 잠금
-			LOG_PLAYER(Display, TEXT("Upper Body Applied & Locked (Valid Data)"));
+			bUpperBodyApplied = true; // [잠금] 이제 SwitchOrb가 와도 안 바뀜
+			UE_LOG(LogTemp, Log, TEXT("[Customization] Upper Body Applied & Locked."));
 		}
 		else
 		{
-			// 아직 데이터가 도착 안 함 (ID가 0인 상태). 
-			// 투명 버그 방지를 위해 기본값은 입혀주되, 플래그는 잠그지 않음!
+			// 데이터가 없거나 무효함 -> 기본값 유지하고 재시도 필요 표시
 			ApplyMeshFromID(EArmorSlot::Head, 0);
 			ApplyMeshFromID(EArmorSlot::Chest, 0);
 			ApplyMeshFromID(EArmorSlot::Hands, 0);
 
-			// bUpperBodyApplied = true; <--- 절대 true로 설정하지 않음. 나중에 진짜 데이터 오면 다시 진입해야 함.
-			LOG_PLAYER(Warning, TEXT("Upper Body Waiting... (Invalid Data)"));
+			bNeedRetry = true;
 		}
 	}
+
+	// ====================================================
+	// 2. 하체 적용 로직
+	// ====================================================
+	if (!bLowerBodyApplied)
+	{
+		if (LowerPS && LowerPS->CustomizationData.bIsDataValid)
+		{
+			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
+			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+
+			bLowerBodyApplied = true; // [잠금]
+			UE_LOG(LogTemp, Log, TEXT("[Customization] Lower Body Applied & Locked."));
+		}
+		else
+		{
+			ApplyMeshFromID(EArmorSlot::Legs, 0);
+			ApplyMeshFromID(EArmorSlot::Feet, 0);
+
+			bNeedRetry = true;
+		}
+	}
+
+	// ====================================================
+	// 3. 재시도 로직 (핵심)
+	// ====================================================
+	if (bNeedRetry)
+	{
+		// 아직 데이터가 안 왔으므로 0.5초 뒤에 다시 이 함수를 실행
+		if (!GetWorld()->GetTimerManager().IsTimerActive(TimerHandle_RetryCustomization))
+		{
+			GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryCustomization, this, &APlayerCharacter::TryApplyCustomization, 0.5f, true);
+			// UE_LOG(LogTemp, Warning, TEXT("[Customization] Waiting for valid data... Retrying in 0.5s"));
+		}
+	}
+	else
+	{
+		// 모두 적용 완료 -> 타이머 해제
+		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryCustomization);
+		UE_LOG(LogTemp, Log, TEXT("[Customization] All Parts Applied. Timer Cleared."));
+	}
+}
 
 	// --- 2. 하체 적용 ---
 	if (!bLowerBodyApplied && LowerPS)
