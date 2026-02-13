@@ -1179,7 +1179,18 @@ void ABRPlayerController::ServerSetPlayerRole_Implementation(bool bLowerBody)
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 역할 설정] 서버에서 설정: %s"), *RoleName);
 	}
 }
-
+/**
+void ABRPlayerController::ServerSetConnectedPlayerIndex_Implementation(int32 NewIndex)
+{
+	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
+	{
+		// 현재 역할(상/하체)은 유지하고 연결된 인덱스만 변경
+		BRPS->SetPlayerRole(BRPS->bIsLowerBody, NewIndex);
+		UE_LOG(LogTemp, Log, TEXT("[Connected Index] 서버에서 강제 설정: %d (대상: %s)"),
+			NewIndex, *BRPS->GetPlayerName());
+	}
+}
+*/
 void ABRPlayerController::RequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex)
 {
 	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
@@ -1995,6 +2006,26 @@ void ABRPlayerController::LeaveRoom()
 		SetMainScreenToEntranceMenu();
 		UE_LOG(LogTemp, Log, TEXT("[방 나가기] Standalone: 입장 메뉴로 전환"));
 	}
+}
+
+void ABRPlayerController::ReturnToMainMenu()
+{
+	UE_LOG(LogTemp, Log, TEXT("[BRPlayerController] ReturnToMainMenu 호출됨 - 인게임 메뉴 복귀 시작"));
+
+	// [확장 포인트] 이 함수는 게임 플레이 도중 플레이어가 '메인 메뉴'로 나가기를 선택했을 때 호출됩니다.
+	// 추후 인벤토리 저장, 탈주 페널티 부여, UI 효과 등의 로직을 이 위치에 추가하세요.
+
+	// 1. 블루프린트 측 전처리 이벤트 호출 (예: UI 효과, 데이터 저장 등)
+	// 블루프린트에서 OnPreReturnToMainMenu 이벤트를 구현하여 추가 작업을 수행할 수 있습니다.
+	OnPreReturnToMainMenu();
+
+	// 2. 추가 로직을 구현할 수 있는 공간 (예: 데이터 저장, 페널티 등)
+	// 예: SavePlayerData();
+	// 예: ApplyLeaverPenalty();
+
+	// 3. 실제 메인 메뉴 복귀 (LeaveRoom 호출)
+	// LeaveRoom 내부에서 클라이언트는 연결 종료, 호스트는 세션 파괴 후 메인 맵으로 이동합니다.
+	LeaveRoom();
 }
 
 void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)

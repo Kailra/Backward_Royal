@@ -62,6 +62,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void LeaveRoom(const UObject* WorldContextObject);
 
+	/** 인게임에서 메인 메뉴로 복귀. 게임 중 나가기 페널티, 인벤토리 저장 등 추가 로직을 수행할 수 있습니다. */
+	UFUNCTION(BlueprintCallable, Category = "BR Widget|Game", meta = (WorldContext = "WorldContextObject"))
+	static void ReturnToMainMenu(const UObject* WorldContextObject);
+
 	/** LAN 전용(true) / 인터넷 매칭(false). 방 만들기·방 찾기 전에 설정. */
 	UFUNCTION(BlueprintCallable, Category = "BR Widget|Session", meta = (WorldContext = "WorldContextObject"))
 	static void SetUseLANOnly(const UObject* WorldContextObject, bool bLAN);

@@ -44,6 +44,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Session")
 	void LeaveRoom();
 
+
+	// 인게임에서 메인 메뉴로 복귀합니다.
+	// 게임 중 나가기 시 필요한 추가 로직(페널티, 저장 등)을 수행하고, OnPreReturnToMainMenu 이벤트를 호출한 뒤 LeaveRoom을 실행합니다.
+	UFUNCTION(BlueprintCallable, Category = "Game")
+	void ReturnToMainMenu();
+
+	// 메인 메뉴 복귀 직전 블루프린트에서 추가 로직을 수행할 수 있는 이벤트 (예: UI 효과, 데이터 저장 등)
+	UFUNCTION(BlueprintImplementableEvent, Category = "Game")
+	void OnPreReturnToMainMenu();
+
 	// 준비 상태 토글
 	UFUNCTION(BlueprintCallable, Exec, Category = "Room")
 	void ToggleReady();
@@ -238,6 +248,10 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetPlayerRole(bool bLowerBody);
+
+	// 디버그용: ConnectedPlayerIndex 강제 설정 (클라이언트 -> 서버)
+	UFUNCTION(Server, Reliable)
+	void ServerSetConnectedPlayerIndex(int32 NewIndex);
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex);

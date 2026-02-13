@@ -248,6 +248,19 @@ void UBRWidgetFunctionLibrary::LeaveRoom(const UObject* WorldContextObject)
 	}
 }
 
+void UBRWidgetFunctionLibrary::ReturnToMainMenu(const UObject* WorldContextObject)
+{
+	if (ABRPlayerController* BRPC = GetBRPlayerController(WorldContextObject))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[WidgetFunctionLibrary] 인게임 메뉴 복귀 요청"));
+		BRPC->ReturnToMainMenu();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[WidgetFunctionLibrary] PlayerController를 찾을 수 없습니다."));
+	}
+}
+
 void UBRWidgetFunctionLibrary::SetUseLANOnly(const UObject* WorldContextObject, bool bLAN)
 {
 	if (!WorldContextObject || !GEngine) return;

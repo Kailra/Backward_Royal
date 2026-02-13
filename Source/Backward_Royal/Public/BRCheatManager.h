@@ -48,5 +48,17 @@ public:
 	/** Listen Server로 재시작 (맵?listen). 호스트는 이 명령 실행 후 방 만들기. 콘솔: OpenListenServer */
 	UFUNCTION(Exec, Category = "Session")
 	void OpenListenServer();
+
+	// [Debug] 나의 PlayerState 정보 확인 (PS, GI, GS 인덱스 등)
+	UFUNCTION(Exec, Category = "Debug")
+	void CheckMyPlayerInfo();
+
+	// [Debug] 나의 TeamNumber 변경 (서버 RPC 호출)
+	UFUNCTION(Exec, Category = "Debug")
+	void SetMyTeam(int32 TeamNumber);
+
+	// [Debug] 나의 ConnectedPlayerIndex 변경 (서버 RPC 호출)
+	UFUNCTION(Exec, Category = "Debug")
+	void SetMyConnectedIndex(int32 Index);
 };
 

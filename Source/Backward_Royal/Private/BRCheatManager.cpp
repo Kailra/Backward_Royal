@@ -6,6 +6,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "BRPlayerState.h"
+#include "BRGameState.h"
+#include "BRGameInstance.h"
 
 UBRCheatManager::UBRCheatManager()
 {
@@ -235,5 +238,92 @@ void UBRCheatManager::OpenListenServer()
 			TEXT("Listen Server로 재시작합니다. 맵 로드 후 '방 만들기'를 진행하세요."));
 	}
 	PC->ConsoleCommand(Cmd, /*bExecInEditor=*/false);
+}
+
+void UBRCheatManager::CheckMyPlayerInfo()
+{
+	UE_LOG(LogTemp, Log, TEXT("[CheatManager] CheckMyPlayerInfo 실행"));
+
+	APlayerController* PC = GetPlayerController();
+	if (!PC) return;
+
+	ABRPlayerController* BRPC = Cast<ABRPlayerController>(PC);
+	ABRPlayerState* PS = PC->GetPlayerState<ABRPlayerState>();
+	UBRGameInstance* GI = Cast<UBRGameInstance>(PC->GetGameInstance());
+	ABRGameState* GS = PC->GetWorld() ? PC->GetWorld()->GetGameState<ABRGameState>() : nullptr;
+
+	UE_LOG(LogTemp, Warning, TEXT("========== [My Player Info] =========="));
+
+	// 1. PlayerState Info
+	if (PS)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[PlayerState] Name: %s (ID: %d)"), *PS->GetPlayerName(), PS->GetPlayerId());
+		UE_LOG(LogTemp, Warning, TEXT("  - TeamNumber: %d"), PS->TeamNumber);
+		UE_LOG(LogTemp, Warning, TEXT("  - Role: %s (IsLowerBody: %s)"),
+			PS->bIsSpectatorSlot ? TEXT("Spectator") : (PS->bIsLowerBody ? TEXT("LowerBody") : TEXT("UpperBody")),
+			PS->bIsLowerBody ? TEXT("Yes") : TEXT("No"));
+		UE_LOG(LogTemp, Warning, TEXT("  - ConnectedPlayerIndex: %d"), PS->ConnectedPlayerIndex);
+		UE_LOG(LogTemp, Warning, TEXT("  - IsHost: %s, IsReady: %s"),
+			PS->bIsHost ? TEXT("Yes") : TEXT("No"),
+			PS->bIsReady ? TEXT("Yes") : TEXT("No"));
+		UE_LOG(LogTemp, Warning, TEXT("  - UserUID: %s"), *PS->UserUID);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[PlayerState] Not found!"));
+	}
+
+	// 2. GameInstance Info
+	if (GI)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameInstance] PlayerName: %s"), *GI->GetPlayerName());
+		UE_LOG(LogTemp, Warning, TEXT("  - UserUID: %s"), *GI->GetUserUID());
+		UE_LOG(LogTemp, Warning, TEXT("  - PendingRoomName: %s"), *GI->GetPendingRoomName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameInstance] Not found!"));
+	}
+
+	// 3. GameState Info (My Index)
+	if (GS && PS)
+	{
+		int32 Index = GS->PlayerArray.Find(PS);
+		UE_LOG(LogTemp, Warning, TEXT("[GameState] My Index in PlayerArray: %d"), Index);
+		UE_LOG(LogTemp, Warning, TEXT("  - Total Players: %d"), GS->PlayerArray.Num());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameState] Not found or PS is null!"));
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("======================================"));
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, TEXT("Check output log for player info details."));
+	}
+}
+
+void UBRCheatManager::SetMyTeam(int32 TeamNumber)
+{
+	UE_LOG(LogTemp, Log, TEXT("[CheatManager] SetMyTeam(%d) 실행"), TeamNumber);
+	if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(GetPlayerController()))
+	{
+		BRPC->SetMyTeamNumber(TeamNumber);
+		if (GEngine)
+			GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, FString::Printf(TEXT("Set Team Number to %d"), TeamNumber));
+	}
+}
+
+void UBRCheatManager::SetMyConnectedIndex(int32 Index)
+{
+	UE_LOG(LogTemp, Log, TEXT("[CheatManager] SetMyConnectedIndex(%d) 실행"), Index);
+	if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(GetPlayerController()))
+	{
+		//BRPC->ServerSetConnectedPlayerIndex(Index);
+		if (GEngine)
+			GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, FString::Printf(TEXT("Set Connected Index to %d"), Index));
+	}
 }
 
