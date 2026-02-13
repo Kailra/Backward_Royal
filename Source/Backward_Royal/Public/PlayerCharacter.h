@@ -144,6 +144,7 @@ protected:
 
 private:
 	FTimerHandle CustomizationUpdateTimer; // 동기화 딜레이 처리용
+	FTimerHandle TimerHandle_RetryCustomization; // 커마 재시도용 타이머
 
 	// 상체/하체 적용 완료 여부 플래그 (중복 적용 방지)
 	bool bUpperBodyApplied = false;
