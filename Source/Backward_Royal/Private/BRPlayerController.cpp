@@ -407,6 +407,11 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		}
 	}
 
+	if (IsLocalController() && aPawn->IsA<AUpperBodyPawn>())
+	{
+		ApplyUpperBodyViewAndInput();
+	}
+
 	if (OnPawnChanged.IsBound())
 	{
 		OnPawnChanged.Broadcast(aPawn);
@@ -451,6 +456,15 @@ void ABRPlayerController::ApplyUpperBodyViewAndInput()
 	SetupRoleInput(false); // 상체 IMC 등록
 	SetViewTarget(MyPawn);
 	SetIgnoreMoveInput(true);
+
+	// 로비 UI 조작으로 인한 입력 잠김 해제
+	ResetIgnoreLookInput();
+	SetIgnoreLookInput(false);
+
+	// 입력 모드를 게임 모드로 강제 전환 & 마우스 숨김
+	FInputModeGameOnly GameInputMode;
+	SetInputMode(GameInputMode);
+	bShowMouseCursor = false;
 }
 
 void ABRPlayerController::TryShutdownListenServerForRoomSearch()
@@ -1622,26 +1636,25 @@ void ABRPlayerController::ShowRoomInfo()
 
 void ABRPlayerController::SetupRoleInput(bool bIsLower)
 {
-	ULocalPlayer* LocalPlayer = GetLocalPlayer();
-	if (!LocalPlayer) return;
+    ULocalPlayer* LocalPlayer = GetLocalPlayer();
+    if (!LocalPlayer) return;
 
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
-	{
-		Subsystem->ClearAllMappings();
+    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+    {
+        Subsystem->ClearAllMappings();
 
-		UInputMappingContext* TargetContext = bIsLower ? LowerBodyContext : UpperBodyContext;
-		if (TargetContext)
-		{
-			Subsystem->AddMappingContext(TargetContext, 0);
-		}
-	}
+        UInputMappingContext* TargetContext = bIsLower ? LowerBodyContext : UpperBodyContext;
+        if (TargetContext)
+        {
+            Subsystem->AddMappingContext(TargetContext, 0);
+        }
+    }
 
-	// 입력 바인딩을 강제로 다시 시키기
-	if (APawn* P = GetPawn())
-	{
-		// 클라이언트에게 입력 시스템 재시작 명령
-		ClientRestart(P);
-	}
+    if (APawn* P = GetPawn())
+    {
+        // 클라이언트에게 입력 시스템 재시작 명령 (SetupPlayerInputComponent 재호출 유도)
+        ClientRestart(P);
+    }
 }
 
 // ========== UI 관리 함수 구현 ==========
