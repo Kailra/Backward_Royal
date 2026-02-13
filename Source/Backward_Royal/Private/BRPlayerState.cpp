@@ -206,7 +206,9 @@ void ABRPlayerState::SetSpectator(bool bSpectator)
 
 void ABRPlayerState::OnRep_PlayerRole()
 {
-	// UI 업데이트를 위한 이벤트 발생 가능
+	// [수정] 역할 정보(상체/하체, 파트너 인덱스 등)가 갱신되면 델리게이트를 방송하여
+	// 캐릭터(PlayerCharacter)가 이를 감지하고 파트너 연결을 재시도하도록 함.
+	OnPlayerRoleChanged.Broadcast(bIsLowerBody);
 }
 
 void ABRPlayerState::OnRep_PartnerPlayerState()
