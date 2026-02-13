@@ -225,7 +225,7 @@ void ABRPlayerState::OnRep_PartnerPlayerState()
 		// (필요하다면 여기서 내 캐릭터에게 알림)
 	}
 
-	// 캐릭터에게 "야, 파트너 정보 갱신됐어. 커마 다시 입혀봐" 라고 알림
+	// 캐릭터에게 커마 다시 적용하라고 알림
 	if (APawn* MyPawn = GetPawn())
 	{
 		if (APlayerCharacter* PC = Cast<APlayerCharacter>(MyPawn))
