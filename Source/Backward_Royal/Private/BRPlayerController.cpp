@@ -2065,12 +2065,22 @@ void ABRPlayerController::SubmitCustomizationToServer()
 
 	if (GI && PS)
 	{
-		// 1. 로컬에 저장된 정보 가져오기
+		// 로컬에 저장된 정보 가져오기
 		FBRCustomizationData LocalData = GI->GetLocalCustomization();
 
-		// 2. PlayerState의 Server RPC 호출 (이미 구현되어 있음)
+		// 데이터 유효성 강제 확인
+		if (!LocalData.bIsDataValid)
+		{
+			LocalData.bIsDataValid = true;
+		}
+
+		// 서버가 값을 돌려줄 때까지 기다리지 않고, 내 변수를 직접 바꾸고 적용 함수를 강제 적용
+		PS->CustomizationData = LocalData;
+		PS->OnRep_CustomizationData();
+
+		// 서버로 보내서 다른 사람들에게도 알림
 		PS->ServerSetCustomizationData(LocalData);
 
-		UE_LOG(LogTemp, Log, TEXT("커스터마이징 정보를 서버로 전송했습니다. HeadID: %d"), LocalData.HeadID);
+		UE_LOG(LogTemp, Log, TEXT("커스터마이징 로컬 적용 및 서버 전송 완료. HeadID: %d"), LocalData.HeadID);
 	}
 }
