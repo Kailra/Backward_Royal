@@ -498,28 +498,6 @@ void APlayerCharacter::TryApplyCustomization()
 	}
 }
 
-	// --- 2. 하체 적용 ---
-	if (!bLowerBodyApplied && LowerPS)
-	{
-		if (LowerPS->CustomizationData.bIsDataValid)
-		{
-			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
-
-			bLowerBodyApplied = true; // 유효한 데이터이므로 이제 잠금
-			LOG_PLAYER(Display, TEXT("Lower Body Applied & Locked (Valid Data)"));
-		}
-		else
-		{
-			// 데이터 대기 중: 기본값만 적용하고 잠금 해제 상태 유지
-			ApplyMeshFromID(EArmorSlot::Legs, 0);
-			ApplyMeshFromID(EArmorSlot::Feet, 0);
-
-			LOG_PLAYER(Warning, TEXT("Lower Body Waiting... (Invalid Data)"));
-		}
-	}
-}
-
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
