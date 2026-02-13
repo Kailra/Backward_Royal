@@ -1179,7 +1179,6 @@ void ABRPlayerController::ServerSetPlayerRole_Implementation(bool bLowerBody)
 		UE_LOG(LogTemp, Log, TEXT("[플레이어 역할 설정] 서버에서 설정: %s"), *RoleName);
 	}
 }
-/**
 void ABRPlayerController::ServerSetConnectedPlayerIndex_Implementation(int32 NewIndex)
 {
 	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
@@ -1190,7 +1189,6 @@ void ABRPlayerController::ServerSetConnectedPlayerIndex_Implementation(int32 New
 			NewIndex, *BRPS->GetPlayerName());
 	}
 }
-*/
 void ABRPlayerController::RequestAssignToLobbyTeam(int32 TeamIndex, int32 SlotIndex)
 {
 	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;

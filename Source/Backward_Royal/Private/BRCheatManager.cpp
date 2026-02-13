@@ -321,7 +321,7 @@ void UBRCheatManager::SetMyConnectedIndex(int32 Index)
 	UE_LOG(LogTemp, Log, TEXT("[CheatManager] SetMyConnectedIndex(%d) 실행"), Index);
 	if (ABRPlayerController* BRPC = Cast<ABRPlayerController>(GetPlayerController()))
 	{
-		//BRPC->ServerSetConnectedPlayerIndex(Index);
+		BRPC->ServerSetConnectedPlayerIndex(Index);
 		if (GEngine)
 			GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, FString::Printf(TEXT("Set Connected Index to %d"), Index));
 	}
