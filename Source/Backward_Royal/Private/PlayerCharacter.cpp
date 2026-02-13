@@ -492,41 +492,52 @@ void APlayerCharacter::TryApplyCustomization()
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
-	if (bBoundToPartner) return;
-
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS)
 	{
+		// PlayerState가 없으면 잠시 후 재시도
 		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
 			BindToPartnerPlayerState(bIsLowerBody);
 			}, 0.5f, false);
 		return;
 	}
 
-	// 1순위: 포인터 확인
+	// --- 파트너 연결 로직 ---
 	ABRPlayerState* PartnerPS = MyPS->PartnerPlayerState;
 
-	// 포인터가 아직 안 왔는데, 연결된 인덱스는 있다? -> 로딩 중이니 재시도
+	// 1. 파트너가 있어야 하는데(Index != -1) 아직 포인터가 없는 경우 -> 로딩 대기
 	if (!PartnerPS && MyPS->ConnectedPlayerIndex != -1)
 	{
+		// 아직 파트너 정보가 안 넘어왔으므로 재시도 예약
 		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
 			BindToPartnerPlayerState(bIsLowerBody);
 			}, 0.5f, false);
-		return;
+	}
+	// 2. 파트너가 있는 경우 -> 이벤트 구독
+	else if (PartnerPS)
+	{
+		// 중복 구독 방지 체크
+		if (!bBoundToPartner)
+		{
+			PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+			PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+			bBoundToPartner = true;
+			LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
+
+			// 성공했으므로 재시도 타이머 해제
+			GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+		}
+	}
+	// 3. 파트너가 아예 없는 경우 (ConnectedIndex == -1)
+	else
+	{
+		// 구독할 대상이 없으므로 타이머 해제
+		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
 	}
 
-	// 파트너가 아예 없는 경우
-	if (!PartnerPS) return;
-
-	// --- 성공 ---
-	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
-
-	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-	PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
-
-	bBoundToPartner = true;
-	LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
-
+	// [핵심] 파트너 연결 여부와 상관없이, 역할 정보가 갱신되었거나 함수가 호출되었으면
+	// 커스터마이징 적용을 시도해야 함. (내가 상체라면 내 데이터를 가져와서 입힘)
 	TryApplyCustomization();
 }
 
