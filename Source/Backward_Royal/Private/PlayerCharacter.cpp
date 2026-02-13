@@ -393,16 +393,6 @@ ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
 	{
 		return MyPS->PartnerPlayerState;
 	}
-
-	// 3. 포인터가 아직 null이면 -> 차선책으로 인덱스 사용 (불확실할 수 있음)
-	if (MyPS->ConnectedPlayerIndex != -1)
-	{
-		AGameStateBase* GS = UGameplayStatics::GetGameState(this);
-		if (GS && GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
-		{
-			return Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
-		}
-	}
 	return nullptr;
 }
 
@@ -421,15 +411,6 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 		return MyPS->PartnerPlayerState;
 	}
 
-	// 3. 차선책: 인덱스
-	if (MyPS->ConnectedPlayerIndex != -1)
-	{
-		AGameStateBase* GS = UGameplayStatics::GetGameState(this);
-		if (GS && GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
-		{
-			return Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
-		}
-	}
 	return nullptr;
 }
 

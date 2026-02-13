@@ -17,6 +17,7 @@ ABRPlayerState::ABRPlayerState()
 	bIsSpectatorSlot = false;
 	bIsLowerBody = true; // 기본값은 하체
 	ConnectedPlayerIndex = -1; // 기본값은 연결 없음
+	PartnerPlayerState = nullptr;
 	UserUID = TEXT("");
 }
 
@@ -146,6 +147,7 @@ void ABRPlayerState::SetPlayerRole(bool bLowerBody, int32 ConnectedIndex)
 		bIsLowerBody = bLowerBody;
 		ConnectedPlayerIndex = ConnectedIndex;
 		PartnerPlayerState = nullptr;	
+
 		if (ConnectedIndex >= 0 && GetWorld())
 		{
 			if (ABRGameState* GS = GetWorld()->GetGameState<ABRGameState>())
@@ -163,8 +165,6 @@ void ABRPlayerState::SetPlayerRole(bool bLowerBody, int32 ConnectedIndex)
 
 						// 파트너 -> 나 (이 부분이 빠지면 한쪽만 연결됨)
 						TargetPartner->PartnerPlayerState = this;
-						TargetPartner->ConnectedPlayerIndex = -1; // 필요 시 인덱스 동기화 로직에 맞춰 설정 (보통 GameState에서 관리)
-
 						// 변경사항 즉시 전파
 						TargetPartner->OnRep_PartnerPlayerState();
 					}
