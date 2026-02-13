@@ -64,6 +64,9 @@ public:
 	/** PIE 종료 시 GameInstance::Shutdown에서 호출. SessionInterface 델리게이트 및 PendingRoom 타이머를 먼저 해제해 월드 참조 사슬을 끊음 */
 	void UnbindSessionDelegatesForPIEExit();
 
+	/** 방 찾기 리스트에 표시되는 현재 인원 갱신 (호스트 세션만). 플레이어 입장/퇴장 시 GameMode에서 호출 */
+	void UpdateSessionPlayerCount(int32 PlayerCount);
+
 	// 방 생성 완료 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnBRCreateSessionComplete OnCreateSessionComplete;

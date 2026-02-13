@@ -768,6 +768,20 @@ bool ABRGameSession::HasActiveSession() const
 	return false;
 }
 
+void ABRGameSession::UpdateSessionPlayerCount(int32 PlayerCount)
+{
+	if (!SessionInterface.IsValid() || !SessionSettings.IsValid())
+	{
+		return;
+	}
+	if (SessionInterface->GetNamedSession(NAME_GameSession) == nullptr)
+	{
+		return;
+	}
+	SessionSettings->Set(FName(TEXT("CURRENT_PLAYER_COUNT")), PlayerCount, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	SessionInterface->UpdateSession(NAME_GameSession, *SessionSettings, true);
+}
+
 void ABRGameSession::DestroySessionAndReturnToMainMenu()
 {
 	if (!SessionInterface.IsValid())
