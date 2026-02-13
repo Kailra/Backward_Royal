@@ -422,56 +422,65 @@ void APlayerCharacter::TryApplyCustomization()
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS) return;
 
-	// [안전장치 1] 파트너 정보가 필요한데 아직 도착하지 않았다면 보류
-	// (인덱스로 섣불리 판단하여 엉뚱한 사람 옷을 입는 Race Condition 방지)
-	if (MyPS->ConnectedPlayerIndex != -1 && MyPS->PartnerPlayerState == nullptr)
+	// [수정 1] Lock 가능 여부 판단
+	// Index가 -1이면 아직 팀 정보가 안 왔거나 솔로일 수 있음 -> 일단 적용하되, 확정(Lock)은 짓지 않음
+	bool bCanLock = (MyPS->ConnectedPlayerIndex != -1);
+
+	// [기존 가드 유지] 팀은 배정됐는데 파트너가 아직 안 왔으면 대기
+	if (bCanLock && MyPS->PartnerPlayerState == nullptr)
 	{
-		// 나중에 OnRep_PartnerPlayerState -> BindToPartnerPlayerState 흐름을 통해 다시 호출됨
 		return;
 	}
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
-	// --- [상체] 적용 로직 ---
-	// 1. 아직 적용 안 됨 (!bUpperBodyApplied)
-	// 2. PlayerState 존재함 (UpperPS)
-	// 3. [핵심] 데이터가 유효함 (bIsDataValid == true) -> 초기값 0인 상태 무시
-	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.bIsDataValid)
+	// --- 상체 적용 ---
+	if (UpperPS && UpperPS->CustomizationData.bIsDataValid)
 	{
-		// [안전장치 2] 역할 교차 검증 (정말 상체 역할인가?)
-		if (!UpperPS->bIsLowerBody)
+		// [핵심] 이미 적용됐더라도 Lock이 안 걸려있다면(!bCanLock) 다시 적용 허용 (덮어쓰기)
+		if (!bUpperBodyApplied || !bCanLock)
 		{
-			ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
-			ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
-			ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+			// 역할 교차 검증 (UpperPS가 진짜 상체 역할인지?)
+			if (!UpperPS->bIsLowerBody)
+			{
+				ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
+				ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
+				ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-			// [Lock] 적용 완료 플래그 설정
-			bUpperBodyApplied = true;
-
-			// [최적화] 더 이상 변경 감지 필요 없음 -> 델리게이트 해제
-			UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-
-			LOG_PLAYER(Display, TEXT("Upper Body Locked with VALID Data (Owner: %s)"), *UpperPS->GetPlayerName());
+				// [수정 2] 확실한 상황일 때만 잠금
+				if (bCanLock)
+				{
+					bUpperBodyApplied = true;
+					UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+					LOG_PLAYER(Display, TEXT("Upper Body LOCKED (Valid Team Found)"));
+				}
+				else
+				{
+					// 아직 확정이 아니므로 델리게이트 유지 + 로그
+					// LOG_PLAYER(Warning, TEXT("Upper Body Applied but NOT LOCKED (Waiting for Index)"));
+				}
+			}
 		}
 	}
 
-	// --- [하체] 적용 로직 ---
-	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.bIsDataValid)
+	// --- 하체 적용 ---
+	if (LowerPS && LowerPS->CustomizationData.bIsDataValid)
 	{
-		// [안전장치 2] 역할 교차 검증 (정말 하체 역할인가?)
-		if (LowerPS->bIsLowerBody)
+		if (!bLowerBodyApplied || !bCanLock)
 		{
-			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+			if (LowerPS->bIsLowerBody)
+			{
+				ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
+				ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-			// [Lock] 적용 완료
-			bLowerBodyApplied = true;
-
-			// [최적화] 델리게이트 해제
-			LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-
-			LOG_PLAYER(Display, TEXT("Lower Body Locked with VALID Data (Owner: %s)"), *LowerPS->GetPlayerName());
+				if (bCanLock)
+				{
+					bLowerBodyApplied = true;
+					LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+					LOG_PLAYER(Display, TEXT("Lower Body LOCKED (Valid Team Found)"));
+				}
+			}
 		}
 	}
 }
