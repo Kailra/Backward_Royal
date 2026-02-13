@@ -370,7 +370,21 @@ void ABRPlayerController::BeginPlay()
 
 	if (IsLocalController())
 	{
-		SubmitCustomizationToServer();
+		// PlayerState가 아직 없을 수 있으므로 타이머로 체크 후 전송
+		FTimerHandle SubmitTimer;
+		GetWorld()->GetTimerManager().SetTimer(SubmitTimer, [this]()
+			{
+				if (GetPlayerState<ABRPlayerState>())
+				{
+					SubmitCustomizationToServer();
+				}
+				else
+				{
+					// 만약 아직도 없다면 0.5초 뒤 재시도 (재귀 호출 대신 간단히 딜레이 처리 예시)
+					FTimerHandle RetryHandle;
+					GetWorld()->GetTimerManager().SetTimer(RetryHandle, this, &ABRPlayerController::SubmitCustomizationToServer, 0.5f, false);
+				}
+			}, 0.2f, false);
 	}
 }
 

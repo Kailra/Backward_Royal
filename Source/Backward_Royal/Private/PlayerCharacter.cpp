@@ -435,31 +435,31 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
-	// 이미 둘 다 적용 끝났으면 더 이상 연산하지 않음 (최적화)
 	if (bUpperBodyApplied && bLowerBodyApplied) return;
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
 	// --- 1. 상체 적용 ---
-	// 아직 적용 안 됐고(false), 데이터가 존재하면(HeadID != 0) 적용
-	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.HeadID != 0)
+	// [수정] HeadID != 0 조건 제거. 데이터가 0이어도 "기본 장비"를 적용해야 하므로 함수 호출 필수
+	if (!bUpperBodyApplied && UpperPS)
 	{
 		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
 		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
 		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-		bUpperBodyApplied = true; // 완료 마킹 (이후에는 다시 적용 안 함)
+		bUpperBodyApplied = true;
 		LOG_PLAYER(Display, TEXT("Upper Body Customization Applied"));
 	}
 
 	// --- 2. 하체 적용 ---
-	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.LegID != 0)
+	// [수정] LegID != 0 조건 제거
+	if (!bLowerBodyApplied && LowerPS)
 	{
 		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
 		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-		bLowerBodyApplied = true; // 완료 마킹
+		bLowerBodyApplied = true;
 		LOG_PLAYER(Display, TEXT("Lower Body Customization Applied"));
 	}
 }
