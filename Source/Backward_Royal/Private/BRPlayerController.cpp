@@ -2060,27 +2060,32 @@ void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)
 
 void ABRPlayerController::SubmitCustomizationToServer()
 {
-	UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+	// 1. PlayerState 확인
 	ABRPlayerState* PS = GetPlayerState<ABRPlayerState>();
-
-	if (GI && PS)
+	if (!PS)
 	{
-		// 로컬에 저장된 정보 가져오기
-		FBRCustomizationData LocalData = GI->GetLocalCustomization();
+		// PS가 아직 없으면 0.5초 뒤 재시도 (매우 중요: 접속 초기엔 PS가 null일 수 있음)
+		GetWorldTimerManager().SetTimer(TimerHandle_RetrySubmitCustomization, this, &ABRPlayerController::SubmitCustomizationToServer, 0.5f, false);
+		return;
+	}
 
-		// 데이터 유효성 강제 확인
-		if (!LocalData.bIsDataValid)
+	// 2. GameInstance에서 내 저장 데이터 가져오기
+	UBRGameInstance* GI = GetGameInstance<UBRGameInstance>();
+	if (GI)
+	{
+		// [핵심] 로컬 데이터를 꺼내서
+		FBRCustomizationData MyData = GI->GetLocalCustomization();
+
+		// [안전장치] 만약 유효하지 않다면(초기 실행 등), 기본값이라도 유효하게 만들어서 보냄
+		if (!MyData.bIsDataValid)
 		{
-			LocalData.bIsDataValid = true;
+			MyData.bIsDataValid = true;
+			// 필요하다면 기본 ID 설정 (예: 1번 옷)
 		}
 
-		// 서버가 값을 돌려줄 때까지 기다리지 않고, 내 변수를 직접 바꾸고 적용 함수를 강제 적용
-		PS->CustomizationData = LocalData;
-		PS->OnRep_CustomizationData();
+		// 3. 서버로 전송 (Server RPC)
+		PS->ServerSetCustomizationData(MyData);
 
-		// 서버로 보내서 다른 사람들에게도 알림
-		PS->ServerSetCustomizationData(LocalData);
-
-		UE_LOG(LogTemp, Log, TEXT("커스터마이징 로컬 적용 및 서버 전송 완료. HeadID: %d"), LocalData.HeadID);
+		UE_LOG(LogTemp, Log, TEXT("[BRPlayerController] Sent Customization Data to Server"));
 	}
 }

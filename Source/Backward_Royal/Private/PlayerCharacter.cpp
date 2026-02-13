@@ -349,6 +349,7 @@ void APlayerCharacter::Restart()
 void APlayerCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
+
 	if (IsLocallyControlled())
 	{
 		if (ABRPlayerController* PC = Cast<ABRPlayerController>(GetController()))
@@ -360,25 +361,25 @@ void APlayerCharacter::OnRep_PlayerState()
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (MyPS)
 	{
-		// 1-1. 내 커마 정보가 오면 알려줘
-		MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		// [수정] 이미 상/하체 모두 적용(Lock)이 끝났다면 델리게이트 재연결 불필요
+		if (!bUpperBodyApplied || !bLowerBodyApplied)
+		{
+			MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+			MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		}
 
-		// 1-2. 내 역할(상/하체)이나 파트너가 정해지면 알려줘
-		// (기존 코드에 OnPlayerRoleChanged 델리게이트가 이미 있다고 가정)
+		// 파트너 바인딩은 로직 유지를 위해 연결
 		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
-		// 혹시 이미 데이터가 와 있을 수도 있으니 한번 체크
+		// 적용 시도
 		TryApplyCustomization();
 
-		// 혹시 이미 파트너가 정해져 있을 수도 있으니 체크
+		// 파트너가 이미 지정되어 있다면 바인딩 시도
 		if (MyPS->ConnectedPlayerIndex != -1)
 		{
 			BindToPartnerPlayerState(MyPS->bIsLowerBody);
 		}
 	}
-
-	UpdateHPUI();
 }
 
 // 상체 플레이어 찾기 (포인터 우선)
@@ -418,134 +419,107 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
-	// [1] 이미 적용 완료된 파트는 절대 건드리지 않음 (SwitchOrb 방어)
-	if (bUpperBodyApplied && bLowerBodyApplied)
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (!MyPS) return;
+
+	// [안전장치 1] 파트너 정보가 필요한데 아직 도착하지 않았다면 보류
+	// (인덱스로 섣불리 판단하여 엉뚱한 사람 옷을 입는 Race Condition 방지)
+	if (MyPS->ConnectedPlayerIndex != -1 && MyPS->PartnerPlayerState == nullptr)
 	{
-		// 이미 완료되었으므로 혹시 돌아가고 있을 재시도 타이머가 있다면 해제
-		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryCustomization);
+		// 나중에 OnRep_PartnerPlayerState -> BindToPartnerPlayerState 흐름을 통해 다시 호출됨
 		return;
 	}
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
-	bool bNeedRetry = false; // 하나라도 적용 안 되면 재시도 예약
 
-	// ====================================================
-	// 1. 상체 적용 로직
-	// ====================================================
-	if (!bUpperBodyApplied)
+	// --- [상체] 적용 로직 ---
+	// 1. 아직 적용 안 됨 (!bUpperBodyApplied)
+	// 2. PlayerState 존재함 (UpperPS)
+	// 3. [핵심] 데이터가 유효함 (bIsDataValid == true) -> 초기값 0인 상태 무시
+	if (!bUpperBodyApplied && UpperPS && UpperPS->CustomizationData.bIsDataValid)
 	{
-		if (UpperPS && UpperPS->CustomizationData.bIsDataValid)
+		// [안전장치 2] 역할 교차 검증 (정말 상체 역할인가?)
+		if (!UpperPS->bIsLowerBody)
 		{
-			// 유효한 데이터 도착 -> 적용 및 잠금
 			ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
 			ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
 			ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-			bUpperBodyApplied = true; // [잠금] 이제 SwitchOrb가 와도 안 바뀜
-			UE_LOG(LogTemp, Log, TEXT("[Customization] Upper Body Applied & Locked."));
-		}
-		else
-		{
-			// 데이터가 없거나 무효함 -> 기본값 유지하고 재시도 필요 표시
-			ApplyMeshFromID(EArmorSlot::Head, 0);
-			ApplyMeshFromID(EArmorSlot::Chest, 0);
-			ApplyMeshFromID(EArmorSlot::Hands, 0);
+			// [Lock] 적용 완료 플래그 설정
+			bUpperBodyApplied = true;
 
-			bNeedRetry = true;
+			// [최적화] 더 이상 변경 감지 필요 없음 -> 델리게이트 해제
+			UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+			LOG_PLAYER(Display, TEXT("Upper Body Locked with VALID Data (Owner: %s)"), *UpperPS->GetPlayerName());
 		}
 	}
 
-	// ====================================================
-	// 2. 하체 적용 로직
-	// ====================================================
-	if (!bLowerBodyApplied)
+	// --- [하체] 적용 로직 ---
+	if (!bLowerBodyApplied && LowerPS && LowerPS->CustomizationData.bIsDataValid)
 	{
-		if (LowerPS && LowerPS->CustomizationData.bIsDataValid)
+		// [안전장치 2] 역할 교차 검증 (정말 하체 역할인가?)
+		if (LowerPS->bIsLowerBody)
 		{
 			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
 			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-			bLowerBodyApplied = true; // [잠금]
-			UE_LOG(LogTemp, Log, TEXT("[Customization] Lower Body Applied & Locked."));
-		}
-		else
-		{
-			ApplyMeshFromID(EArmorSlot::Legs, 0);
-			ApplyMeshFromID(EArmorSlot::Feet, 0);
+			// [Lock] 적용 완료
+			bLowerBodyApplied = true;
 
-			bNeedRetry = true;
-		}
-	}
+			// [최적화] 델리게이트 해제
+			LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-	// ====================================================
-	// 3. 재시도 로직 (핵심)
-	// ====================================================
-	if (bNeedRetry)
-	{
-		// 아직 데이터가 안 왔으므로 0.5초 뒤에 다시 이 함수를 실행
-		if (!GetWorld()->GetTimerManager().IsTimerActive(TimerHandle_RetryCustomization))
-		{
-			GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryCustomization, this, &APlayerCharacter::TryApplyCustomization, 0.5f, true);
-			// UE_LOG(LogTemp, Warning, TEXT("[Customization] Waiting for valid data... Retrying in 0.5s"));
+			LOG_PLAYER(Display, TEXT("Lower Body Locked with VALID Data (Owner: %s)"), *LowerPS->GetPlayerName());
 		}
-	}
-	else
-	{
-		// 모두 적용 완료 -> 타이머 해제
-		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryCustomization);
-		UE_LOG(LogTemp, Log, TEXT("[Customization] All Parts Applied. Timer Cleared."));
 	}
 }
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
+	if (bBoundToPartner) return;
+
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS)
 	{
-		// PlayerState가 없으면 잠시 후 재시도
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
+		// [수정] 람다 대신 CreateUObject를 사용하여 this 포인터 안전성 확보
+		if (UWorld* World = GetWorld())
+		{
+			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
+			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
+		}
 		return;
 	}
 
-	// --- 파트너 연결 로직 ---
+	// 1순위: 포인터 확인 (가장 정확함)
 	ABRPlayerState* PartnerPS = MyPS->PartnerPlayerState;
 
-	// 1. 파트너가 있어야 하는데(Index != -1) 아직 포인터가 없는 경우 -> 로딩 대기
+	// 포인터가 아직 안 왔는데, 연결된 인덱스는 있다? -> 로딩 중이니 재시도
 	if (!PartnerPS && MyPS->ConnectedPlayerIndex != -1)
 	{
-		// 아직 파트너 정보가 안 넘어왔으므로 재시도 예약
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, [this, bIsLowerBody]() {
-			BindToPartnerPlayerState(bIsLowerBody);
-			}, 0.5f, false);
-	}
-	// 2. 파트너가 있는 경우 -> 이벤트 구독
-	else if (PartnerPS)
-	{
-		// 중복 구독 방지 체크
-		if (!bBoundToPartner)
+		if (UWorld* World = GetWorld())
 		{
-			PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-			PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
-
-			bBoundToPartner = true;
-			LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
-
-			// 성공했으므로 재시도 타이머 해제
-			GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+			// [수정] 안전한 델리게이트 사용
+			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
+			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
 		}
-	}
-	// 3. 파트너가 아예 없는 경우 (ConnectedIndex == -1)
-	else
-	{
-		// 구독할 대상이 없으므로 타이머 해제
-		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+		return;
 	}
 
-	// [핵심] 파트너 연결 여부와 상관없이, 역할 정보가 갱신되었거나 함수가 호출되었으면
-	// 커스터마이징 적용을 시도해야 함. (내가 상체라면 내 데이터를 가져와서 입힘)
+	// 파트너가 아예 없는 경우 (솔로 등)
+	if (!PartnerPS) return;
+
+	// --- 성공 ---
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+
+	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+	PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+	bBoundToPartner = true;
+	LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
+
+	// 파트너 찾았으니 커마 적용 재시도
 	TryApplyCustomization();
 }
 
@@ -654,4 +628,16 @@ void APlayerCharacter::UpdatePreviewMesh(const FBRCustomizationData& NewData)
 
 	// 로그 확인용
 	// LOG_PLAYER(Display, TEXT("Preview Updated: HeadID %d"), NewData.HeadID);
+}
+
+void APlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	// [핵심] 캐릭터가 파괴될 때 돌고 있던 타이머를 모두 해제하여 
+	// 댕글링 포인터 크래시(Access Violation) 방지
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+	}
 }
