@@ -435,32 +435,58 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
+	// [유지] SwitchOrb 등으로 PlayerState가 교체될 때 재적용을 막기 위한 보호막
 	if (bUpperBodyApplied && bLowerBodyApplied) return;
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
 	// --- 1. 상체 적용 ---
-	// [수정] HeadID != 0 조건 제거. 데이터가 0이어도 "기본 장비"를 적용해야 하므로 함수 호출 필수
 	if (!bUpperBodyApplied && UpperPS)
 	{
-		ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
-		ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
-		ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+		// [핵심 수정] 데이터가 유효한지(bIsDataValid) 확인
+		if (UpperPS->CustomizationData.bIsDataValid)
+		{
+			// 진짜 데이터가 도착했으므로 적용하고 잠금(Lock)
+			ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
+			ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
+			ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
 
-		bUpperBodyApplied = true;
-		LOG_PLAYER(Display, TEXT("Upper Body Customization Applied"));
+			bUpperBodyApplied = true; // 유효한 데이터이므로 이제 잠금
+			LOG_PLAYER(Display, TEXT("Upper Body Applied & Locked (Valid Data)"));
+		}
+		else
+		{
+			// 아직 데이터가 도착 안 함 (ID가 0인 상태). 
+			// 투명 버그 방지를 위해 기본값은 입혀주되, 플래그는 잠그지 않음!
+			ApplyMeshFromID(EArmorSlot::Head, 0);
+			ApplyMeshFromID(EArmorSlot::Chest, 0);
+			ApplyMeshFromID(EArmorSlot::Hands, 0);
+
+			// bUpperBodyApplied = true; <--- 절대 true로 설정하지 않음. 나중에 진짜 데이터 오면 다시 진입해야 함.
+			LOG_PLAYER(Warning, TEXT("Upper Body Waiting... (Invalid Data)"));
+		}
 	}
 
 	// --- 2. 하체 적용 ---
-	// [수정] LegID != 0 조건 제거
 	if (!bLowerBodyApplied && LowerPS)
 	{
-		ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-		ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+		if (LowerPS->CustomizationData.bIsDataValid)
+		{
+			ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
+			ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
 
-		bLowerBodyApplied = true;
-		LOG_PLAYER(Display, TEXT("Lower Body Customization Applied"));
+			bLowerBodyApplied = true; // 유효한 데이터이므로 이제 잠금
+			LOG_PLAYER(Display, TEXT("Lower Body Applied & Locked (Valid Data)"));
+		}
+		else
+		{
+			// 데이터 대기 중: 기본값만 적용하고 잠금 해제 상태 유지
+			ApplyMeshFromID(EArmorSlot::Legs, 0);
+			ApplyMeshFromID(EArmorSlot::Feet, 0);
+
+			LOG_PLAYER(Warning, TEXT("Lower Body Waiting... (Invalid Data)"));
+		}
 	}
 }
 
