@@ -1311,7 +1311,34 @@ void ABRGameMode::CheckAndEndGameIfWinner()
 	{
 		const int32 WinnerTeam = AliveTeamNumbers.Array()[0];
 		GS->EndGameWithWinner(WinnerTeam);
-		// 승리 확인만 함. 로비 이동은 우승 UI에서 '다음' 버튼 시 TravelToLobby() 호출로 처리 예정.
+
+		FString UpperName = TEXT("Unknown");
+		FString LowerName = TEXT("Unknown");
+		FVector WinnerLocation = FVector::ZeroVector;
+
+		for (APlayerState* PS : GS->PlayerArray)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+			{
+				if (BRPS->TeamNumber == WinnerTeam)
+				{
+					if (BRPS->bIsLowerBody)
+					{
+						LowerName = BRPS->GetPlayerName();
+						if (APawn* Pawn = BRPS->GetPawn())
+						{
+							WinnerLocation = Pawn->GetActorLocation();
+						}
+					}
+					else
+					{
+						UpperName = BRPS->GetPlayerName();
+					}
+				}
+			}
+		}
+
+		GS->MulticastMatchEnded(WinnerLocation, UpperName, LowerName);
 	}
 }
 
