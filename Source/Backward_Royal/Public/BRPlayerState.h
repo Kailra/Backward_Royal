@@ -114,6 +114,9 @@ public:
 	UFUNCTION()
 	void OnRep_PlayerRole();
 
+	UFUNCTION()
+	void OnRep_PartnerPlayerState();
+
 	/** [서버 전용] 유저 인포 관련 값이 바뀌었을 때 GameState의 PlayerListForDisplay 갱신 요청 */
 	void NotifyUserInfoChanged();
 
@@ -160,5 +163,7 @@ public:
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
+
+	virtual void CopyProperties(APlayerState* PlayerState) override;
 };
 
