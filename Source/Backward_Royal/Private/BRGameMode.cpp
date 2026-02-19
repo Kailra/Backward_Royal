@@ -1283,6 +1283,7 @@ void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> Vict
 
 void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, int32 PartnerPlayerIndex)
 {
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망 후 2초 타이머 — 관전 전환 시작 (VictimIdx=%d, PartnerIdx=%d). 이 시점부터 PlayerIndex 0 반영됨."), VictimPlayerIndex, PartnerPlayerIndex);
 	ABRGameState* GS = GetGameState<ABRGameState>();
 	if (!GS)
 	{
@@ -1336,6 +1337,7 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 		}
 		// Game state 역할 PlayerIndex를 0(관전)으로 반영 (bIsSpectatorSlot=true, UpdatePlayerList 갱신)
 		BRPS->SetSpectator(true);
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] PlayerIndex 0(관전) 반영 시점: %s — SetSpectator(true) 직후"), *BRPS->GetPlayerName());
 		PC->StartSpectatingMode();
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 완료: %s (Index %d)"), *BRPS->GetPlayerName(), PlayerIndex);
 		return true;
