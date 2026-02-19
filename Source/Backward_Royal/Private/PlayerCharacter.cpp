@@ -434,6 +434,15 @@ void APlayerCharacter::TryApplyCustomization()
 		return;
 	}
 
+	if (bCanLock && MyPS->PartnerPlayerState)
+	{
+		if (MyPS->bIsLowerBody == MyPS->PartnerPlayerState->bIsLowerBody)
+		{
+			// LOG_PLAYER(Warning, TEXT("역할 동기화 중 (둘 다 상체이거나 둘 다 하체임) -> 커마 적용 보류"));
+			return;
+		}
+	}
+
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
