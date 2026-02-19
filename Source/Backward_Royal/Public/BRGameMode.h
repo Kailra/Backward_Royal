@@ -103,6 +103,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings", meta = (ClampMin = "0.0", ClampMax = "10.0"))
 	float DelayBeforeReturnToLobby = 2.0f;
 
+	// 체력이 0이 되었을 때 사망 대신 스턴 상태를 사용할지 여부 (BP_RaceGameMode에서 True로 설정)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Game Settings|Rules")
+	bool bUseStunInsteadOfDeath = false;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
