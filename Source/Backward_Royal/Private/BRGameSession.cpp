@@ -646,6 +646,28 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 	if (bWasSuccessful && SessionSearch.IsValid())
 	{
 		Results = SessionSearch->SearchResults;
+
+		// 자신이 호스팅 중인 세션은 검색 결과에서 제외 (시작한 방에 다시 들어가려다 튕기는 현상 방지)
+		const FNamedOnlineSession* LocalSession = SessionInterface->GetNamedSession(NAME_GameSession);
+		if (LocalSession)
+		{
+			FString LocalSessionId = LocalSession->Session.GetSessionIdStr();
+			int32 Removed = 0;
+			for (int32 i = SessionSearch->SearchResults.Num() - 1; i >= 0; --i)
+			{
+				if (SessionSearch->SearchResults[i].Session.GetSessionIdStr() == LocalSessionId)
+				{
+					SessionSearch->SearchResults.RemoveAt(i);
+					Removed++;
+				}
+			}
+			if (Removed > 0)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[방 찾기] 자신이 호스팅 중인 세션 %d개를 검색 결과에서 제외"), Removed);
+			}
+			Results = SessionSearch->SearchResults;
+		}
+
 		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 완료: %d개 세션 발견"), Results.Num());
 		
 		// 0건일 때 Steam/Null 모두 최대 2회 자동 재검색 (한번 호스트였던 경우 OSS 지연 대응)
