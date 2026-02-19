@@ -39,6 +39,18 @@ void ABRGameSession::BeginPlay()
 	{
 		return;
 	}
+
+	// 로비 맵(Main_Scene)에서 시작한 경우 "시작한 방 제외" 플래그 해제. Stage 맵을 바로 연 경우 클라이언트가 방 목록에서 서버 방을 볼 수 있도록.
+	FString LevelName = UGameplayStatics::GetCurrentLevelName(World, true);
+	if (LevelName.IsEmpty())
+	{
+		LevelName = World->GetMapName();
+		LevelName.RemoveFromStart(World->StreamingLevelsPrefix);
+	}
+	if (LevelName.Contains(TEXT("Main_Scene")))
+	{
+		BRGI->SetExcludeOwnSessionFromSearch(false);
+	}
 	
 	FString RoomName = BRGI->GetPendingRoomName();
 	if (RoomName.IsEmpty() || HasActiveSession())
@@ -649,26 +661,32 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 	{
 		Results = SessionSearch->SearchResults;
 
-		// 자신이 호스팅 중인 세션은 검색 결과에서 제외 (시작한 방에 다시 들어가려다 튕기는 현상 방지)
-		const FNamedOnlineSession* LocalSession = SessionInterface->GetNamedSession(NAME_GameSession);
-		if (LocalSession)
+		// 시작한 방 제외: 호스트이고, WBP_Start로 게임맵에 들어간 뒤일 때만 적용 (로비에 있을 때는 PIE 클라이언트가 방 목록에 보이도록)
+		UWorld* World = GetWorld();
+		const bool bAmHost = World && (World->GetNetMode() == NM_ListenServer || World->GetNetMode() == NM_DedicatedServer);
+		UBRGameInstance* BRGI = World ? Cast<UBRGameInstance>(World->GetGameInstance()) : nullptr;
+		const bool bExcludeOwn = bAmHost && BRGI && BRGI->GetExcludeOwnSessionFromSearch();
+		if (bExcludeOwn)
 		{
-			// FNamedOnlineSession은 FOnlineSession을 상속하므로 GetSessionIdStr() 직접 호출
-			FString LocalSessionId = LocalSession->GetSessionIdStr();
-			int32 Removed = 0;
-			for (int32 i = SessionSearch->SearchResults.Num() - 1; i >= 0; --i)
+			const FNamedOnlineSession* LocalSession = SessionInterface->GetNamedSession(NAME_GameSession);
+			if (LocalSession)
 			{
-				if (SessionSearch->SearchResults[i].Session.GetSessionIdStr() == LocalSessionId)
+				FString LocalSessionId = LocalSession->GetSessionIdStr();
+				int32 Removed = 0;
+				for (int32 i = SessionSearch->SearchResults.Num() - 1; i >= 0; --i)
 				{
-					SessionSearch->SearchResults.RemoveAt(i);
-					Removed++;
+					if (SessionSearch->SearchResults[i].Session.GetSessionIdStr() == LocalSessionId)
+					{
+						SessionSearch->SearchResults.RemoveAt(i);
+						Removed++;
+					}
 				}
+				if (Removed > 0)
+				{
+					UE_LOG(LogTemp, Log, TEXT("[방 찾기] 자신이 호스팅 중인 세션 %d개를 검색 결과에서 제외 (게임맵 이동 후)"), Removed);
+				}
+				Results = SessionSearch->SearchResults;
 			}
-			if (Removed > 0)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[방 찾기] 자신이 호스팅 중인 세션 %d개를 검색 결과에서 제외"), Removed);
-			}
-			Results = SessionSearch->SearchResults;
 		}
 
 		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 완료: %d개 세션 발견"), Results.Num());
@@ -685,7 +703,7 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 			{
 				FindSessionsRetryCount++;
 				UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 세션 0건. 2초 후 재검색 (%d/%d) [OSS=%s]"), FindSessionsRetryCount, MaxFindSessionsRetries, *SubsystemName);
-				if (UWorld* World = GetWorld())
+				if (World)
 				{
 					World->GetTimerManager().SetTimer(FindSessionsRetryHandle, this, &ABRGameSession::FindSessionsRetryCallback, 2.0f, false);
 				}
