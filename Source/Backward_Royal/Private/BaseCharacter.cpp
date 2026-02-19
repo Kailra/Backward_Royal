@@ -534,7 +534,8 @@ void ABaseCharacter::MulticastEnterStunState_Implementation()
         DisableInput(PC);
     }
 
-    // TODO: 여기에 캐릭터가 쓰러지거나 기절하는 몽타주(애니메이션) 재생 코드를 추가할 수 있습니다.
+    // 블루프린트 이벤트 호출 (모든 클라이언트에서 실행됨)
+    OnEnterStunState();
 }
 
 void ABaseCharacter::RecoverFromStun()
@@ -567,5 +568,6 @@ void ABaseCharacter::MulticastRecoverFromStun_Implementation()
         EnableInput(PC);
     }
 
-    // TODO: 기절에서 일어나는 애니메이션이 있다면 여기서 처리하거나 몽타주를 중지할 수 있습니다.
+    // 블루프린트 이벤트 호출 (모든 클라이언트에서 실행됨)
+    OnRecoverFromStun();
 }

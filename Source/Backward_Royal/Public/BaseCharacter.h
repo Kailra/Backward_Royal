@@ -159,6 +159,14 @@ public:
     UFUNCTION(NetMulticast, Reliable)
     void MulticastRecoverFromStun();
 
+    // 스턴 상태에 진입할 때 블루프린트에서 실행될 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "Status|Stun")
+    void OnEnterStunState();
+
+    // 스턴 상태에서 회복될 때 블루프린트에서 실행될 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "Status|Stun")
+    void OnRecoverFromStun();
+
 protected:
     bool bIsCharacterAttacking = false;
 
