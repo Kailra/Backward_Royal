@@ -60,7 +60,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnTeamChanged OnTeamChanged;
 
-	/** 게임 종료(승리 확정) 시 브로드캐스트. WinningTeamNumber 전달 
+	/** 게임 종료(승리 확정) 시 브로드캐스트. WinningTeamNumber 전달 */
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnGameEndedWithWinner OnGameEndedWithWinner;
 

@@ -108,7 +108,7 @@ public:
 	bool bUseStunInsteadOfDeath = false;
 
 	// 생존 팀 확인 후 1팀만 남으면 결산 이벤트 호출
-	
+	UFUNCTION(Exec)
 	void CheckMatchWinner();
 
 	// 매치 종료 여부 (중복 실행 방지)
@@ -157,8 +157,8 @@ protected:
 	FTimerHandle DirectStartRoleApplyTimerHandle;
 	/** 사망 후 2초 뒤 관전 전환용 (인덱스 콜백 사용) */
 	FTimerHandle SpecTimerHandle_DeathSpectator;
-	/** 승리 후 로비 이동용 타이머 */
-	FTimerHandle ReturnToLobbyTimerHandle;
+	/** 승리 후 로비 이동용 타이머
+	FTimerHandle ReturnToLobbyTimerHandle; */
 
 	/** 테스트 맵을 로비 없이 바로 실행했을 때: 저장된 역할이 없고 전원 하체면 랜덤 팀 배정 후 상체/하체 적용 */
 	void TryApplyDirectStartRolesFallback();
