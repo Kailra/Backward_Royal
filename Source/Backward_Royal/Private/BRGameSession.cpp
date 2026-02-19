@@ -651,7 +651,8 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 		const FNamedOnlineSession* LocalSession = SessionInterface->GetNamedSession(NAME_GameSession);
 		if (LocalSession)
 		{
-			FString LocalSessionId = LocalSession->Session.GetSessionIdStr();
+			// FNamedOnlineSession은 FOnlineSession을 상속하므로 GetSessionIdStr() 직접 호출
+			FString LocalSessionId = LocalSession->GetSessionIdStr();
 			int32 Removed = 0;
 			for (int32 i = SessionSearch->SearchResults.Num() - 1; i >= 0; --i)
 			{
