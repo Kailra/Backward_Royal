@@ -1349,17 +1349,14 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		}
 	}
 
+	// 생존 팀 확인 및 우승 처리
+	CheckMatchWinner();
+
 	FTimerDelegate TimerDel;
 	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectatorByPlayerIndices, VictimPlayerIndex, PartnerPlayerIndex);
 	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (VictimIdx=%d, PartnerIdx=%d)"),
 		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
-
-	// 승리 조건 즉시 체크 (타이머에만 의존하지 않음 — 피해자·파트너는 이미 Dead 처리됨)
-	// CheckAndEndGameIfWinner();
-
-	// 생존 팀 확인 및 우승 처리
-	CheckMatchWinner();
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
@@ -1445,8 +1442,8 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 	LogGameStateRolePlayerIndex(VictimPlayerIndex, TEXT("후(피해자)"));
 	LogGameStateRolePlayerIndex(PartnerPlayerIndex, TEXT("후(파트너)"));
 
-	// 승리 조건 체크: 생존 팀이 1개면 해당 팀 승리
-	CheckAndEndGameIfWinner();
+	/** 승리 조건 체크 : 생존 팀이 1개면 해당 팀 승리
+	CheckAndEndGameIfWinner(); */
 }
 
 void ABRGameMode::CheckAndEndGameIfWinner()
