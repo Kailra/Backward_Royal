@@ -498,12 +498,18 @@ void APlayerCharacter::TryApplyCustomization()
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
+	// ==========================================================
+	// [신규 핵심] 파트너 바인딩 여부와 무관하게, 이 함수가 불렸다는 것은
+	// 역할(Role) 갱신 이벤트가 발생했다는 뜻이므로 커마 적용을 무조건 한 번 재시도합니다.
+	// (이전에 상/하체 역할 중복으로 보류되었던 락을 해제하기 위함)
+	// ==========================================================
+	TryApplyCustomization();
+
 	if (bBoundToPartner) return;
 
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS)
 	{
-		// [수정] 람다 대신 CreateUObject를 사용하여 this 포인터 안전성 확보
 		if (UWorld* World = GetWorld())
 		{
 			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
@@ -520,7 +526,6 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	{
 		if (UWorld* World = GetWorld())
 		{
-			// [수정] 안전한 델리게이트 사용
 			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
 			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
 		}
@@ -535,6 +540,13 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 
 	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 	PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+	// ==========================================================
+	// [신규 추가] 내 역할뿐만 아니라 '파트너의 역할'이 뒤늦게 변경될 때도 
+	// 감지하여 커마를 재시도할 수 있도록 델리게이트 연결
+	// ==========================================================
+	PartnerPS->OnPlayerRoleChanged.RemoveDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+	PartnerPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
 	bBoundToPartner = true;
 	LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
