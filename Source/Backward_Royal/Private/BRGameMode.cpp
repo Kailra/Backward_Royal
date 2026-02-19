@@ -1220,7 +1220,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		{
 			PS->SetPlayerStatus(EPlayerStatus::Dead);
 		}
-		// Game state 역할 PlayerIndex를 0(관전)으로 반영 (bIsSpectatorSlot=true, UpdatePlayerList 갱신)
+		// PlayerState를 관전(PlayerIndex 0)으로 변경. bIsSpectatorSlot=true 설정 → GameState는 PS에서 읽어 반영
 		PS->SetSpectator(true);
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
 			*PS->GetPlayerName(), PS->TeamNumber);
@@ -1255,6 +1255,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 			{
 				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
 			}
+			// 파트너도 PlayerState를 관전(PlayerIndex 0)으로 변경
 			BRPS->SetSpectator(true);
 			break;
 		}
