@@ -17,6 +17,8 @@
 #include "TimerManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Misc/Paths.h"
+#include "OnlineSubsystemTypes.h"
 
 ABRGameMode::ABRGameMode()
 {
@@ -150,6 +152,39 @@ void ABRGameMode::ScheduleInitialRoleApplyIfNeeded()
 	const float InitialDelay = 2.0f;
 	GetWorld()->GetTimerManager().SetTimer(InitialRoleApplyTimerHandle, this, &ABRGameMode::ApplyRoleChangesForRandomTeams, InitialDelay, false);
 	UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] %.1f초 후 상체/하체 Pawn 적용 예정 (한 번만 예약)"), InitialDelay);
+}
+
+void ABRGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+	if (!ErrorMessage.IsEmpty()) return;
+
+	// 게임 진행 중 입장 차단이 꺼져 있으면 통과
+	if (!bBlockJoinWhenGameStarted) return;
+
+	UWorld* World = GetWorld();
+	if (!World || World->GetNetMode() == NM_Standalone)
+	{
+		return; // 단일 플레이어/로컬에서는 차단하지 않음
+	}
+
+	// 현재 맵이 로비 맵인지 확인 (로비가 아니면 = 게임 진행 중 = 입장 거부)
+	FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
+	if (CurrentMapName.IsEmpty())
+	{
+		CurrentMapName = World->GetMapName();
+		CurrentMapName.RemoveFromStart(World->StreamingLevelsPrefix);
+	}
+
+	FString LobbyMapBase = LobbyMapPath.IsEmpty()
+		? TEXT("Main_Scene")
+		: FPaths::GetBaseFilename(LobbyMapPath);
+
+	if (!CurrentMapName.Equals(LobbyMapBase, ESearchCase::IgnoreCase))
+	{
+		ErrorMessage = TEXT("게임이 이미 진행 중입니다. 이 방에는 입장할 수 없습니다.");
+		UE_LOG(LogTemp, Warning, TEXT("[PreLogin] 게임 진행 중 입장 차단 (현재 맵: %s, 로비 맵: %s)"), *CurrentMapName, *LobbyMapBase);
+	}
 }
 
 void ABRGameMode::PostLogin(APlayerController* NewPlayer)
