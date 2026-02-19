@@ -83,6 +83,13 @@ void ABaseCharacter::BeginPlay()
     {
         DefaultWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
     }
+
+    if (HasAuthority())
+    {
+        CurrentHP = MaxHP;
+    }
+
+    UpdateHPUI();
 }
 
 void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
