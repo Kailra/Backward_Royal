@@ -1220,7 +1220,8 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		{
 			PS->SetPlayerStatus(EPlayerStatus::Dead);
 		}
-
+		// Game state 역할 PlayerIndex를 0(관전)으로 반영 (bIsSpectatorSlot=true, UpdatePlayerList 갱신)
+		PS->SetSpectator(true);
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
 			*PS->GetPlayerName(), PS->TeamNumber);
 	}
@@ -1254,6 +1255,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 			{
 				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
 			}
+			BRPS->SetSpectator(true);
 			break;
 		}
 	}
@@ -1335,9 +1337,7 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s Controller 없음"), *BRPS->GetPlayerName());
 			return false;
 		}
-		// Game state 역할 PlayerIndex를 0(관전)으로 반영 (bIsSpectatorSlot=true, UpdatePlayerList 갱신)
-		BRPS->SetSpectator(true);
-		UE_LOG(LogTemp, Log, TEXT("[GameMode] PlayerIndex 0(관전) 반영 시점: %s — SetSpectator(true) 직후"), *BRPS->GetPlayerName());
+		// SetSpectator(true)는 OnPlayerDied/파트너 루프에서 이미 호출됨 — 여기서는 시점 전환만
 		PC->StartSpectatingMode();
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 완료: %s (Index %d)"), *BRPS->GetPlayerName(), PlayerIndex);
 		return true;
