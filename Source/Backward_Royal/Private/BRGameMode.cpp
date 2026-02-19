@@ -1263,6 +1263,9 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (VictimIdx=%d, PartnerIdx=%d)"),
 		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
+
+	// 승리 조건 즉시 체크 (타이머에만 의존하지 않음 — 피해자·파트너는 이미 Dead 처리됨)
+	CheckAndEndGameIfWinner();
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
@@ -1342,9 +1345,12 @@ void ABRGameMode::CheckAndEndGameIfWinner()
 		AliveTeamNumbers.Add(BRPS->TeamNumber);
 	}
 
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] CheckAndEndGameIfWinner — 생존 팀 수: %d"), AliveTeamNumbers.Num());
+
 	if (AliveTeamNumbers.Num() == 1)
 	{
 		const int32 WinnerTeam = AliveTeamNumbers.Array()[0];
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 승리 팀 확정 — 팀 %d 승리, EndGameWithWinner 호출"), WinnerTeam);
 		GS->EndGameWithWinner(WinnerTeam);
 		// 승리 확인만 함. 로비 이동은 우승 UI에서 '다음' 버튼 시 TravelToLobby() 호출로 처리 예정.
 	}
