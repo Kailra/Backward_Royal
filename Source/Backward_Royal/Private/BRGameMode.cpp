@@ -1168,7 +1168,6 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		World->GetTimerManager().ClearTimer(StagedApplyTimerHandle);
 		World->GetTimerManager().ClearTimer(StagedAllLowerReadyHandle);
 		World->GetTimerManager().ClearTimer(DirectStartRoleApplyTimerHandle);
-		World->GetTimerManager().ClearTimer(SpecTimerHandle_DeathSpectator);
 		World->GetTimerManager().ClearTimer(ReturnToLobbyTimerHandle);
 	}
 
@@ -1227,134 +1226,54 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	}
 
 	// -----------------------------------------------------------
-	// 팀 탈락: 같은 팀 파트너도 사망 처리 후, 2초 뒤 피해자·파트너(하체+상체) 둘 다 관전 전환
-	// (인덱스로 예약해 콜백에서 팀 번호 복제 이슈 없이 전원 전환 보장)
+	// 팀 탈락: 같은 팀 파트너도 사망 처리 후, 클라이언트 RPC로 관전 전환 명령 (2초 딜레이는 클라이언트에서 처리)
 	// -----------------------------------------------------------
 	ABRGameState* GS = GetGameState<ABRGameState>();
-	if (!GS || !PS)
+	if (GS && PS)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환 스킵: GameState 또는 피해자 PS 없음"));
-		return;
-	}
-
-	const int32 VictimPlayerIndex = GS->PlayerArray.Find(PS);
-	if (VictimPlayerIndex == INDEX_NONE)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환 스킵: 피해자 PlayerArray 인덱스 없음"));
-		return;
-	}
-
-	int32 PartnerPlayerIndex = INDEX_NONE;
-	for (APlayerState* OtherPS : GS->PlayerArray)
-	{
-		ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
-		if (BRPS && BRPS != PS && BRPS->TeamNumber == PS->TeamNumber)
+		int32 DeadTeamNumber = PS->TeamNumber;
+		for (APlayerState* MemberPS : GS->PlayerArray)
 		{
-			PartnerPlayerIndex = GS->PlayerArray.Find(BRPS);
-			if (BRPS->CurrentStatus != EPlayerStatus::Dead)
+			ABRPlayerState* BRPS = Cast<ABRPlayerState>(MemberPS);
+			if (BRPS && BRPS->TeamNumber == DeadTeamNumber)
 			{
-				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
-			}
-			// 파트너도 PlayerState를 관전(PlayerIndex 0)으로 변경
-			BRPS->SetSpectator(true);
-			break;
-		}
-	}
-
-	FTimerDelegate TimerDel;
-	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectatorByPlayerIndices, VictimPlayerIndex, PartnerPlayerIndex);
-	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (VictimIdx=%d, PartnerIdx=%d)"),
-		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
-
-	// 승리 조건 즉시 체크 (타이머에만 의존하지 않음 — 피해자·파트너는 이미 Dead 처리됨)
-	CheckAndEndGameIfWinner();
-}
-
-void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
-{
-	if (VictimPC.IsValid())
-	{
-		VictimPC->StartSpectatingMode();
-	}
-
-	if (PartnerPC.IsValid())
-	{
-		PartnerPC->StartSpectatingMode();
-	}
-}
-
-void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, int32 PartnerPlayerIndex)
-{
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망 후 2초 타이머 — 관전 전환 시작 (VictimIdx=%d, PartnerIdx=%d). 이 시점부터 PlayerIndex 0 반영됨."), VictimPlayerIndex, PartnerPlayerIndex);
-	ABRGameState* GS = GetGameState<ABRGameState>();
-	if (!GS)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: GameState 없음"));
-		return;
-	}
-
-	// Game state 역할 PlayerIndex(0=관전, 1=하체, 2=상체) 로그 헬퍼
-	auto LogGameStateRolePlayerIndex = [GS](int32 PlayerIndex, const TCHAR* When) -> void
-	{
-		if (PlayerIndex == INDEX_NONE || !GS->PlayerArray.IsValidIndex(PlayerIndex)) return;
-		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(GS->PlayerArray[PlayerIndex]))
-		{
-			const int32 RolePlayerIndex = BRPS->bIsSpectatorSlot ? 0 : (BRPS->bIsLowerBody ? 1 : 2);
-			UE_LOG(LogTemp, Log, TEXT("[GameState 역할] %s | PlayerArray Index=%d, Name=%s, bIsSpectatorSlot=%s, bIsLowerBody=%s → 역할 PlayerIndex=%d (0=관전,1=하체,2=상체)"),
-				When, PlayerIndex, *BRPS->GetPlayerName(),
-				BRPS->bIsSpectatorSlot ? TEXT("true") : TEXT("false"),
-				BRPS->bIsLowerBody ? TEXT("true") : TEXT("false"),
-				RolePlayerIndex);
-		}
-	};
-
-	// 사망 관전 전환 **전** — 상체/하체 둘 다 Game state 역할 PlayerIndex 확인
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망 관전 전환 전 — Game state 역할 PlayerIndex (0=관전, 1=하체, 2=상체)"));
-	LogGameStateRolePlayerIndex(VictimPlayerIndex, TEXT("전(피해자)"));
-	LogGameStateRolePlayerIndex(PartnerPlayerIndex, TEXT("전(파트너)"));
-
-	auto TrySwitchToSpectator = [this, GS](int32 PlayerIndex) -> bool
-	{
-		if (PlayerIndex == INDEX_NONE || !GS->PlayerArray.IsValidIndex(PlayerIndex)) return false;
-		ABRPlayerState* BRPS = Cast<ABRPlayerState>(GS->PlayerArray[PlayerIndex]);
-		if (!BRPS) return false;
-		ABRPlayerController* PC = Cast<ABRPlayerController>(BRPS->GetOwningController());
-		// 상체 등 원격 플레이어에서 OwningController가 비어 있을 수 있음 → 월드에서 해당 PlayerState 소유 컨트롤러 검색
-		if (!PC && GetWorld())
-		{
-			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
-			{
-				APlayerController* C = It->Get();
-				if (C && C->GetPlayerState<ABRPlayerState>() == BRPS)
+				// 사망 상태가 아니라면 사망으로 처리
+				if (BRPS->CurrentStatus != EPlayerStatus::Dead)
 				{
-					PC = Cast<ABRPlayerController>(C);
-					if (PC) break;
+					BRPS->SetPlayerStatus(EPlayerStatus::Dead);
+				}
+				// 관전 슬롯으로 설정
+				if (!BRPS->bIsSpectatorSlot)
+				{
+					BRPS->SetSpectator(true);
+				}
+
+				// 클라이언트에게 관전 전환 명령 (2초 후 전환)
+				ABRPlayerController* BRPC = Cast<ABRPlayerController>(BRPS->GetOwningController());
+				// 상체 등 원격 플레이어에서 OwningController가 비어 있을 수 있음 → 월드에서 검색
+				if (!BRPC && GetWorld())
+				{
+					for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+					{
+						APlayerController* C = It->Get();
+						if (C && C->GetPlayerState<ABRPlayerState>() == BRPS)
+						{
+							BRPC = Cast<ABRPlayerController>(C);
+							break;
+						}
+					}
+				}
+
+				if (BRPC)
+				{
+					BRPC->ClientStartSpectating();
+					UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d)에게 ClientStartSpectating 명령 전송"), *BRPS->GetPlayerName(), DeadTeamNumber);
 				}
 			}
 		}
-		if (!PC)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s Controller 없음"), *BRPS->GetPlayerName());
-			return false;
-		}
-		// SetSpectator(true)는 OnPlayerDied/파트너 루프에서 이미 호출됨 — 여기서는 시점 전환만
-		PC->StartSpectatingMode();
-		UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 완료: %s (Index %d)"), *BRPS->GetPlayerName(), PlayerIndex);
-		return true;
-	};
+	}
 
-	// 상체(파트너) 먼저 전환 → 시체에 붙은 상체 폰이 공격 모션 재생하는 것 방지
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 실행: VictimIndex=%d, PartnerIndex=%d"), VictimPlayerIndex, PartnerPlayerIndex);
-	TrySwitchToSpectator(PartnerPlayerIndex);
-	TrySwitchToSpectator(VictimPlayerIndex);
-
-	// 사망 관전 전환 **후** — 상체/하체 둘 다 Game state 역할 PlayerIndex가 0(관전)으로 바뀌었는지 확인
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망 관전 전환 후 — Game state 역할 PlayerIndex (0이면 관전 반영됨)"));
-	LogGameStateRolePlayerIndex(VictimPlayerIndex, TEXT("후(피해자)"));
-	LogGameStateRolePlayerIndex(PartnerPlayerIndex, TEXT("후(파트너)"));
-
-	// 승리 조건 체크: 생존 팀이 1개면 해당 팀 승리
+	// 승리 조건 즉시 체크
 	CheckAndEndGameIfWinner();
 }
 
@@ -1438,30 +1357,3 @@ void ABRGameMode::TravelToLobby()
 	}
 }
 
-void ABRGameMode::SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber)
-{
-	ABRGameState* GS = GetGameState<ABRGameState>();
-	if (!GS)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: GameState 없음"));
-		return;
-	}
-
-	int32 SwitchedCount = 0;
-	for (APlayerState* OtherPS : GS->PlayerArray)
-	{
-		ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
-		if (!BRPS || BRPS->TeamNumber != EliminatedTeamNumber) continue;
-
-		ABRPlayerController* PC = Cast<ABRPlayerController>(BRPS->GetOwningController());
-		if (!PC)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s (팀%d) Controller 없음"), *BRPS->GetPlayerName(), EliminatedTeamNumber);
-			continue;
-		}
-		PC->StartSpectatingMode();
-		SwitchedCount++;
-		UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 탈락 관전 전환: %s (%s)"), *BRPS->GetPlayerName(), BRPS->bIsLowerBody ? TEXT("하체") : TEXT("상체"));
-	}
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 하체·상체 전원 관전 전환 완료 (%d명)"), EliminatedTeamNumber, SwitchedCount);
-}

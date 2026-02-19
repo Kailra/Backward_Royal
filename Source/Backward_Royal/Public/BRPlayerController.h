@@ -184,6 +184,10 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientHandleSpectatorUI();
 
+	// [클라이언트] 사망 2초 후 스스로 관전 모드로 전환 (서버의 팀 탈락 판정 직후 호출됨)
+	UFUNCTION(Client, Reliable)
+	void ClientStartSpectating();
+
 	// [BP 구현] 관전 모드 진입 시 UI 변경 (HUD 숨기기 등)
 	UFUNCTION(BlueprintImplementableEvent, Category = "Spectating")
 	void OnEnterSpectatorMode();

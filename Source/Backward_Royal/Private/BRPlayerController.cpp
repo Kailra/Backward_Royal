@@ -640,6 +640,22 @@ void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
 	OnEnterSpectatorMode();
 }
 
+void ABRPlayerController::ClientStartSpectating_Implementation()
+{
+	UE_LOG(LogTemp, Log, TEXT("[ClientStartSpectating] 사망 상태 확인 - 2초 후 관전 모드로 전환합니다."));
+
+	FTimerHandle SpecTimer;
+	GetWorld()->GetTimerManager().SetTimer(SpecTimer, [this]()
+	{
+		// 맵 이동이나 종료 등으로 PC가 유효하지 않으면 중단
+		if (!IsValid(this)) return;
+
+		ChangeState(NAME_Spectating);
+		OnEnterSpectatorMode(); // UI 갱신 (HUD 숨기기 등)
+		UE_LOG(LogTemp, Log, TEXT("[ClientStartSpectating] 관전 모드 전환 완료 (ChangeState)"));
+	}, 2.0f, false);
+}
+
 void ABRPlayerController::CreateRoom(const FString& RoomName)
 {
 	UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateRoom 호출됨: %s"), *RoomName);
