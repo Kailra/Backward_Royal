@@ -180,6 +180,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spectating")
 	void StartSpectatingMode();
 
+	// 관전 모드용 입력 설정 (하체 컨텍스트 재사용)
+	UFUNCTION(BlueprintCallable, Category = "Spectating")
+	void SetupSpectatorInput();
+
 	// [클라이언트] 관전 모드 진입 시 UI 처리 요청
 	UFUNCTION(Client, Reliable)
 	void ClientHandleSpectatorUI();
