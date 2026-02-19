@@ -1290,6 +1290,26 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 		return;
 	}
 
+	// Game state 역할 PlayerIndex(0=관전, 1=하체, 2=상체) 로그 헬퍼
+	auto LogGameStateRolePlayerIndex = [GS](int32 PlayerIndex, const TCHAR* When) -> void
+	{
+		if (PlayerIndex == INDEX_NONE || !GS->PlayerArray.IsValidIndex(PlayerIndex)) return;
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(GS->PlayerArray[PlayerIndex]))
+		{
+			const int32 RolePlayerIndex = BRPS->bIsSpectatorSlot ? 0 : (BRPS->bIsLowerBody ? 1 : 2);
+			UE_LOG(LogTemp, Log, TEXT("[GameState 역할] %s | PlayerArray Index=%d, Name=%s, bIsSpectatorSlot=%s, bIsLowerBody=%s → 역할 PlayerIndex=%d (0=관전,1=하체,2=상체)"),
+				When, PlayerIndex, *BRPS->GetPlayerName(),
+				BRPS->bIsSpectatorSlot ? TEXT("true") : TEXT("false"),
+				BRPS->bIsLowerBody ? TEXT("true") : TEXT("false"),
+				RolePlayerIndex);
+		}
+	};
+
+	// 사망 관전 전환 **전** — 상체/하체 둘 다 Game state 역할 PlayerIndex 확인
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망 관전 전환 전 — Game state 역할 PlayerIndex (0=관전, 1=하체, 2=상체)"));
+	LogGameStateRolePlayerIndex(VictimPlayerIndex, TEXT("전(피해자)"));
+	LogGameStateRolePlayerIndex(PartnerPlayerIndex, TEXT("전(파트너)"));
+
 	auto TrySwitchToSpectator = [this, GS](int32 PlayerIndex) -> bool
 	{
 		if (PlayerIndex == INDEX_NONE || !GS->PlayerArray.IsValidIndex(PlayerIndex)) return false;
@@ -1323,6 +1343,11 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 실행: VictimIndex=%d, PartnerIndex=%d"), VictimPlayerIndex, PartnerPlayerIndex);
 	TrySwitchToSpectator(PartnerPlayerIndex);
 	TrySwitchToSpectator(VictimPlayerIndex);
+
+	// 사망 관전 전환 **후** — 상체/하체 둘 다 Game state 역할 PlayerIndex가 0(관전)으로 바뀌었는지 확인
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 사망 관전 전환 후 — Game state 역할 PlayerIndex (0이면 관전 반영됨)"));
+	LogGameStateRolePlayerIndex(VictimPlayerIndex, TEXT("후(피해자)"));
+	LogGameStateRolePlayerIndex(PartnerPlayerIndex, TEXT("후(파트너)"));
 
 	// 승리 조건 체크: 생존 팀이 1개면 해당 팀 승리
 	CheckAndEndGameIfWinner();
