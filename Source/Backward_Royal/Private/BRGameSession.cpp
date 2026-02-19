@@ -371,6 +371,8 @@ void ABRGameSession::CreateRoomSession(const FString& RoomName)
 	// 세션 이름 설정
 	FString SessionNameStr = RoomName.IsEmpty() ? TEXT("이름 없는 방") : RoomName;
 	SessionSettings->Set(FName(TEXT("SESSION_NAME")), SessionNameStr, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	// 방 생성 시 서버장(호스트)이 이미 있으므로 현재 인원 1로 시작 (방 찾기에서 0이 아닌 1부터 표시)
+	SessionSettings->Set(FName(TEXT("CURRENT_PLAYER_COUNT")), 1, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
 	// NGDA 스타일: CreateSession 호출 (NetMode 체크 없음 - Steam OSS가 자동으로 ListenServer 처리)
 	int32 LocalUserNum = 0;
@@ -776,6 +778,14 @@ int32 ABRGameSession::GetSessionCurrentPlayers(int32 SessionIndex) const
 		return 0;
 	}
 	const FOnlineSessionSearchResult& Result = SessionSearch->SearchResults[SessionIndex];
+	// 호스트가 UpdateSessionPlayerCount로 설정한 현재 인원을 우선 사용 (일부 OSS는 NumOpenPublicConnections를 갱신하지 않아 0으로 나올 수 있음)
+	int32 AdvertisedCount = 0;
+	if (Result.Session.SessionSettings.Get(FName(TEXT("CURRENT_PLAYER_COUNT")), AdvertisedCount) && AdvertisedCount >= 0)
+	{
+		int32 Max = Result.Session.SessionSettings.NumPublicConnections;
+		return FMath::Clamp(AdvertisedCount, 0, Max);
+	}
+	// 폴백: 최대 - 빈 슬롯
 	int32 Max = Result.Session.SessionSettings.NumPublicConnections;
 	int32 Open = Result.Session.NumOpenPublicConnections;
 	return FMath::Max(0, Max - Open);
