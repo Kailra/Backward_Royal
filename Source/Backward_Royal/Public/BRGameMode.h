@@ -107,6 +107,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Game Settings|Rules")
 	bool bUseStunInsteadOfDeath = false;
 
+	// 생존 팀 확인 후 1팀만 남으면 결산 이벤트 호출
+	
+	void CheckMatchWinner();
+
+	// 매치 종료 여부 (중복 실행 방지)
+	bool bMatchEnded = false;
+
+	// 10초 후 로비로 복귀하는 타이머 핸들
+	FTimerHandle ReturnToLobbyTimerHandle;
+
+	// 로비 맵으로 심리스 이동 (ServerTravel)
+	void ReturnToLobby();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

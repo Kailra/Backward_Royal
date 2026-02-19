@@ -1198,6 +1198,85 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 }
 
+void ABRGameMode::ReturnToLobby()
+{
+	// 10초 후 로비 맵으로 심리스 트래블 (세션 유지)
+	if (LobbyMapPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 로비 맵 경로(LobbyMapPath)가 비어있어 로비로 복귀할 수 없습니다."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 매치 종료: 10초 경과, 로비 맵으로 이동합니다 (%s)"), *LobbyMapPath);
+	GetWorld()->ServerTravel(LobbyMapPath + TEXT("?listen"));
+}
+
+void ABRGameMode::CheckMatchWinner()
+{
+	if (bMatchEnded) return;
+
+	ABRGameState* BRGameState = Cast<ABRGameState>(GameState);
+	if (!BRGameState) return;
+
+	// 생존 팀(TeamNumber) 수집
+	TSet<int32> AliveTeams;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			// 팀 번호가 있고(>0), 살아있는 경우
+			if (BRPS->TeamNumber > 0 && BRPS->CurrentStatus == EPlayerStatus::Alive)
+			{
+				AliveTeams.Add(BRPS->TeamNumber);
+			}
+		}
+	}
+
+	// 오직 1팀만 살아있다면 우승
+	if (AliveTeams.Num() == 1)
+	{
+		int32 WinnerTeamID = AliveTeams.Array()[0];
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 우승 팀 결정: Team %d"), WinnerTeamID);
+
+		FString UpperName;
+		FString LowerName;
+		FVector WinnerLocation = FVector::ZeroVector;
+
+		// 우승 팀 정보 수집 (상체 이름, 하체 이름, 하체 Pawn 위치)
+		for (APlayerState* PS : BRGameState->PlayerArray)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+			{
+				if (BRPS->TeamNumber == WinnerTeamID)
+				{
+					if (BRPS->bIsLowerBody)
+					{
+						LowerName = BRPS->GetPlayerName();
+						// 위치는 하체(Control Pawn) 기준
+						if (APawn* MyPawn = BRPS->GetPawn())
+						{
+							WinnerLocation = MyPawn->GetActorLocation();
+						}
+					}
+					else
+					{
+						UpperName = BRPS->GetPlayerName();
+					}
+				}
+			}
+		}
+
+		// 결산 이벤트 브로드캐스트 (모든 클라이언트에 전파)
+		BRGameState->MulticastMatchEnded(WinnerLocation, UpperName, LowerName);
+
+		// 우승자 확정 -> 중복 실행 방지
+		bMatchEnded = true;
+
+		// 10초 후 로비 복귀 타이머 시작
+		GetWorld()->GetTimerManager().SetTimer(ReturnToLobbyTimerHandle, this, &ABRGameMode::ReturnToLobby, 10.0f, false);
+	}
+}
+
 void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 {
 	if (!VictimCharacter) return;
@@ -1277,7 +1356,10 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
 
 	// 승리 조건 즉시 체크 (타이머에만 의존하지 않음 — 피해자·파트너는 이미 Dead 처리됨)
-	CheckAndEndGameIfWinner();
+	// CheckAndEndGameIfWinner();
+
+	// 생존 팀 확인 및 우승 처리
+	CheckMatchWinner();
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
@@ -1480,3 +1562,5 @@ void ABRGameMode::SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber)
 	}
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 하체·상체 전원 관전 전환 완료 (%d명)"), EliminatedTeamNumber, SwitchedCount);
 }
+
+
