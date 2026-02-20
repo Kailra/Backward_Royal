@@ -235,14 +235,22 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
     MulticastApplyHitStop(0.1f);
 
     // 캐릭터 외 물체 물리 적용
-    if (GetOwner()->HasAuthority() && OtherComp && OtherComp->IsSimulatingPhysics())
+    if (GetOwner()->HasAuthority())
     {
-        if (!Cast<ABaseCharacter>(OtherActor))
+        if (ABaseCharacter* VictimChar = Cast<ABaseCharacter>(OtherActor))
         {
+            // [변경] 캐릭터의 메쉬에 직접 물리 효과 전달
+            // Hit.MyBoneName을 통해 맞은 부위를 정확히 전달합니다.
+            VictimChar->PlayPhysicsHitReaction(FinalImpulseVector, Hit.ImpactPoint, Hit.BoneName);
+        }
+        else if (OtherComp && OtherComp->IsSimulatingPhysics())
+        {
+            // 일반 물리 객체 처리
             OtherComp->AddImpulseAtLocation(FinalImpulseVector, Hit.ImpactPoint);
         }
     }
 
+    MulticastApplyHitStop(0.1f);
     HitActors.Add(OtherActor);
 }
 
