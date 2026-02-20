@@ -37,12 +37,6 @@ struct FWeaponData : public FTableRowBase
     UGeometryCollection* FracturedMesh = nullptr;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UStaticMesh* WeaponMesh;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UGeometryCollection* FracturedMesh;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FName DisplayName;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)

@@ -6,6 +6,8 @@
 #include "Components/BoxComponent.h" 
 #include "PlayerResetZone.generated.h"
 
+class UTexture2D;
+
 UCLASS()
 class BACKWARD_ROYAL_API APlayerResetZone : public AActor
 {
