@@ -421,102 +421,56 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
+	// [핵심 1] 이미 최초 외형 세팅이 끝나서 잠겼다면, SwitchOrb 스왑 등으로 불려도 무시합니다.
+	if (bAppearanceLocked) return;
+
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS) return;
 
-	// [수정 1] Lock 가능 여부 판단
-	// Index가 -1이면 아직 팀 정보가 안 왔거나 솔로일 수 있음 -> 일단 적용하되, 확정(Lock)은 짓지 않음
-	bool bCanLock = (MyPS->ConnectedPlayerIndex != -1);
-
-	// [기존 가드 유지] 팀은 배정됐는데 파트너가 아직 안 왔으면 대기
-	if (bCanLock && MyPS->PartnerPlayerState == nullptr)
+	// [역할 동기화 과도기 방지 가드]
+	if (MyPS->PartnerPlayerState && (MyPS->bIsLowerBody == MyPS->PartnerPlayerState->bIsLowerBody))
 	{
 		return;
-	}
-
-	// [신규 핵심 가드] 파트너가 연결되었지만 두 플레이어의 상/하체 역할이 동일하다면 보류
-	if (bCanLock && MyPS->PartnerPlayerState)
-	{
-		if (MyPS->bIsLowerBody == MyPS->PartnerPlayerState->bIsLowerBody)
-		{
-			return;
-		}
 	}
 
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
 	// --- 상체 적용 ---
-	// [수정] bIsDataValid 검사를 빼고 무조건 진입시켜, 유효하지 않은 데이터(ID=0)일 때 기본 파츠로 명시적 덮어쓰기를 합니다.
-	if (UpperPS)
+	if (UpperPS && !UpperPS->bIsLowerBody)
 	{
-		// [핵심] 이미 적용됐더라도 Lock이 안 걸려있다면(!bCanLock) 다시 적용 허용 (덮어쓰기)
-		if (!bUpperBodyApplied || !bCanLock)
-		{
-			// 역할 교차 검증 (UpperPS가 진짜 상체 역할인지?)
-			if (!UpperPS->bIsLowerBody)
-			{
-				// bIsDataValid가 false(기본 커마)라면 ID를 0으로 강제하여 기존 잔상 파츠를 초기화
-				int32 ApplyHeadID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HeadID : 0;
-				int32 ApplyChestID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.ChestID : 0;
-				int32 ApplyHandID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HandID : 0;
+		int32 ApplyHeadID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HeadID : 0;
+		int32 ApplyChestID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.ChestID : 0;
+		int32 ApplyHandID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HandID : 0;
 
-				ApplyMeshFromID(EArmorSlot::Head, ApplyHeadID);
-				ApplyMeshFromID(EArmorSlot::Chest, ApplyChestID);
-				ApplyMeshFromID(EArmorSlot::Hands, ApplyHandID);
-
-				// [수정 2] 확실한 상황일 때만 잠금
-				if (bCanLock)
-				{
-					bUpperBodyApplied = true;
-					UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-					LOG_PLAYER(Display, TEXT("Upper Body LOCKED (Valid Team Found)"));
-				}
-				else
-				{
-					// 아직 확정이 아니므로 델리게이트 유지 + 로그
-					// LOG_PLAYER(Warning, TEXT("Upper Body Applied but NOT LOCKED (Waiting for Index)"));
-				}
-			}
-		}
+		ApplyMeshFromID(EArmorSlot::Head, ApplyHeadID);
+		ApplyMeshFromID(EArmorSlot::Chest, ApplyChestID);
+		ApplyMeshFromID(EArmorSlot::Hands, ApplyHandID);
 	}
 
 	// --- 하체 적용 ---
-	// [수정] 하체 역시 기본 데이터일 때 이전 캐릭터의 찌꺼기를 초기화하도록 동일하게 수정합니다.
-	if (LowerPS)
+	if (LowerPS && LowerPS->bIsLowerBody)
 	{
-		if (!bLowerBodyApplied || !bCanLock)
-		{
-			if (LowerPS->bIsLowerBody)
-			{
-				int32 ApplyLegID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.LegID : 0;
-				int32 ApplyFootID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.FootID : 0;
+		int32 ApplyLegID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.LegID : 0;
+		int32 ApplyFootID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.FootID : 0;
 
-				ApplyMeshFromID(EArmorSlot::Legs, ApplyLegID);
-				ApplyMeshFromID(EArmorSlot::Feet, ApplyFootID);
+		ApplyMeshFromID(EArmorSlot::Legs, ApplyLegID);
+		ApplyMeshFromID(EArmorSlot::Feet, ApplyFootID);
+	}
 
-				if (bCanLock)
-				{
-					bLowerBodyApplied = true;
-					LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-					LOG_PLAYER(Display, TEXT("Lower Body LOCKED (Valid Team Found)"));
-				}
-			}
-		}
+	// =================================================================
+	// [핵심 2] 두 플레이어의 상/하체 역할이 정상적으로 나뉘어 배정되었다면,
+	// 커마 적용이 완전하게 끝났다고 판단하고 영구 잠금(Lock)을 겁니다.
+	// =================================================================
+	if (MyPS && MyPS->PartnerPlayerState && (MyPS->bIsLowerBody != MyPS->PartnerPlayerState->bIsLowerBody))
+	{
+		bAppearanceLocked = true;
+		LOG_PLAYER(Display, TEXT("Initial Appearance Fully Locked. It won't change on SwitchOrb Swaps."));
 	}
 }
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
-	// ==========================================================
-	// [신규 핵심] 파트너 바인딩 여부와 무관하게, 이 함수가 불렸다는 것은
-	// 역할(Role) 갱신 이벤트가 발생했다는 뜻이므로 커마 적용을 무조건 한 번 재시도합니다.
-	// (이전에 상/하체 역할 중복으로 보류되었던 락을 해제하기 위함)
-	// ==========================================================
-	TryApplyCustomization();
-
-	if (bBoundToPartner) return;
-
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS)
 	{
@@ -548,20 +502,17 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	// --- 성공 ---
 	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
 
+	// [핵심] SwitchOrb 등으로 파트너 역할이 스왑될 수 있으므로, 항상 기존 바인딩을 제거하고 새로 연결
 	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 	PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-	// ==========================================================
-	// [신규 추가] 내 역할뿐만 아니라 '파트너의 역할'이 뒤늦게 변경될 때도 
-	// 감지하여 커마를 재시도할 수 있도록 델리게이트 연결
-	// ==========================================================
 	PartnerPS->OnPlayerRoleChanged.RemoveDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 	PartnerPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
-	bBoundToPartner = true;
 	LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
 
-	// 파트너 찾았으니 커마 적용 재시도
+	// 파트너가 갱신되었으므로 커스터마이징 갱신을 찔러줍니다.
+	// (최초 1회는 정상 적용 후 bAppearanceLocked가 true가 되며, 이후 스왑 시에는 무시되어 외형이 고정됩니다.)
 	TryApplyCustomization();
 }
 
