@@ -157,7 +157,7 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
 // [신규] 공격 요청 처리 함수
 void ABaseCharacter::RequestAttack()
 {
-    if (bIsStunned || IsDead()) return;
+    if (bIsStunned || CurrentHP <= 0.0f || IsDead()) return;
 
     // 1. 무기를 들고 있는 경우
     if (CurrentWeapon)
@@ -357,6 +357,26 @@ void ABaseCharacter::PerformDeathVisuals()
 
     // [중요] 이동 동기화 해제
     SetReplicateMovement(false);
+
+    // 1. 하체(자신)의 조작 비활성화
+    if (APlayerController* PC = Cast<APlayerController>(GetController()))
+    {
+        DisableInput(PC);
+    }
+
+    // 2. 자신에게 부착된 상체(UpperBody) 폰을 찾아 조작 비활성화
+    TArray<AActor*> AttachedActors;
+    GetAttachedActors(AttachedActors);
+    for (AActor* Actor : AttachedActors)
+    {
+        if (APawn* AttachedPawn = Cast<APawn>(Actor))
+        {
+            if (APlayerController* UpperPC = Cast<APlayerController>(AttachedPawn->GetController()))
+            {
+                AttachedPawn->DisableInput(UpperPC);
+            }
+        }
+    }
 
     // 1. 위치 싱크 (오차 보정)
     if (!HasAuthority() && FVector::DistSquared(GetActorLocation(), ServerLoc) < 250000.0f)
