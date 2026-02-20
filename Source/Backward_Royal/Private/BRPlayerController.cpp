@@ -555,7 +555,15 @@ void ABRPlayerController::HandleNetworkFailure(UWorld* World, UNetDriver* NetDri
 	{
 		return;
 	}
-	
+
+	// 클라이언트 전용: 재접속 가능한 끊김(Timeout/순시 단절)인지 판별
+	const bool bReconnectableFailure =
+		FailureType == ENetworkFailure::ConnectionLost ||
+		FailureType == ENetworkFailure::ConnectionTimeout ||
+		FailureType == ENetworkFailure::PendingConnectionFailure;
+	const bool bIsClient = GetNetMode() == NM_Client;
+	const bool bShouldReturnToMainMenu = bIsClient && IsLocalController() && bReconnectableFailure;
+
 	FString FailureTypeString;
 	switch (FailureType)
 	{
@@ -596,18 +604,18 @@ void ABRPlayerController::HandleNetworkFailure(UWorld* World, UNetDriver* NetDri
 		FailureTypeString = TEXT("Unknown");
 		break;
 	}
-	
+
 	UE_LOG(LogTemp, Error, TEXT("[방 참가] 네트워크 연결 실패 감지!"));
 	UE_LOG(LogTemp, Error, TEXT("[방 참가] 실패 유형: %s"), *FailureTypeString);
 	UE_LOG(LogTemp, Error, TEXT("[방 참가] 오류 메시지: %s"), *ErrorString);
-	
+
 	if (NetDriver)
 	{
-		FString ServerAddress = NetDriver->ServerConnection ? 
+		FString ServerAddress = NetDriver->ServerConnection ?
 			NetDriver->ServerConnection->LowLevelGetRemoteAddress(true) : TEXT("Unknown");
 		UE_LOG(LogTemp, Error, TEXT("[방 참가] 서버 주소: %s"), *ServerAddress);
 	}
-	
+
 	// 일반적인 원인 안내
 	if (FailureType == ENetworkFailure::ConnectionTimeout || FailureType == ENetworkFailure::PendingConnectionFailure)
 	{
@@ -616,6 +624,15 @@ void ABRPlayerController::HandleNetworkFailure(UWorld* World, UNetDriver* NetDri
 		UE_LOG(LogTemp, Error, TEXT("  2. 방화벽이 포트를 차단함 (포트 7777 확인)"));
 		UE_LOG(LogTemp, Error, TEXT("  3. 서버가 다른 맵을 로드하지 않음"));
 		UE_LOG(LogTemp, Error, TEXT("  4. 네트워크 연결 문제"));
+	}
+
+	// 클라이언트: 끊김 시 메인 메뉴로 복귀 → 방 찾기에서 재접속 가능
+	if (bShouldReturnToMainMenu)
+	{
+		// GameMode 로비 맵과 동일한 경로 사용 (LobbyMapPath 비어 있으면 기본값)
+		static const FString MainMenuMapPath = TEXT("/Game/Main/Level/Main_Scene");
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 연결이 끊어졌습니다. 메인 메뉴로 돌아갑니다. 방 찾기에서 다시 접속할 수 있습니다."));
+		ClientTravel(MainMenuMapPath, ETravelType::TRAVEL_Absolute);
 	}
 }
 
