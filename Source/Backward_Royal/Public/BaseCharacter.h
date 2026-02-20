@@ -167,10 +167,6 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "Status|Stun")
     void OnRecoverFromStun();
 
-    void PlayPhysicsHitReaction(FVector Impulse, FVector HitLocation, FName BoneName);
-
-    void ResetPhysicsReaction();
-
 protected:
     bool bIsCharacterAttacking = false;
 

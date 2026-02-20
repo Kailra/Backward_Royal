@@ -592,36 +592,3 @@ void ABaseCharacter::MulticastRecoverFromStun_Implementation()
     // 블루프린트 이벤트 호출 (모든 클라이언트에서 실행됨)
     OnRecoverFromStun();
 }
-
-void ABaseCharacter::PlayPhysicsHitReaction(FVector Impulse, FVector HitLocation, FName BoneName)
-{
-    if (!GetMesh() || IsDead()) return;
-
-    // 1. 피격 부위 시뮬레이션 활성화
-    // SetAllBodiesBelowSimulatePhysics를 사용하여 피격된 본과 그 하위 본들의 물리를 켭니다.
-    // 세 번째 인자 bSkipCustomPhysics를 false로 하여 물리 효과가 즉시 적용되게 합니다.
-    GetMesh()->SetAllBodiesBelowSimulatePhysics(BoneName, true, false);
-
-    // 2. 물리적인 힘 적용
-    // 실제 엔진의 물리 시뮬레이션이 돌아가므로 AddImpulseAtLocation이 자연스럽게 작동합니다.
-    GetMesh()->AddImpulseAtLocation(Impulse, HitLocation, BoneName);
-
-    // 3. 일정 시간 후 물리 시뮬레이션 종료 및 애니메이션 복구
-    // 너무 오래 켜두면 캐릭터가 무너질 수 있으므로 짧게(예: 0.2초) 유지합니다.
-    GetWorld()->GetTimerManager().SetTimer(PhysicsReactionTimerHandle, this, &ABaseCharacter::ResetPhysicsReaction, 0.2f, false);
-
-    CHAR_LOG(Log, TEXT("Physics Hit Applied to Bone: %s"), *BoneName.ToString());
-}
-
-void ABaseCharacter::ResetPhysicsReaction()
-{
-    if (GetMesh() && !IsDead())
-    {
-        // 전체 메쉬의 물리 시뮬레이션을 끄고 다시 애니메이션 상태(Kinematic)로 복구합니다.
-        GetMesh()->SetAllBodiesSimulatePhysics(false);
-
-        // 메쉬가 캡슐에서 이탈하지 않도록 상대 위치를 초기화할 수 있습니다.
-        GetMesh()->AttachToComponent(GetCapsuleComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-        GetMesh()->SetRelativeLocation(FVector(0, 0, -GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
-    }
-}
