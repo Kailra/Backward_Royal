@@ -361,13 +361,6 @@ void APlayerCharacter::OnRep_PlayerState()
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (MyPS)
 	{
-		// [수정] 이미 상/하체 모두 적용(Lock)이 끝났다면 델리게이트 재연결 불필요
-		if (!bUpperBodyApplied || !bLowerBodyApplied)
-		{
-			MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-			MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
-		}
-
 		// 파트너 바인딩은 로직 유지를 위해 연결
 		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
