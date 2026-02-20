@@ -434,11 +434,11 @@ void APlayerCharacter::TryApplyCustomization()
 		return;
 	}
 
+	// [신규 핵심 가드] 파트너가 연결되었지만 두 플레이어의 상/하체 역할이 동일하다면 보류
 	if (bCanLock && MyPS->PartnerPlayerState)
 	{
 		if (MyPS->bIsLowerBody == MyPS->PartnerPlayerState->bIsLowerBody)
 		{
-			// LOG_PLAYER(Warning, TEXT("역할 동기화 중 (둘 다 상체이거나 둘 다 하체임) -> 커마 적용 보류"));
 			return;
 		}
 	}
@@ -447,7 +447,8 @@ void APlayerCharacter::TryApplyCustomization()
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
 	// --- 상체 적용 ---
-	if (UpperPS && UpperPS->CustomizationData.bIsDataValid)
+	// [수정] bIsDataValid 검사를 빼고 무조건 진입시켜, 유효하지 않은 데이터(ID=0)일 때 기본 파츠로 명시적 덮어쓰기를 합니다.
+	if (UpperPS)
 	{
 		// [핵심] 이미 적용됐더라도 Lock이 안 걸려있다면(!bCanLock) 다시 적용 허용 (덮어쓰기)
 		if (!bUpperBodyApplied || !bCanLock)
@@ -455,9 +456,14 @@ void APlayerCharacter::TryApplyCustomization()
 			// 역할 교차 검증 (UpperPS가 진짜 상체 역할인지?)
 			if (!UpperPS->bIsLowerBody)
 			{
-				ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
-				ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
-				ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+				// bIsDataValid가 false(기본 커마)라면 ID를 0으로 강제하여 기존 잔상 파츠를 초기화
+				int32 ApplyHeadID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HeadID : 0;
+				int32 ApplyChestID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.ChestID : 0;
+				int32 ApplyHandID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HandID : 0;
+
+				ApplyMeshFromID(EArmorSlot::Head, ApplyHeadID);
+				ApplyMeshFromID(EArmorSlot::Chest, ApplyChestID);
+				ApplyMeshFromID(EArmorSlot::Hands, ApplyHandID);
 
 				// [수정 2] 확실한 상황일 때만 잠금
 				if (bCanLock)
@@ -476,14 +482,18 @@ void APlayerCharacter::TryApplyCustomization()
 	}
 
 	// --- 하체 적용 ---
-	if (LowerPS && LowerPS->CustomizationData.bIsDataValid)
+	// [수정] 하체 역시 기본 데이터일 때 이전 캐릭터의 찌꺼기를 초기화하도록 동일하게 수정합니다.
+	if (LowerPS)
 	{
 		if (!bLowerBodyApplied || !bCanLock)
 		{
 			if (LowerPS->bIsLowerBody)
 			{
-				ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-				ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+				int32 ApplyLegID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.LegID : 0;
+				int32 ApplyFootID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.FootID : 0;
+
+				ApplyMeshFromID(EArmorSlot::Legs, ApplyLegID);
+				ApplyMeshFromID(EArmorSlot::Feet, ApplyFootID);
 
 				if (bCanLock)
 				{
