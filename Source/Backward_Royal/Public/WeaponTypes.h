@@ -28,6 +28,14 @@ struct FWeaponData : public FTableRowBase
 {
     GENERATED_BODY()
 
+    // Initialize pointer to nullptr
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UStaticMesh* WeaponMesh = nullptr;
+
+    // Initialize pointer to nullptr
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    UGeometryCollection* FracturedMesh = nullptr;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     UStaticMesh* WeaponMesh;
 
@@ -53,9 +61,12 @@ struct FWeaponData : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float AttackSpeedCoefficient = 1.0f;
 
+    // Initialize Enum to a safe default (first value)
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    EDamageCategory DamageCategory; // 데미지 타입
+    EDamageCategory DamageCategory = EDamageCategory::Slash_Pierce; // 데미지 타입
 
+    // Initialize Enum to None
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    EWeaponType WeaponType; // 무기 타입
+    EWeaponType WeaponType = EWeaponType::None; // 무기 타입
+
 };
