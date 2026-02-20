@@ -174,5 +174,5 @@ protected:
     bool IsDead() const;
 
     FTimerHandle StunTimerHandle;
-
+    FTimerHandle PhysicsReactionTimerHandle;
 };
