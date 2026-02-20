@@ -42,8 +42,8 @@ public:
 	TArray<FString> StageMapPathsFallback = { 
 		//TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
 		//TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
-		//TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
-		TEXT("/Game/Main/Level/Stage/Stage04_Race") 
+		TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
+		//TEXT("/Game/Main/Level/Stage/Stage04_Race") 
 		};
 
 	// 랜덤 맵 선택 사용 여부
