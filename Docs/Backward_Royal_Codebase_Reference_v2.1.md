@@ -1,9 +1,9 @@
-# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.0)
+# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.1)
 
 ## 1. 개요 (Overview)
 본 문서는 `Source/Backward_Royal` 디렉토리 내의 핵심 소스 코드 파일(헤더)을 **전수 조사(Inventory)**하여 작성된 상세 분석서입니다. 요약 없이 모든 멤버 변수와 함수를 나열하는 것을 원칙으로 합니다.
 
-*   **Version**: v2.0 (Full Inventory)
+*   **Version**: v2.1 (Full Inventory)
 *   **Coverage**: Core Framework, Characters, Items, Components, UI Library
 *   **Legend**:
     *   `[Prop]`: `UPROPERTY` (변수)
@@ -181,7 +181,7 @@
 *   `[Func] EnhancePhysics(bool)`: 물리 시뮬레이션(랙돌) 제어.
 *   `RequestAttack()`: 공격 요청 처리.
 *   `Die()`: 사망 처리 (랙돌 전환, GameMode 알림).
-*   `PerformDeathVisuals()`: 사망 연출 (랙돌).
+*   `PerformDeathVisuals()`: 사망 연출 (래그돌 물리).
 *   `[RPC] MulticastPlayWeaponAttack`: 공격 애니메이션 재생.
 
 ---
@@ -245,7 +245,7 @@
 
 #### Members
 *   `[Prop] WeaponMesh`: 무기 메쉬.
-*   `[Prop] CurrentWeaponData`: 무기 스탯 정보.
+*   `[Prop] CurrentWeaponData` (FWeaponData): 무기 타입별 설정 데이터 (무기 액터의 파괴 효과를 위한 GeometryCollectionMesh인 `FracturedMesh` 설정 등 포함).
 *   `[Prop] DurabilityReduction`: 내구도 감소량.
 
 #### Functions
@@ -268,10 +268,10 @@
 *   **설명**: 공격 판정 및 피격 처리.
 
 #### Members & Functions
-*   `[Func] SetAttackDetection(bool)`: 공격 판정 활성화.
+*   `[Func] SetAttackDetection(bool)`: 공격 판정 활성화 및 피격 액터 목록 초기화. (Replication도 이 단계에서 활성화)
 *   `[RPC] ServerSetAttackDetection`.
-*   `ProcessHitDamage(...)`: 실제 데미지 적용.
-*   `ApplyHitStop(...)`: 역경직 효과 적용.
+*   `ProcessHitDamage(...)`: 실제 데미지 적용 및 타격 대상(Character Mesh의 HitBone 등)에 명시적인 `AddImpulseAtLocation` 물리적 충격 전송.
+*   `ApplyHitStop(...)`: 무기 타격 시 애니메이션 역경직(Hit Stop) 효과 적용(블렌드 아웃 후 강제 종료).
 
 ### 4.5. `UBRWidgetFunctionLibrary`
 *   **파일**: `BRWidgetFunctionLibrary.h`
