@@ -1200,15 +1200,7 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ABRGameMode::ReturnToLobby()
 {
-	// 10초 후 로비 맵으로 심리스 트래블 (세션 유지)
-	if (LobbyMapPath.IsEmpty())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 로비 맵 경로(LobbyMapPath)가 비어있어 로비로 복귀할 수 없습니다."));
-		return;
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 매치 종료: 10초 경과, 로비 맵으로 이동합니다 (%s)"), *LobbyMapPath);
-	GetWorld()->ServerTravel(LobbyMapPath + TEXT("?listen"));
+	TravelToLobby();
 }
 
 void ABRGameMode::CheckMatchWinner()

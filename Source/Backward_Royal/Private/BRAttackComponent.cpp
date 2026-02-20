@@ -15,7 +15,7 @@ float UBRAttackComponent::BasePunchDamage = 10.f;
 UBRAttackComponent::UBRAttackComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
-    SetIsReplicated(true);
+    SetIsReplicatedByDefault(true); // 수정
 }
 
 void UBRAttackComponent::BeginPlay()
