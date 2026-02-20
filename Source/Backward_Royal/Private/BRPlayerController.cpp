@@ -18,6 +18,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Blueprint/UserWidget.h"
 #include "EngineUtils.h"
+#include "Misc/Char.h"
 
 ABRPlayerController::ABRPlayerController()
 	: CurrentMenuWidget(nullptr)
@@ -1107,9 +1108,38 @@ void ABRPlayerController::StartGame()
 }
 
 // 서버 RPC 함수들
+// 서버 보안: 비정상 패킷 검증용 상수
+static constexpr int32 MaxPlayerNameLength = 24;
+static constexpr int32 MaxRoomNameLength = 64;
+static constexpr int32 MinTeamNumber = 0;
+static constexpr int32 MaxTeamNumber = 3;
+static constexpr int32 MaxSlotsPerTeam = 3;
+static constexpr int32 NumLobbyTeams = 4;
+
+/** RPC 수신 이름 정제: 앞뒤 공백 제거, 최대 길이, 제어문자 제거 */
+static FString SanitizePlayerName(const FString& InName)
+{
+	FString S = InName.TrimStartAndEnd();
+	for (int32 i = S.Len() - 1; i >= 0; --i)
+	{
+		if (FChar::IsControl(S[i])) S.RemoveAt(i);
+	}
+	if (S.Len() > MaxPlayerNameLength) S.LeftInline(MaxPlayerNameLength);
+	return S;
+}
+
+/** 방 이름 정제: Trim, 최대 길이 */
+static FString SanitizeRoomName(const FString& InName)
+{
+	FString S = InName.TrimStartAndEnd();
+	if (S.Len() > MaxRoomNameLength) S.LeftInline(MaxRoomNameLength);
+	return S;
+}
+
 void ABRPlayerController::ServerCreateRoom_Implementation(const FString& RoomName)
 {
-	CreateRoom(RoomName);
+	FString SafeName = SanitizeRoomName(RoomName);
+	CreateRoom(SafeName.IsEmpty() ? TEXT("Host's Game") : SafeName);
 }
 
 void ABRPlayerController::ServerFindRooms_Implementation()
@@ -1155,6 +1185,11 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 
 void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 PlayerIndex, int32 NewTeamNumber)
 {
+	if (NewTeamNumber < MinTeamNumber || NewTeamNumber > MaxTeamNumber)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 서버 보안: 잘못된 팀 번호 무시 (%d, 허용 0~%d)"), NewTeamNumber, MaxTeamNumber);
+		return;
+	}
 	// 서버에서 직접 팀 변경 실행
 	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
 	{
@@ -1194,12 +1229,14 @@ void ABRPlayerController::ServerRequestStartGame_Implementation()
 
 void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewPlayerName)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 수신 | NewPlayerName='%s' | HasAuthority=%d"), *NewPlayerName, HasAuthority() ? 1 : 0);
+	FString Sanitized = SanitizePlayerName(NewPlayerName);
+	if (Sanitized.IsEmpty()) Sanitized = TEXT("Player");
+	UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 수신 | NewPlayerName='%s' | HasAuthority=%d"), *Sanitized, HasAuthority() ? 1 : 0);
 	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
 	{
 		FString OldName = BRPS->GetPlayerName();
 		FString OldUID = BRPS->UserUID;
-		BRPS->SetPlayerNameString(NewPlayerName);
+		BRPS->SetPlayerNameString(Sanitized);
 		UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 적용 | 이전 PlayerName='%s' UserUID='%s' → 새 PlayerName='%s'"), *OldName, *OldUID, *BRPS->GetPlayerName());
 		// SetPlayerNameString 내부에서 NotifyUserInfoChanged() → UpdatePlayerList() 호출됨
 	}
@@ -1207,6 +1244,11 @@ void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewP
 
 void ABRPlayerController::ServerSetTeamNumber_Implementation(int32 NewTeamNumber)
 {
+	if (NewTeamNumber < MinTeamNumber || NewTeamNumber > MaxTeamNumber)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[팀 번호 설정] 서버 보안: 잘못된 팀 번호 무시 (%d, 허용 0~%d)"), NewTeamNumber, MaxTeamNumber);
+		return;
+	}
 	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
 	{
 		BRPS->SetTeamNumber(NewTeamNumber);
@@ -1281,6 +1323,11 @@ void ABRPlayerController::RequestMoveMyPlayerToLobbyEntry()
 
 void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
+	if (TeamIndex < 0 || TeamIndex >= NumLobbyTeams || SlotIndex < 0 || SlotIndex >= MaxSlotsPerTeam)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[로비] 서버 보안: 잘못된 슬롯 인덱스 무시 (Team=%d Slot=%d)"), TeamIndex, SlotIndex);
+		return;
+	}
 	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
 	if (!GS || !HasAuthority()) return;
 	APlayerState* PS = GetPlayerState<APlayerState>();
@@ -1293,6 +1340,11 @@ void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 Te
 
 void ABRPlayerController::ServerRequestMoveToLobbyEntry_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
+	if (TeamIndex < 0 || TeamIndex >= NumLobbyTeams || SlotIndex < 0 || SlotIndex >= MaxSlotsPerTeam)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[로비] 서버 보안: 잘못된 슬롯 인덱스 무시 (Team=%d Slot=%d)"), TeamIndex, SlotIndex);
+		return;
+	}
 	ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr;
 	if (!GS || !HasAuthority()) return;
 	if (GS->MovePlayerToLobbyEntry(TeamIndex, SlotIndex))
