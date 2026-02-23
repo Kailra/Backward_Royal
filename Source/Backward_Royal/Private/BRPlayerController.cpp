@@ -652,8 +652,17 @@ void ABRPlayerController::StartSpectatingMode()
 	ClientHandleSpectatorUI();
 }
 
+void ABRPlayerController::SetupSpectatorInput()
+{
+	// 관전 모드는 하체(이동) 컨텍스트를 재사용하여 이동을 가능하게 함
+	SetupRoleInput(true);
+}
+
 void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
 {
+	// 입력 매핑을 하체(이동 가능) 컨텍스트로 변경하여 관전 시 이동 가능하게 함
+	SetupSpectatorInput();
+
 	// 블루프린트에서 구현된 이벤트 호출 (HUD 숨기기 등)
 	OnEnterSpectatorMode();
 }
