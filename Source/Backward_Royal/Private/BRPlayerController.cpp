@@ -1136,8 +1136,22 @@ static FString SanitizeRoomName(const FString& InName)
 	return S;
 }
 
+bool ABRPlayerController::CheckSensitiveRPCRateLimit()
+{
+	if (!GetWorld() || !HasAuthority()) return true; // 클라이언트/비서버에서는 검사 생략
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastSensitiveRPCTime < MinSensitiveRPCIntervalSec)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] RPC 레이트 리밋: 호출 간격이 너무 짧아 무시 (%.2fs)"), MinSensitiveRPCIntervalSec);
+		return false;
+	}
+	LastSensitiveRPCTime = Now;
+	return true;
+}
+
 void ABRPlayerController::ServerCreateRoom_Implementation(const FString& RoomName)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	FString SafeName = SanitizeRoomName(RoomName);
 	CreateRoom(SafeName.IsEmpty() ? TEXT("Host's Game") : SafeName);
 }
@@ -1149,16 +1163,38 @@ void ABRPlayerController::ServerFindRooms_Implementation()
 
 void ABRPlayerController::ServerJoinRoom_Implementation(int32 SessionIndex)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
+	// 서버 보안: 잘못된 세션 인덱스 거부 (음수 또는 상한 초과)
+	if (SessionIndex < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[방 참가] 서버 보안: 잘못된 세션 인덱스 무시 (%d)"), SessionIndex);
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (World && World->GetAuthGameMode() && World->GetAuthGameMode()->GameSession)
+	{
+		if (ABRGameSession* BRSession = Cast<ABRGameSession>(World->GetAuthGameMode()->GameSession))
+		{
+			const int32 SessionCount = BRSession->GetSessionCount();
+			if (SessionCount > 0 && SessionIndex >= SessionCount)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[방 참가] 서버 보안: 세션 인덱스 범위 초과 (%d, 최대 %d)"), SessionIndex, SessionCount - 1);
+				return;
+			}
+		}
+	}
 	JoinRoom(SessionIndex);
 }
 
 void ABRPlayerController::ServerToggleReady_Implementation()
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	ToggleReady();
 }
 
 void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	// 서버에서 직접 팀 배정 실행 (역할/팀 번호만 설정, 상체 스폰·빙의는 게임 맵 로드 후 적용)
 	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
 	{
@@ -1185,6 +1221,7 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 
 void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 PlayerIndex, int32 NewTeamNumber)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	if (NewTeamNumber < MinTeamNumber || NewTeamNumber > MaxTeamNumber)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 서버 보안: 잘못된 팀 번호 무시 (%d, 허용 0~%d)"), NewTeamNumber, MaxTeamNumber);
@@ -1224,11 +1261,13 @@ void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 Pla
 
 void ABRPlayerController::ServerRequestStartGame_Implementation()
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	StartGame();
 }
 
 void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewPlayerName)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	FString Sanitized = SanitizePlayerName(NewPlayerName);
 	if (Sanitized.IsEmpty()) Sanitized = TEXT("Player");
 	UE_LOG(LogTemp, Warning, TEXT("[로비이름] ServerSetPlayerName 수신 | NewPlayerName='%s' | HasAuthority=%d"), *Sanitized, HasAuthority() ? 1 : 0);
@@ -1244,6 +1283,7 @@ void ABRPlayerController::ServerSetPlayerName_Implementation(const FString& NewP
 
 void ABRPlayerController::ServerSetTeamNumber_Implementation(int32 NewTeamNumber)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	if (NewTeamNumber < MinTeamNumber || NewTeamNumber > MaxTeamNumber)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[팀 번호 설정] 서버 보안: 잘못된 팀 번호 무시 (%d, 허용 0~%d)"), NewTeamNumber, MaxTeamNumber);
@@ -1258,6 +1298,7 @@ void ABRPlayerController::ServerSetTeamNumber_Implementation(int32 NewTeamNumber
 
 void ABRPlayerController::ServerSetPlayerRole_Implementation(bool bLowerBody)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	if (ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>())
 	{
 		// 현재는 연결된 플레이어 인덱스를 -1로 설정 (나중에 연결 로직 추가 가능)
@@ -1323,6 +1364,7 @@ void ABRPlayerController::RequestMoveMyPlayerToLobbyEntry()
 
 void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	if (TeamIndex < 0 || TeamIndex >= NumLobbyTeams || SlotIndex < 0 || SlotIndex >= MaxSlotsPerTeam)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[로비] 서버 보안: 잘못된 슬롯 인덱스 무시 (Team=%d Slot=%d)"), TeamIndex, SlotIndex);
@@ -1340,6 +1382,7 @@ void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 Te
 
 void ABRPlayerController::ServerRequestMoveToLobbyEntry_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
+	if (!CheckSensitiveRPCRateLimit()) return;
 	if (TeamIndex < 0 || TeamIndex >= NumLobbyTeams || SlotIndex < 0 || SlotIndex >= MaxSlotsPerTeam)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[로비] 서버 보안: 잘못된 슬롯 인덱스 무시 (Team=%d Slot=%d)"), TeamIndex, SlotIndex);

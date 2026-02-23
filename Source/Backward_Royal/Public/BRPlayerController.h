@@ -273,5 +273,13 @@ private:
 	/** 호스트가 방 나가기 후 메인 맵에서 ListenServer NetDriver를 한 번만 종료해 Standalone으로 전환 (방 찾기 가능하도록) */
 	FTimerHandle ShutdownListenServerTimerHandle;
 	void TryShutdownListenServerForRoomSearch();
+
+	// ----- 서버 보안: RPC 레이트 리밋 -----
+	/** 민감한 Server RPC 호출 시각 (같은 플레이어가 짧은 간격으로 연속 호출 시 무시) */
+	float LastSensitiveRPCTime = 0.f;
+	/** 민감 RPC 최소 호출 간격(초). 이 간격 미만으로 호출되면 무시 */
+	static constexpr float MinSensitiveRPCIntervalSec = 0.2f;
+	/** 서버에서만 사용. true면 처리 진행, false면 레이트 리밋으로 무시 */
+	bool CheckSensitiveRPCRateLimit();
 };
 

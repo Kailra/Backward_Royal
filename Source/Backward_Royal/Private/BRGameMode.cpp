@@ -159,14 +159,25 @@ void ABRGameMode::PreLogin(const FString& Options, const FString& Address, const
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 	if (!ErrorMessage.IsEmpty()) return;
 
-	// 게임 진행 중 입장 차단이 꺼져 있으면 통과
-	if (!bBlockJoinWhenGameStarted) return;
-
 	UWorld* World = GetWorld();
 	if (!World || World->GetNetMode() == NM_Standalone)
 	{
 		return; // 단일 플레이어/로컬에서는 차단하지 않음
 	}
+
+	// 최대 인원 초과 시 입장 거부 (서버 보안)
+	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	{
+		if (BRGameState->PlayerArray.Num() >= MaxPlayers)
+		{
+			ErrorMessage = FString::Printf(TEXT("방 인원이 가득 찼습니다. (%d/%d)"), BRGameState->PlayerArray.Num(), MaxPlayers);
+			UE_LOG(LogTemp, Warning, TEXT("[PreLogin] 최대 인원 초과로 입장 거부 (현재 %d/%d)"), BRGameState->PlayerArray.Num(), MaxPlayers);
+			return;
+		}
+	}
+
+	// 게임 진행 중 입장 차단이 꺼져 있으면 통과
+	if (!bBlockJoinWhenGameStarted) return;
 
 	// 현재 맵이 로비 맵이면 항상 입장 허용
 	FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
