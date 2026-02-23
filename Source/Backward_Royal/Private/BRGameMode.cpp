@@ -381,6 +381,7 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ABRGameMode::Logout(AController* Exiting)
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_BR_Logout);
 	// 방장이 나갔을 경우 새로운 방장 지정 및 역할 재할당
 	if (ABRPlayerState* ExitingPS = Exiting->GetPlayerState<ABRPlayerState>())
 	{
