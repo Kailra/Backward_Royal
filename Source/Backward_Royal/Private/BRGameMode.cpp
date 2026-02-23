@@ -381,6 +381,7 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ABRGameMode::Logout(AController* Exiting)
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_BR_Logout);
 	// 방장이 나갔을 경우 새로운 방장 지정 및 역할 재할당
 	if (ABRPlayerState* ExitingPS = Exiting->GetPlayerState<ABRPlayerState>())
 	{
@@ -1418,8 +1419,10 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s Controller 없음"), *BRPS->GetPlayerName());
 			return false;
 		}
+
 		// SetSpectator(true)는 OnPlayerDied/파트너 루프에서 이미 호출됨 — 여기서는 시점 전환만
 		PC->StartSpectatingMode();
+
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 완료: %s (Index %d)"), *BRPS->GetPlayerName(), PlayerIndex);
 		return true;
 	};
