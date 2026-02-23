@@ -1480,13 +1480,12 @@ void ABRGameMode::TravelToLobby()
 		return;
 	}
 
-	// 로비로 돌아가면 "시작한 방 제외" 플래그 해제 (다시 방 찾기 시 자신의 방이 목록에 보이도록)
+	// 로비로 돌아가면 "시작한 방 제외" 플래그 해제
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(World->GetGameInstance()))
 	{
 		GI->SetExcludeOwnSessionFromSearch(false);
 	}
 
-	// LobbyMapPath가 블루프린트에서 비어 있으면 기본 로비 맵 사용 (BP_MainGameMode에서 미설정 시)
 	static const FString DefaultLobbyMapPath = TEXT("/Game/Main/Level/Main_Scene");
 	FString MapToUse = LobbyMapPath.IsEmpty() ? DefaultLobbyMapPath : LobbyMapPath;
 	if (LobbyMapPath.IsEmpty())
@@ -1496,11 +1495,16 @@ void ABRGameMode::TravelToLobby()
 
 	ReturnToLobbyTimerHandle.Invalidate();
 
+	// [핵심 수정] 로비로 돌아갈 때는 클라이언트 크래시 방지를 위해 Seamless Travel을 끕니다.
+	// (게임 진입 시에는 생성자 기본값인 true가 적용되어 심리스로 이동)
+	bUseSeamlessTravel = false;
+
 	const bool bIsPIE = World->IsPlayInEditor();
+	// 이제 bShouldUseSeamlessTravel은 항상 false가 됨 (PIE 여부 무관)
 	const bool bShouldUseSeamlessTravel = bUseSeamlessTravel && !bIsPIE;
 	const FString TravelURL = MapToUse + TEXT("?listen");
 
-	UE_LOG(LogTemp, Warning, TEXT("[게임 종료] 로비로 이동: %s"), *MapToUse);
+	UE_LOG(LogTemp, Warning, TEXT("[게임 종료] 로비로 이동(Hard Travel): %s"), *MapToUse);
 
 	if (bShouldUseSeamlessTravel)
 	{
