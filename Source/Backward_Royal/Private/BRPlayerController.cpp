@@ -19,6 +19,8 @@
 #include "Blueprint/UserWidget.h"
 #include "EngineUtils.h"
 #include "Misc/Char.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/Paths.h"
 
 ABRPlayerController::ABRPlayerController()
 	: CurrentMenuWidget(nullptr)
@@ -1149,9 +1151,40 @@ bool ABRPlayerController::CheckSensitiveRPCRateLimit()
 	return true;
 }
 
+bool ABRPlayerController::IsInLobbyMap() const
+{
+	UWorld* World = GetWorld();
+	if (!World) return false;
+	FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
+	if (CurrentMapName.IsEmpty())
+	{
+		CurrentMapName = World->GetMapName();
+		CurrentMapName.RemoveFromStart(World->StreamingLevelsPrefix);
+	}
+	FString LobbyMapBase = TEXT("Main_Scene");
+	if (ABRGameMode* BRGM = World->GetAuthGameMode<ABRGameMode>())
+	{
+		LobbyMapBase = BRGM->LobbyMapPath.IsEmpty() ? TEXT("Main_Scene") : FPaths::GetBaseFilename(BRGM->LobbyMapPath);
+	}
+	return CurrentMapName.Equals(LobbyMapBase, ESearchCase::IgnoreCase);
+}
+
 void ABRPlayerController::ServerCreateRoom_Implementation(const FString& RoomName)
 {
 	if (!CheckSensitiveRPCRateLimit()) return;
+	// 서버 보안: 이미 세션이 있으면 방 생성 거부 (중복 생성·비정상 호출 방지)
+	UWorld* World = GetWorld();
+	if (World && World->GetAuthGameMode() && World->GetAuthGameMode()->GameSession)
+	{
+		if (ABRGameSession* BRSession = Cast<ABRGameSession>(World->GetAuthGameMode()->GameSession))
+		{
+			if (BRSession->HasActiveSession())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 방 생성 거부: 이미 활성 세션이 있음"));
+				return;
+			}
+		}
+	}
 	FString SafeName = SanitizeRoomName(RoomName);
 	CreateRoom(SafeName.IsEmpty() ? TEXT("Host's Game") : SafeName);
 }
@@ -1195,6 +1228,19 @@ void ABRPlayerController::ServerToggleReady_Implementation()
 void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 {
 	if (!CheckSensitiveRPCRateLimit()) return;
+	// 방장 전용 RPC: 방장이 아니면 무시
+	ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>();
+	if (!BRPS || !BRPS->bIsHost)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 방장 전용 RPC(랜덤 팀): 방장이 아니어서 무시"));
+		return;
+	}
+	// 로비 전용: 로비 맵이 아니면 무시 (게임 중 RPC 남용 방지)
+	if (!IsInLobbyMap())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 로비 전용 RPC(랜덤 팀): 로비 맵이 아니어서 무시"));
+		return;
+	}
 	// 서버에서 직접 팀 배정 실행 (역할/팀 번호만 설정, 상체 스폰·빙의는 게임 맵 로드 후 적용)
 	if (ABRGameState* BRGameState = GetWorld()->GetGameState<ABRGameState>())
 	{
@@ -1222,6 +1268,19 @@ void ABRPlayerController::ServerRequestRandomTeams_Implementation()
 void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 PlayerIndex, int32 NewTeamNumber)
 {
 	if (!CheckSensitiveRPCRateLimit()) return;
+	// 방장 전용 RPC: 방장이 아니면 무시
+	ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>();
+	if (!BRPS || !BRPS->bIsHost)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 방장 전용 RPC(팀 변경): 방장이 아니어서 무시"));
+		return;
+	}
+	// 로비 전용: 로비 맵이 아니면 무시
+	if (!IsInLobbyMap())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 로비 전용 RPC(팀 변경): 로비 맵이 아니어서 무시"));
+		return;
+	}
 	if (NewTeamNumber < MinTeamNumber || NewTeamNumber > MaxTeamNumber)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[팀 변경] 서버 보안: 잘못된 팀 번호 무시 (%d, 허용 0~%d)"), NewTeamNumber, MaxTeamNumber);
@@ -1262,6 +1321,19 @@ void ABRPlayerController::ServerRequestChangePlayerTeam_Implementation(int32 Pla
 void ABRPlayerController::ServerRequestStartGame_Implementation()
 {
 	if (!CheckSensitiveRPCRateLimit()) return;
+	// 방장 전용 RPC: 방장이 아니면 무시
+	ABRPlayerState* BRPS = GetPlayerState<ABRPlayerState>();
+	if (!BRPS || !BRPS->bIsHost)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 방장 전용 RPC(게임 시작): 방장이 아니어서 무시"));
+		return;
+	}
+	// 로비 전용: 로비 맵이 아니면 무시 (게임 중 시작 RPC 남용 방지)
+	if (!IsInLobbyMap())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 로비 전용 RPC(게임 시작): 로비 맵이 아니어서 무시"));
+		return;
+	}
 	StartGame();
 }
 
@@ -1365,6 +1437,12 @@ void ABRPlayerController::RequestMoveMyPlayerToLobbyEntry()
 void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
 	if (!CheckSensitiveRPCRateLimit()) return;
+	// 로비 전용: 로비 맵이 아니면 무시 (게임 중 슬롯 RPC 남용 방지)
+	if (!IsInLobbyMap())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 로비 전용 RPC(팀 슬롯 배치): 로비 맵이 아니어서 무시"));
+		return;
+	}
 	if (TeamIndex < 0 || TeamIndex >= NumLobbyTeams || SlotIndex < 0 || SlotIndex >= MaxSlotsPerTeam)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[로비] 서버 보안: 잘못된 슬롯 인덱스 무시 (Team=%d Slot=%d)"), TeamIndex, SlotIndex);
@@ -1383,6 +1461,12 @@ void ABRPlayerController::ServerRequestAssignToLobbyTeam_Implementation(int32 Te
 void ABRPlayerController::ServerRequestMoveToLobbyEntry_Implementation(int32 TeamIndex, int32 SlotIndex)
 {
 	if (!CheckSensitiveRPCRateLimit()) return;
+	// 로비 전용: 로비 맵이 아니면 무시
+	if (!IsInLobbyMap())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[서버 보안] 로비 전용 RPC(대기열 이동): 로비 맵이 아니어서 무시"));
+		return;
+	}
 	if (TeamIndex < 0 || TeamIndex >= NumLobbyTeams || SlotIndex < 0 || SlotIndex >= MaxSlotsPerTeam)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[로비] 서버 보안: 잘못된 슬롯 인덱스 무시 (Team=%d Slot=%d)"), TeamIndex, SlotIndex);

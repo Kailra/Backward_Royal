@@ -281,5 +281,8 @@ private:
 	static constexpr float MinSensitiveRPCIntervalSec = 0.2f;
 	/** 서버에서만 사용. true면 처리 진행, false면 레이트 리밋으로 무시 */
 	bool CheckSensitiveRPCRateLimit();
+
+	/** 현재 맵이 로비 맵인지 (로비 전용 RPC 허용 여부). 서버 보안용 */
+	bool IsInLobbyMap() const;
 };
 
