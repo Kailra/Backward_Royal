@@ -1345,11 +1345,30 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	// 생존 팀 확인 및 우승 처리
 	CheckMatchWinner();
 
+	// [수정] Victim과 Partner의 Controller를 각각 독립적으로 찾아서 WeakPtr로 바인딩
+	// Victim이 나가더라도 Partner는 정상적으로 관전 전환됨
+	ABRPlayerController* VictimPC = Cast<ABRPlayerController>(PS->GetOwningController());
+
+	ABRPlayerController* PartnerPC = nullptr;
+	if (GS->PlayerArray.IsValidIndex(PartnerPlayerIndex))
+	{
+		if (APlayerState* PartnerPS = GS->PlayerArray[PartnerPlayerIndex])
+		{
+			PartnerPC = Cast<ABRPlayerController>(PartnerPS->GetOwningController());
+		}
+	}
+
+	TWeakObjectPtr<ABRPlayerController> WeakVictimPC = VictimPC;
+	TWeakObjectPtr<ABRPlayerController> WeakPartnerPC = PartnerPC;
+
 	FTimerDelegate TimerDel;
-	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectatorByPlayerIndices, VictimPlayerIndex, PartnerPlayerIndex);
+	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectator, WeakVictimPC, WeakPartnerPC);
 	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (VictimIdx=%d, PartnerIdx=%d)"),
-		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (Victim: %s, Partner: %s)"),
+		PS->TeamNumber,
+		VictimPC ? *VictimPC->GetName() : TEXT("None"),
+		PartnerPC ? *PartnerPC->GetName() : TEXT("None"));
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)

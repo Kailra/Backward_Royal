@@ -115,6 +115,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	class UInputMappingContext* UpperBodyContext;
 
+	// [관전 모드 입력]
+	UPROPERTY(EditAnywhere, Category = "Input")
+	class UInputAction* IA_SpectatorMove;
+
+	UPROPERTY(EditAnywhere, Category = "Input")
+	class UInputAction* IA_SpectatorLook;
+
 	// ========== UI 관리 시스템 ==========
 	
 	// 초기 UI 위젯 클래스 (에디터에서 설정)
@@ -195,6 +202,9 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	virtual void SetupInputComponent() override;
+
 	// 서버에서 빙의했을 때 호출됨
 	virtual void OnPossess(APawn* aPawn) override;
 
@@ -277,5 +287,11 @@ private:
 	/** 호스트가 방 나가기 후 메인 맵에서 ListenServer NetDriver를 한 번만 종료해 Standalone으로 전환 (방 찾기 가능하도록) */
 	FTimerHandle ShutdownListenServerTimerHandle;
 	void TryShutdownListenServerForRoomSearch();
+
+	/** 관전 모드 이동 처리 */
+	void Input_SpectatorMove(const struct FInputActionValue& Value);
+
+	/** 관전 모드 시점 회전 처리 */
+	void Input_SpectatorLook(const struct FInputActionValue& Value);
 };
 

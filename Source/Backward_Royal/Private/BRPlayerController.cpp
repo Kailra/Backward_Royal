@@ -8,8 +8,10 @@
 #include "BRGameInstance.h"
 #include "UpperBodyPawn.h"
 #include "GameFramework/GameModeBase.h"
+#include "GameFramework/SpectatorPawn.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
+#include "EnhancedInputComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/NetDriver.h"
@@ -19,6 +21,7 @@
 #include "Blueprint/UserWidget.h"
 #include "EngineUtils.h"
 #include "Misc/Char.h"
+
 
 ABRPlayerController::ABRPlayerController()
 	: CurrentMenuWidget(nullptr)
@@ -1733,6 +1736,72 @@ void ABRPlayerController::SetupRoleInput(bool bIsLower)
         // 클라이언트에게 입력 시스템 재시작 명령 (SetupPlayerInputComponent 재호출 유도)
         ClientRestart(P);
     }
+}
+
+void ABRPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+
+	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
+	{
+		// 관전 이동 (IA_SpectatorMove)
+		if (IA_SpectatorMove)
+		{
+			EnhancedInputComponent->BindAction(IA_SpectatorMove, ETriggerEvent::Triggered, this, &ABRPlayerController::Input_SpectatorMove);
+		}
+
+		// 관전 시점 회전 (IA_SpectatorLook)
+		if (IA_SpectatorLook)
+		{
+			EnhancedInputComponent->BindAction(IA_SpectatorLook, ETriggerEvent::Triggered, this, &ABRPlayerController::Input_SpectatorLook);
+		}
+	}
+}
+
+void ABRPlayerController::Input_SpectatorMove(const FInputActionValue& Value)
+{
+	// 관전 모드가 아니면 무시 (혹은 현재 Pawn이 SpectatorPawn인지 확인)
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn || !ControlledPawn->IsA<ASpectatorPawn>())
+	{
+		return;
+	}
+
+	FVector2D MovementVector = Value.Get<FVector2D>();
+
+	// SpectatorPawn은 기본적으로 MoveForward/MoveRight 함수를 가지고 있음
+	// (카메라 방향 기준으로 이동)
+	if (ASpectatorPawn* Spectator = Cast<ASpectatorPawn>(ControlledPawn))
+	{
+		if (MovementVector.X != 0.0f)
+		{
+			Spectator->MoveForward(MovementVector.X);
+		}
+		if (MovementVector.Y != 0.0f)
+		{
+			Spectator->MoveRight(MovementVector.Y);
+		}
+	}
+}
+
+void ABRPlayerController::Input_SpectatorLook(const FInputActionValue& Value)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn || !ControlledPawn->IsA<ASpectatorPawn>())
+	{
+		return;
+	}
+
+	FVector2D LookAxisVector = Value.Get<FVector2D>();
+
+	if (LookAxisVector.X != 0.0f)
+	{
+		ControlledPawn->AddControllerYawInput(LookAxisVector.X);
+	}
+	if (LookAxisVector.Y != 0.0f)
+	{
+		ControlledPawn->AddControllerPitchInput(LookAxisVector.Y);
+	}
 }
 
 // ========== UI 관리 함수 구현 ==========
