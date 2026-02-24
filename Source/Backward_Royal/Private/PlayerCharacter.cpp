@@ -19,6 +19,11 @@ DEFINE_LOG_CATEGORY(LogPlayerChar);
 #define LOG_PLAYER(Verbosity, Format, ...) \
     UE_LOG(LogPlayerChar, Verbosity, TEXT("%s - %s"), *FString(__FUNCTION__), *FString::Printf(Format, ##__VA_ARGS__))
 
+// static 변수 초기화
+float APlayerCharacter::Global_RotationRateYaw = 300.0f;
+float APlayerCharacter::Global_BrakingFriction = 1.0f;
+float APlayerCharacter::Global_BrakingDecelerationWalking = 500.0f;
+
 APlayerCharacter::APlayerCharacter()
 {
 	// [기본 설정 유지 및 수정]
@@ -31,15 +36,15 @@ APlayerCharacter::APlayerCharacter()
 
 	// 회전 관성 적용
 	GetCharacterMovement()->bUseControllerDesiredRotation = true; // 컨트롤러 시점 방향으로 천천히 회전하게 만듭니다.
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 300.0f, 0.0f); // Yaw 수치가 낮을수록 회전이 더 묵직하고 느려집니다. (기존 500.0f)
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, Global_RotationRateYaw, 0.0f); // Yaw 수치가 낮을수록 회전이 더 묵직하고 느려집니다. (기존 500.0f)
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 
 	// 2. WASD 이동 관성 (가속 및 감속)
 	// 캐릭터의 초기 가속을 느리게 하고, 키를 뗐을 때 즉시 멈추지 않고 미끄러지듯 감속하게 합니다.
 	GetCharacterMovement()->MaxAcceleration = 600.f; // 가속도: 수치가 낮을수록 최고 속도에 도달하기까지 오래 걸려 무겁게 느껴집니다.
 	GetCharacterMovement()->bUseSeparateBrakingFriction = true; // 감속 마찰력을 별도로 사용하도록 활성화합니다.
-	GetCharacterMovement()->BrakingFriction = 0.5f; // 마찰력: 수치가 낮을수록 키를 뗐을 때 지면에서 더 많이 미끄러집니다.
-	GetCharacterMovement()->BrakingDecelerationWalking = 250.f; // 감속도: 수치가 낮을수록 완전히 정지할 때까지의 거리가 길어집니다.
+	GetCharacterMovement()->BrakingFriction = Global_BrakingFriction; // 마찰력: 수치가 낮을수록 키를 뗐을 때 지면에서 더 많이 미끄러집니다.
+	GetCharacterMovement()->BrakingDecelerationWalking = Global_BrakingDecelerationWalking; // 감속도: 수치가 낮을수록 완전히 정지할 때까지의 거리가 길어집니다.
 
 	// GetMesh()->SetOwnerNoSee(true); // <- 몸 투명화
 	GetMesh()->bCastHiddenShadow = true;
