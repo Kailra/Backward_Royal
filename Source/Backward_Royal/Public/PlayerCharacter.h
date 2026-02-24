@@ -21,6 +21,11 @@ public:
 	APlayerCharacter();
 	virtual void OnRep_PlayerState() override;
 
+	// 플레이어 이동 관련 전역 변수 (GameInstance에서 업데이트됨)
+	static float Global_RotationRateYaw;
+	static float Global_BrakingFriction;
+	static float Global_BrakingDecelerationWalking;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
