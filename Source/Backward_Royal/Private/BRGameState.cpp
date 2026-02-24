@@ -29,6 +29,7 @@ void ABRGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(ABRGameState, bCanStartGame);
 	DOREPLIFETIME(ABRGameState, RoomTitle);
 	DOREPLIFETIME(ABRGameState, WinningTeamNumber);
+	DOREPLIFETIME(ABRGameState, bBodyAssignmentComplete);
 }
 
 void ABRGameState::BeginPlay()
@@ -657,6 +658,12 @@ void ABRGameState::OnRep_RoomTitle()
 void ABRGameState::OnRep_WinningTeamNumber()
 {
 	// 승리 팀 복제 수신 시 UI 갱신용
+}
+
+void ABRGameState::OnRep_BodyAssignmentComplete()
+{
+	// 클라이언트: 서버에서 bBodyAssignmentComplete 복제 수신 시 델리게이트 브로드캐스트 → 로딩 UI 해제·인게임 UI 표시 등에 사용
+	OnBodyAssignmentComplete.Broadcast();
 }
 
 void ABRGameState::EndGameWithWinner(int32 WinnerTeamNumber)

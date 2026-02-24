@@ -12,6 +12,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGameEndedWithWinner, int32, Winni
 /** 매치 종료 시 (위치, 상체 이름, 하체 이름). MulticastMatchEnded에서 브로드캐스트 */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMatchEnded, FVector, WinnerLocation, FString, UpperName, FString, LowerName);
 
+/** 전체 플레이어 상하체 배정이 완료되었을 때 (퍼즈 해제·UI 표시 등에 사용) */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBodyAssignmentComplete);
+
 UCLASS()
 class BACKWARD_ROYAL_API ABRGameState : public AGameStateBase
 {
@@ -52,6 +55,10 @@ public:
 	UPROPERTY(ReplicatedUsing = OnRep_WinningTeamNumber, BlueprintReadOnly, Category = "Game")
 	int32 WinningTeamNumber = 0;
 
+	/** [서버 설정 → 복제] 상하체 배정이 모두 끝나면 true. 클라이언트는 RepNotify로 수신 후 OnBodyAssignmentComplete 브로드캐스트 */
+	UPROPERTY(ReplicatedUsing = OnRep_BodyAssignmentComplete, BlueprintReadOnly, Category = "Game")
+	bool bBodyAssignmentComplete = false;
+
 	// 플레이어 목록 변경 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnPlayerListChanged OnPlayerListChanged;
@@ -71,6 +78,10 @@ public:
 	// 매치 종료(우승 팀 결정) 이벤트
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnMatchEnded OnMatchEnded;
+
+	/** 전체 플레이어 상하체 배정 완료 시 브로드캐스트. 퍼즈 해제·입력 활성화·UI 표시 등에 바인딩 */
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnBodyAssignmentComplete OnBodyAssignmentComplete;
 
 	// [서버->클라이언트] 매치 종료 이벤트를 모든 클라이언트에게 전파
 	UFUNCTION(NetMulticast, Reliable)
@@ -159,6 +170,10 @@ public:
 	/** 승리 팀 번호 복제 수신 시 호출 (UI 갱신용) */
 	UFUNCTION()
 	void OnRep_WinningTeamNumber();
+
+	/** 상하체 배정 완료 복제 수신 시 호출 (클라이언트에서 로딩 UI→인게임 UI 전환용, 델리게이트 브로드캐스트) */
+	UFUNCTION()
+	void OnRep_BodyAssignmentComplete();
 
 	/** [서버 전용] 승리 팀 설정 후 게임 종료 처리. WinningTeamNumber 설정 및 OnGameEndedWithWinner 브로드캐스트 */
 	void EndGameWithWinner(int32 WinnerTeamNumber);

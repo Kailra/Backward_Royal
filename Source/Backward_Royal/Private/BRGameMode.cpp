@@ -836,6 +836,13 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 		if (StagedUpperBodiesSpawnedCount == 0)
 			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 순차 상체 스폰 완료 but 상체 0명 스폰됨 (하체만 스폰된 상태일 수 있음)"));
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 순차 상체 스폰 완료 (고정 규칙: 하체 %d명, 상체 %d명 / 실제 상체 스폰 %d명)"), StagedNumTeams, StagedNumTeams, StagedUpperBodiesSpawnedCount);
+
+		if (ABRGameState* BRGS = GetGameState<ABRGameState>())
+		{
+			BRGS->bBodyAssignmentComplete = true;
+			BRGS->OnBodyAssignmentComplete.Broadcast();
+		}
+
 		StagedSortedByTeam.Empty();
 		StagedNumTeams = 0;
 		StagedCurrentTeamIndex = 0;
