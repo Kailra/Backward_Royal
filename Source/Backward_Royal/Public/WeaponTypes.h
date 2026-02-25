@@ -2,8 +2,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataTable.h"
-#include "Sound/SoundBase.h" // [필수] 사운드 헤더 추가
 #include "GeometryCollection/GeometryCollectionObject.h"
 #include "WeaponTypes.generated.h"
 
@@ -64,13 +62,5 @@ struct FWeaponData : public FTableRowBase
     // Initialize Enum to None
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     EWeaponType WeaponType = EWeaponType::None; // 무기 타입
-    
-    // [신규] 무기 휘두르는 소리 (예: 붕~, 슉!)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
-    USoundBase* SwingSound;
-
-    // [신규] 무기로 때렸을 때 나는 소리 (예: 퍽!, 챙강!)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
-    USoundBase* HitSound;
 
 };

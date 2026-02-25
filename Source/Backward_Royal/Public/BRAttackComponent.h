@@ -51,10 +51,6 @@ public:
 	// 서버에서 모든 클라이언트로 히트 스탑 명령 전송
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastApplyHitStop(float Duration);
-	
-	// [신규] 모든 클라이언트에게 타격음 재생을 명령하는 함수
-	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastPlayHitSound(USoundBase* SoundToPlay, FVector Location);
 
 private:
 	bool bIsDetectionActive = false;
