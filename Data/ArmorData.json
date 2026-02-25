@@ -59,6 +59,174 @@
       "Name": "Armor_10",
       "DisplayName": "MilitaryFoot",
       "EquipSlot": 4
+    },
+    {
+      "ID": 102,
+      "Name": "Armor_11",
+      "DisplayName": "SKM_Bergs03_Head_5",
+      "EquipSlot": 0
+    },
+    {
+      "ID": 202,
+      "Name": "Armor_12",
+      "DisplayName": "SKM_Bergs03_Chest_1",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 302,
+      "Name": "Armor_13",
+      "DisplayName": "SKM_Bergs03_Hand_1",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 402,
+      "Name": "Armor_14",
+      "DisplayName": "SKM_Bergs03_Leg_1",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 502,
+      "Name": "Armor_15",
+      "DisplayName": "SKM_Bergs03_Foot_1",
+      "EquipSlot": 4
+    },
+    {
+      "ID": 103,
+      "Name": "Armor_16",
+      "DisplayName": "SKM_Bill01_Head_4",
+      "EquipSlot": 0
+    },
+    {
+      "ID": 203,
+      "Name": "Armor_17",
+      "DisplayName": "SKM_Bill01_Chest_1",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 303,
+      "Name": "Armor_18",
+      "DisplayName": "SKM_Bill01_Hand_1",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 403,
+      "Name": "Armor_19",
+      "DisplayName": "SKM_Bill01_Leg_1",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 503,
+      "Name": "Armor_20",
+      "DisplayName": "SKM_Bill01_Foot_1",
+      "EquipSlot": 4
+    },
+    {
+      "ID": 104,
+      "Name": "Armor_21",
+      "DisplayName": "SKM_Elder01_Head_2",
+      "EquipSlot": 0
+    },
+    {
+      "ID": 204,
+      "Name": "Armor_22",
+      "DisplayName": "SKM_Elder01_Chest_1",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 304,
+      "Name": "Armor_23",
+      "DisplayName": "SKM_Elder01_Hand_1",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 404,
+      "Name": "Armor_24",
+      "DisplayName": "SKM_Elder01_Leg_1",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 504,
+      "Name": "Armor_25",
+      "DisplayName": "SKM_Elder01_Foot_1",
+      "EquipSlot": 4
+    },
+    {
+      "ID": 205,
+      "Name": "Armor_26",
+      "DisplayName": "SKM_Suit01_Chest_1",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 305,
+      "Name": "Armor_27",
+      "DisplayName": "SKM_Suit01_Hand_1",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 405,
+      "Name": "Armor_28",
+      "DisplayName": "SKM_Suit01_Leg_1",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 206,
+      "Name": "Armor_29",
+      "DisplayName": "SKM_Survival14_Chest_1",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 505,
+      "Name": "Armor_30",
+      "DisplayName": "SKM_Suit01_Foot_1",
+      "EquipSlot": 4
+    },
+    {
+      "ID": 306,
+      "Name": "Armor_31",
+      "DisplayName": "SKM_Survival14_Hand_1",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 406,
+      "Name": "Armor_32",
+      "DisplayName": "SKM_Survival14_Leg_1",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 506,
+      "Name": "Armor_33",
+      "DisplayName": "SKM_Survival14_Foot_1",
+      "EquipSlot": 4
+    },
+    {
+      "ID": 107,
+      "Name": "Armor_34",
+      "DisplayName": "SKM_Topa01_Head_3",
+      "EquipSlot": 0
+    },
+    {
+      "ID": 207,
+      "Name": "Armor_35",
+      "DisplayName": "SKM_Topa01_Chest_1",
+      "EquipSlot": 1
+    },
+    {
+      "ID": 307,
+      "Name": "Armor_36",
+      "DisplayName": "SKM_Topa01_Hand_1",
+      "EquipSlot": 2
+    },
+    {
+      "ID": 407,
+      "Name": "Armor_37",
+      "DisplayName": "SKM_Topa01_Leg_1",
+      "EquipSlot": 3
+    },
+    {
+      "ID": 507,
+      "Name": "Armor_38",
+      "DisplayName": "SKM_Topa01_Foot_1",
+      "EquipSlot": 4
     }
   ]
 }
