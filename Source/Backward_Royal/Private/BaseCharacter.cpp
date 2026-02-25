@@ -10,6 +10,7 @@
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "BRPlayerState.h"
 #include "BRGameMode.h"
+#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogBaseChar);
 
@@ -476,12 +477,21 @@ void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(UAnimMontage* Mont
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
+            // [신규 추가] 무기 휘두르는 소리 재생 (기존 로직에 영향 없음)
+            // 현재 무기가 있고, 그 무기 데이터에 'SwingSound'가 설정되어 있다면 재생
+            if (CurrentWeapon && CurrentWeapon->CurrentWeaponData.SwingSound)
+            {
+                UGameplayStatics::PlaySoundAtLocation(this, CurrentWeapon->CurrentWeaponData.SwingSound, GetActorLocation());
+            }
+
+            // [기존 로직] 공격 속도 계산
             float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
 
             // [핵심] 인자로 받은 몽타주를 재생
             AnimInstance->Montage_Play(MontageToPlay, AttackSpeed);
 
             // [기존 로직 유지] UpperBodyPawn이 요청한 경우(VR 등), 몽타주 종료 콜백 연결
+            // (이 부분은 토씨 하나 안 건드리고 그대로 두었습니다)
             if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
             {
                 FOnMontageEnded EndDelegate;

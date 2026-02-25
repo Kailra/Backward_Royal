@@ -153,6 +153,14 @@ void UBRAttackComponent::ResetHitStop()
     }
 }
 
+void UBRAttackComponent::MulticastPlayHitSound_Implementation(USoundBase* SoundToPlay, FVector Location)
+{
+    if (SoundToPlay)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, Location);
+    }
+}
+
 void UBRAttackComponent::InternalHandleOwnerHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
     if (!bIsDetectionActive || !OtherActor || OtherActor == GetOwner()) return;
@@ -235,6 +243,13 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
         if (MyWeapon)
         {
             MyWeapon->DecreaseDurability(CalculatedDamage);
+
+            // ⭐ [여기에 추가] 무기 타격음(HitSound) 재생!
+            // 무기 데이터에 HitSound가 설정되어 있다면, 맞은 위치(Hit.ImpactPoint)에서 재생
+            if (MyWeapon->CurrentWeaponData.HitSound)
+            {
+                MulticastPlayHitSound(MyWeapon->CurrentWeaponData.HitSound, Hit.ImpactPoint);
+            }
         }
     }
 
