@@ -146,21 +146,26 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Coop|Animation", Replicated)
     FRotator UpperBodyAimRotation;
     
-    // [신규] 발자국 소리 간격 (예: 150cm마다 소리 재생)
-    UPROPERTY(EditAnywhere, Category = "Sound")
-    float FootstepDistanceThreshold = 150.0f;
-    
-    UPROPERTY(EditAnywhere, Category = "Sound")
+    // 발자국 소리 파일
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
     class USoundBase* FootstepSound;
+
+    // 발자국 소리 크기 (1.0 = 기본)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+    float FootstepVolume = 1.0f;
+    
+    // 발자국 소리 간격 (예: 150cm마다 소리 재생)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+    float FootstepDistanceThreshold = 150.0f;
 
 protected:
     UPROPERTY()
     class AUpperBodyPawn* CurrentUpperBodyPawn;
-
-private:
     
-    // 이동 거리 누적 변수
+private:
+    // 이동 거리 누적 변수 (중복 제거됨)
     float AccumulatedDistance = 0.0f;
+
     FTimerHandle TimerHandle_RetryBindPartner;
 
     // 초기 외형 설정 완료 후 중복 적용 방지 플래그
