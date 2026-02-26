@@ -1,4 +1,4 @@
-# Backward Royal 종합 분석 보고서 (v8.1)
+# Backward Royal 종합 분석 보고서 (v8.2)
 
 ## 1. 프로젝트 소개 및 최신 현황
 
@@ -12,21 +12,27 @@
 *   **신규 기반 클래스 (`ABRBasePlayerController`)**:
     *   `APlayerController`를 상속받은 새로운 부모 클래스가 도입되었습니다.
     *   현재는 `StartSpectatingState()` 오버라이드 뼈대가 구축되어 있으며, 추후 관전자 모드 및 게임 종료 후 연출을 위한 기반으로 활용될 예정입니다.
-*   **게임 인스턴스 안정성 강화**:
-    *   `UBRGameInstance`의 PIE(Play In Editor) 종료 시 cleanup 로직이 개선되었습니다.
-    *   델리게이트 해제 순서를 조정하여 에디터 플레이 종료 시 발생할 수 있는 댕글링 포인터 참조 크래시를 방지했습니다.
+*   **네트워크 장애 및 예외 처리 강화**:
+    *   게임 플레이 중 접속이 끊기거나 타임아웃이 발생하면 로컬 컨트롤러(`HandleNetworkFailure`)에서 이를 감지하여 유저를 메인 화면(`EntranceMenu`)으로 안전하게 되돌아가게 하는 로직이 추가되었습니다.
+    *   에러 사유(ConnectionTimeout, PendingConnectionFailure 등)를 명확히 분류하고 로깅을 지원합니다.
+*   **사망 및 관전(Spectator) 모드 보강**:
+    *   사망 시 남은 파트너가 관전자 모드로 자동 전환되며(`StartSpectatingMode`), UI 갱신(`OnEnterSpectatorMode`) 처리를 포함한 관전 상태 진입이 안정화되었습니다.
+    *   상체 컨트롤러의 시점 전환을 더 부드럽게(CameraLag, CameraRotationLag) 연출되도록 수정했습니다.
+*   **청각적 피드백 보강 (Sound Event)**:
+    *   하체 카메라의 움직임(이동 거리)에 비례하여 자동으로 재생되는 **발자국 사운드 시스템(`ProcessFootstep`)**이 도입되었습니다.
+    *   무기 휘두름 및 타격음, 그리고 맨손 공격 시의 사운드가 `MulticastPlayHitSound`를 거쳐 동기화됩니다.
 *   **피격 물리 반응(Physics Hit Reaction) 적용**:
-    *   무기 피격 시 상대 메쉬(Mesh)의 타격 부위에 명시적인 물리적인 힘(`AddImpulseAtLocation`)을 가하여 대상이 자연스럽게 흔들리는 피지컬 애니메이션 효과를 도입했습니다.
-    *   `FWeaponData`에 내구도 파괴 연출을 위한 `FracturedMesh`(GeometryCollection) 설정이 추가되었습니다.
-*   **콘텐츠 확장 및 데이터 동기화**:
+    *   무기 타격 시 상대 메쉬(Mesh)의 타격 부위에 명시적인 물리적 힘(`AddImpulseAtLocation`)을 가하여 대상이 자연스럽게 흔들리는 피지컬 애니메이션 효과를 도입했습니다.
+    *   내구도가 줄어들어 파괴될 위험 여부를 알리며(`BreakWeapon`), 내구도 파괴 연출을 위한 `FracturedMesh`(GeometryCollection) 설정이 추가되었습니다.
+*   **콘텐츠 확장 및 랜덤 레벨**:
     *   **Killzone**: `BP_Killzone` 블루프린트가 추가되어, 맵 밖으로 떨어진 플레이어를 처치하는 로직이 정형화되었습니다.
-    *   **Level**: `Stage01_DevTemple` 및 `Stage04_Race` 맵 업데이트 및 랜덤 레벨 선택 로직이 안정화되었습니다.
+    *   **Level**: `Stage01_DevTemple`, `Stage04_Race` 맵 업데이트와 더불어 방 생성 시 맵을 무작위로 고르는 **랜덤 레벨 선택 기능**(`bUseRandomMap`)이 추가되었습니다.
     *   JSON 기반의 밸런스 데이터(`GlobalSettings`, `WeaponData` 등)가 최신 `uasset`으로 동기화되었습니다.
 
 ### 1.3. 연관 문서 (Linked Documents)
 본 보고서는 프로젝트의 거시적인 분석을 담고 있으며, 세부적인 구현 내용과 코드 참조는 아래의 별첨 문서를 통해 확인할 수 있습니다.
-*   **[Codebase Reference Report (v2.1)](Backward_Royal_Codebase_Reference_v2.1.md)**: 소스 코드를 전수 조사하여 작성한 **클래스 멤버 완벽 분석서**. 모든 변수와 함수를 빠짐없이 나열함(Full Inventory).
-*   **[Exhaustive Causal Chain Specification (v8.1)](Backward_Royal_Technical_Spec_v8.1.md)**: 인과 사슬 및 **블루프린트 연동 가이드(BP Hooks)** 가 포함된 최종 기술 명세서. 각 실행 흐름에서 사용 가능한 BP 함수(BlueprintCallable)를 명확히 태깅함.
+*   **[Codebase Reference Report (v2.2)](Backward_Royal_Codebase_Reference_v2.2.md)**: 소스 코드를 전수 조사하여 작성한 **클래스 멤버 완벽 분석서**. 모든 변수와 함수를 빠짐없이 나열함(Full Inventory).
+*   **[Exhaustive Causal Chain Specification (v8.2)](Backward_Royal_Technical_Spec_v8.2.md)**: 인과 사슬 및 **블루프린트 연동 가이드(BP Hooks)** 가 포함된 최종 기술 명세서. 각 실행 흐름에서 사용 가능한 BP 함수(BlueprintCallable)를 명확히 태깅함.
 
 ---
 

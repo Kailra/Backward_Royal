@@ -1,4 +1,4 @@
-# Backward Royal 기술 분석서 (Exhaustive Causal Chain Spec v8.1)
+# Backward Royal 기술 분석서 (Exhaustive Causal Chain Spec v8.2)
 
 ## 1. 개요 (Overview)
 본 문서는 Backward Royal 프로젝트의 **모든 실행 흐름(Execution Flow)** 을 인과 사슬(Causal Chain)로 정리하고, 각 단계에서 **블루프린트로 제어 가능한 지점(BP Hook / API)** 을 완벽하게 망라한 최종 기술 명세서입니다.
@@ -95,7 +95,9 @@
     1.  `Input Action Move` 트리거.
     2.  `PlayerCharacter::Move`: 전방/후방 벡터 내적 계산.
         *   뒤로 걸으면 속도 0.5배 페널티.
-    3.  **BP Hook**: `PlayerCharacter`의 `OnStaminaChanged` 등을 바인딩하여 HUD에 표시 가능.
+    3.  `PlayerCharacter::Tick` -> `ProcessFootstep(DeltaTime)`:
+        *   이동할 때마다 `AccumulatedDistance`를 누적하여, `FootstepDistanceThreshold` 초과 시 **발자국 사운드 재생**.
+    4.  **BP Hook**: `PlayerCharacter`의 `OnStaminaChanged` 등을 바인딩하여 HUD에 표시 가능.
 
 ### 5-2. 달리기 (Sprint)
 *   **Trigger**: Shift 입력
@@ -111,8 +113,10 @@
     3.  `MulticastPlayWeaponAttack`: 애니메이션 재생 및 `AttackComponent`의 공격 판정 활성화.
     4.  **타격 처리 (`UBRAttackComponent::ProcessHitDamage`)**:
         *   **데미지 계산**: 무기 타격 시 데미지 계산 및 `ApplyDamage` 호출 (맨손 추가 데미지 보정 등).
+        *   **타격음 연출**: 데미지 로직 직후 `MulticastPlayHitSound`를 쏴 타격 부위에서 사운드를 동기화 재생.
         *   **역경직 (Hit Stop)**: 타격 성공 시 `MulticastApplyHitStop(0.1f)` 호출 (잠시 후 몽타주 강제 종료).
         *   **물리 반발력 (Physics Reaction)**: 충돌한 메쉬(Mesh)의 뼈(BoneName)를 찾아 `AddImpulseAtLocation`을 이용해 명시적 충격을 가함 (거친 피지컬 애니메이션과 래그돌 흔들림 반응 유도).
+    5.  **무기 내구도 결과**: 무기 충돌 시 `DecreaseDurability`가 호출되며, 내구도가 0 이하라면 `BreakWeapon`이 동작하여 무기를 파괴 처리함.
 
 ### 5-4. 피격 및 사망 (Damage & Death)
 *   **Trigger**: 무기 충돌 (`ApplyDamage`)
@@ -148,7 +152,21 @@
 
 ---
 
-## 7. Chain 6: 게임 종료 (Game End)
+## 7. Chain 7: 네트워크 장애 처리 (Network Failure Handling)
+
+### 7-1. 예기치 않은 접속 종료 (Connection Lost / Timeout)
+*   **Trigger**: 엔진 `NetDriver`에서 타임아웃, 접속 유실 등 장애 감지
+*   **Flow**:
+    1.  `BRPlayerController::HandleNetworkFailure` 콜백 호출.
+    2.  에러 사유(`FailureType`) 분석:
+        *   `ConnectionLost`, `ConnectionTimeout`, `PendingConnectionFailure`, `OutdatedClient`, `OutdatedServer` 등.
+    3.  로컬 디버그 로그 및 화면 출력.
+    4.  `ClientTravelToGameMap` (사실상 `ClientTravel("/Game/Main/Level/EntranceMenu?listen", TRAVEL_Absolute)`) 실행:
+        *   예외가 발생한 클라이언트를 로비(EntranceMenu)로 강제 회귀시킴.
+
+---
+
+## 8. Chain 8: 게임 종료 (Game End)
 
 ### 7-1. 승리 판정 (Win Check)
 *   **Trigger**: `OnPlayerDied` 호출 시
@@ -167,7 +185,7 @@
 
 ---
 
-## 8. Blueprint API Reference (주요 함수 목록)
+## 9. Blueprint API Reference (주요 함수 목록)
 
 ### BRPlayerController
 *   `CreateRoom(RoomName)`
