@@ -481,6 +481,16 @@ void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(UAnimMontage* Mont
 
             // [핵심] 인자로 받은 몽타주를 재생
             AnimInstance->Montage_Play(MontageToPlay, AttackSpeed);
+            
+            // [신규] 무기 휘두르는 소리 재생 (모든 클라이언트에서 실행됨)
+            if (CurrentWeapon && CurrentWeapon->CurrentWeaponData.SwingSound)
+            {
+                UGameplayStatics::PlaySoundAtLocation(
+                    this, 
+                    CurrentWeapon->CurrentWeaponData.SwingSound, 
+                    GetActorLocation()
+                );
+            }
 
             // [기존 로직 유지] UpperBodyPawn이 요청한 경우(VR 등), 몽타주 종료 콜백 연결
             if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
