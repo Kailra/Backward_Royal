@@ -10,6 +10,7 @@
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "BRPlayerState.h"
 #include "BRGameMode.h"
+#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogBaseChar);
 
@@ -501,6 +502,12 @@ void ABaseCharacter::MulticastPlayPunch_Implementation(UAnimMontage* TargetMonta
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
+            // [신규] 주먹 휘두르는 소리 재생
+            if (PunchSwingSound)
+            {
+                UGameplayStatics::PlaySoundAtLocation(this, PunchSwingSound, GetActorLocation());
+            }
+
             float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
             AnimInstance->Montage_Play(TargetMontage, AttackSpeed);
         }

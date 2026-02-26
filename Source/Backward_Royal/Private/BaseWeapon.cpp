@@ -58,6 +58,20 @@ void ABaseWeapon::BeginPlay()
     LoadWeaponData();
 }
 
+void ABaseWeapon::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    Super::EndPlay(EndPlayReason);
+
+    // [크래시 방지] 레벨 이동/종료 시 물리 엔진이 참조하지 못하도록 강제 비활성화
+    if (WeaponMesh)
+    {
+        WeaponMesh->SetSimulatePhysics(false);
+        WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        // 필요한 경우 충돌 응답도 모두 무시로 설정
+        WeaponMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+    }
+}
+
 // [핵심] 데이터 테이블에서 정보를 읽어와 적용하는 로직
 void ABaseWeapon::LoadWeaponData()
 {
