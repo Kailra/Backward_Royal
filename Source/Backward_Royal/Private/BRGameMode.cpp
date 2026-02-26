@@ -1299,6 +1299,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	// 캐릭터에서 Controller 가져오기 (없으면 PlayerState에서 시도 — 하체/상체 공유 폰 등)
 	AController* Controller = VictimCharacter->GetController();
 	ABRPlayerState* PS = nullptr;
+
 	if (Controller)
 	{
 		PS = Controller->GetPlayerState<ABRPlayerState>();
@@ -1328,8 +1329,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	}
 
 	// -----------------------------------------------------------
-	// 팀 탈락: 같은 팀 파트너도 사망 처리 후, 2초 뒤 피해자·파트너(하체+상체) 둘 다 관전 전환
-	// (인덱스로 예약해 콜백에서 팀 번호 복제 이슈 없이 전원 전환 보장)
+	// [수정] 팀 탈락: 파트너 찾기 (ConnectedPlayerIndex 우선 사용 + 팀 번호 백업)
 	// -----------------------------------------------------------
 	ABRGameState* GS = GetGameState<ABRGameState>();
 	if (!GS || !PS)
@@ -1345,21 +1345,44 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		return;
 	}
 
-	int32 PartnerPlayerIndex = INDEX_NONE;
-	for (APlayerState* OtherPS : GS->PlayerArray)
+	// 1. 먼저 '연결된 인덱스'로 파트너를 찾습니다. (가장 정확함)
+	int32 PartnerPlayerIndex = PS->ConnectedPlayerIndex;
+	ABRPlayerState* TargetPartnerPS = nullptr; // [수정] 변수명 변경 (PartnerPS -> TargetPartnerPS)
+
+	if (PartnerPlayerIndex != INDEX_NONE && GS->PlayerArray.IsValidIndex(PartnerPlayerIndex))
 	{
-		ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
-		if (BRPS && BRPS != PS && BRPS->TeamNumber == PS->TeamNumber)
+		TargetPartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[PartnerPlayerIndex]);
+	}
+
+	// 2. 만약 인덱스로 못 찾았다면, 기존 방식(팀 번호)으로 백업 검색합니다.
+	if (!TargetPartnerPS)
+	{
+		for (int32 i = 0; i < GS->PlayerArray.Num(); ++i)
 		{
-			PartnerPlayerIndex = GS->PlayerArray.Find(BRPS);
-			if (BRPS->CurrentStatus != EPlayerStatus::Dead)
+			ABRPlayerState* OtherPS = Cast<ABRPlayerState>(GS->PlayerArray[i]);
+			if (OtherPS && OtherPS != PS && OtherPS->TeamNumber == PS->TeamNumber && PS->TeamNumber > 0)
 			{
-				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
+				TargetPartnerPS = OtherPS;
+				PartnerPlayerIndex = i;
+				break;
 			}
-			// 파트너도 PlayerState를 관전(PlayerIndex 0)으로 변경
-			BRPS->SetSpectator(true);
-			break;
 		}
+	}
+
+	// 3. 찾은 파트너를 확실하게 사망 처리합니다.
+	if (TargetPartnerPS)
+	{
+		if (TargetPartnerPS->CurrentStatus != EPlayerStatus::Dead)
+		{
+			TargetPartnerPS->SetPlayerStatus(EPlayerStatus::Dead);
+		}
+		// 파트너도 PlayerState를 관전(PlayerIndex 0)으로 변경
+		TargetPartnerPS->SetSpectator(true);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 파트너(%s)도 함께 사망 처리됨."), *TargetPartnerPS->GetPlayerName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 파트너를 찾지 못했습니다. (ConnectedIndex: %d, Team: %d)"), PS->ConnectedPlayerIndex, PS->TeamNumber);
 	}
 
 	// 생존 팀 확인 및 우승 처리
