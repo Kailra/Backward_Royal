@@ -173,4 +173,7 @@ private:
 
     // 파트너 PlayerState에 바인딩되었는지 체크
     bool bBoundToPartner = false;
+
+    /** 전원 스폰 완료 후 Move()에서 컨트롤러 이동 입력 해제를 1회만 수행했는지 */
+    bool bMoveInputUnblocked = false;
 };
