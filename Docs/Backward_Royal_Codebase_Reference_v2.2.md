@@ -1,9 +1,9 @@
-# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.0)
+# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.2)
 
 ## 1. 개요 (Overview)
 본 문서는 `Source/Backward_Royal` 디렉토리 내의 핵심 소스 코드 파일(헤더)을 **전수 조사(Inventory)**하여 작성된 상세 분석서입니다. 요약 없이 모든 멤버 변수와 함수를 나열하는 것을 원칙으로 합니다.
 
-*   **Version**: v2.0 (Full Inventory)
+*   **Version**: v2.2 (Full Inventory)
 *   **Coverage**: Core Framework, Characters, Items, Components, UI Library
 *   **Legend**:
     *   `[Prop]`: `UPROPERTY` (변수)
@@ -39,10 +39,11 @@
 *   `ApplyRoleChangesForRandomTeams_ApplyOneTeam()`: 한 팀씩 순차적으로 스폰/빙의 처리.
 *   `OnPlayerDied(ABaseCharacter* Victim)`: 플레이어 사망 시 호출.
 *   `CheckAndEndGameIfWinner()`: 생존 팀 확인 및 승리 판정.
-*   `SwitchTeamToSpectatorByPlayerIndices(...)`: 특정 팀을 관전 모드로 전환.
+*   `[Func] CheckMatchWinner()`: 승리 여부 최종 검증(결산 전용).
 *   `SwitchEliminatedTeamToSpectator(...)`: 탈락 팀 전체 관전 전환.
-*   `TravelToLobby()`: 로비 맵으로 이동.
-*   `GetAvailableStageMapPaths()`: 스테이지 맵 목록 수집.
+*   `TravelToLobby()`: 로비 맵으로 맵 이동 시작.
+*   `ReturnToLobby()`: 로비 귀환 타이머 후 실제 이동 수행.
+*   `GetAvailableStageMapPaths()`: 랜덤 맵을 위한 스테이지 목록 수집.
 *   `ScheduleInitialRoleApplyIfNeeded()`: 게임 시작 직후 역할 적용 타이머 예약.
 
 ---
@@ -114,7 +115,7 @@
 #### Member Variables
 *   `[Prop] LowerBodyContext` (UIMC*): 하체용 입력 매핑.
 *   `[Prop] UpperBodyContext` (UIMC*): 상체용 입력 매핑.
-*   `[Prop] EntranceMenuWidgetClass`, `LobbyMenuWidgetClass`, `MainScreenWidgetClass`: UI 위젯 클래스.
+*   `[Prop] EntranceMenuWidgetClass`, `JoinMenuWidgetClass`, `LobbyMenuWidgetClass`, `MainScreenWidgetClass`: UI 위젯 클래스.
 *   `[Prop] OnPawnChanged` (Delegate): 빙의 변경 알림.
 
 #### Functions
@@ -122,7 +123,10 @@
 *   `[Func] ToggleReady()`, `ChangeTeam(...)`, `StartGame()`: 게임 진행 명령.
 *   `[Func] RequestAssignToLobbyTeam(...)`, `RequestMoveToLobbyEntry(...)`: 로비 슬롯 이동 요청.
 *   `[Func] SetupRoleInput(bool bIsLower)`: 역할에 따른 IMC 교체.
-*   `[Func] ShowEntranceMenu()`, `ShowLobbyMenu()`, `ShowMainScreen()`: UI 전환.
+*   `[Func] ShowEntranceMenu()`, `ShowJoinMenu()`, `ShowLobbyMenu()`, `ShowMainScreen()`: UI 전환.
+*   `[Func] StartSpectatingMode()`: 관전자 모드 진입 및 State 변경.
+*   `[Virtual] OnEnterSpectatorMode()`: 관전자 진입 시 호출되는 BP 구현용 이벤트.
+*   `HandleNetworkFailure(...)`: 타임아웃/연결 유실 등 네트워크 장애 발생 시 Entrance UI로 복귀.
 *   `[RPC] ServerCreateRoom`, `ServerFindRooms`, `ServerJoinRoom`: 서버 요청 RPC.
 *   `[RPC] ServerRequestAssignToLobbyTeam`: 슬롯 이동 서버 요청.
 *   `[RPC] ClientNotifyGameStarting`: 게임 시작 알림 수신.
@@ -172,6 +176,8 @@
 *   `[Prop] PunchMontage_L`, `PunchMontage_R`: 맨손 공격 몽타주.
 *   `[Prop] CurrentWeapon` (ABaseWeapon*, Rep): 현재 장착 무기.
 *   `[Prop] LastDeathInfo` (Struct, Rep): 사망 정보 (위치, 회전, 충격량).
+*   `[Prop] PunchSwingSound`, `PunchHitSound` (USoundBase*): 맨손 헛스윙 및 타격 시 재생할 사운드.
+*   `[Prop] PunchVolume` (float): 사운드 재생 크기.
 *   `[Prop] OnHPChanged` (Delegate): 체력 변경 알림.
 
 #### Functions
@@ -181,7 +187,7 @@
 *   `[Func] EnhancePhysics(bool)`: 물리 시뮬레이션(랙돌) 제어.
 *   `RequestAttack()`: 공격 요청 처리.
 *   `Die()`: 사망 처리 (랙돌 전환, GameMode 알림).
-*   `PerformDeathVisuals()`: 사망 연출 (랙돌).
+*   `PerformDeathVisuals()`: 사망 연출 (래그돌 물리).
 *   `[RPC] MulticastPlayWeaponAttack`: 공격 애니메이션 재생.
 
 ---
@@ -195,12 +201,15 @@
 *   `[Prop] RearCameraBoom`, `RearCamera`: 3인칭 카메라 (하체 시점).
 *   `[Prop] HeadMountPoint` (USceneComponent*): 상체 부착 소켓.
 *   `[Prop] UpperBodyAimRotation` (FRotator, Rep): 상체가 조준 중인 회전값.
+*   `[Prop] FootstepSound` (USoundBase*): 캐릭터 발자국 소리.
+*   `[Prop] FootstepVolume`, `FootstepDistanceThreshold` (float): 발자국 소리 크기 및 재생 기준 거리.
 *   `[Prop] MoveAction`, `LookAction`, `JumpAction`, `SprintAction`: 입력 액션 에셋.
 *   `[Prop] WalkSpeed`, `SprintSpeed`: 이동 속도 설정.
 *   `[Prop] OnStaminaChanged` (Delegate): 스태미나 변경 알림.
 
 #### Functions
 *   `Action Functions`: `Move()`, `Look()`, `Jump()`, `SprintStart()`, `SprintEnd()`.
+*   `ProcessFootstep(float DeltaTime)`: 이동 거리를 누적하여 발자국 틱 사운드 재생.
 *   `[Func] UpdatePreviewMesh()`: UI 미리보기용 메쉬 갱신.
 *   `HandleSprintStateChanged()`: 달리기 상태 변경 처리.
 *   `TryApplyCustomization()`: 커스터마이징 데이터 적용 시도.
@@ -245,12 +254,12 @@
 
 #### Members
 *   `[Prop] WeaponMesh`: 무기 메쉬.
-*   `[Prop] CurrentWeaponData`: 무기 스탯 정보.
+*   `[Prop] CurrentWeaponData` (FWeaponData): 무기 타입별 설정 데이터 (무기 액터의 파괴 효과를 위한 GeometryCollectionMesh인 `FracturedMesh` 설정 등 포함).
 *   `[Prop] DurabilityReduction`: 내구도 감소량.
 
 #### Functions
 *   `Interact()`: 무기 획득 처리.
-*   `[Func] DecreaseDurability()`: 내구도 감소.
+*   `[Func] DecreaseDurability(float DamageAmount)`: 공격/충돌 시 내구도 차감.
 *   `BreakWeapon()`: 내구도 0 시 파괴 처리.
 
 ### 4.3. `UStaminaComponent`
@@ -268,10 +277,11 @@
 *   **설명**: 공격 판정 및 피격 처리.
 
 #### Members & Functions
-*   `[Func] SetAttackDetection(bool)`: 공격 판정 활성화.
+*   `[Func] SetAttackDetection(bool)`: 공격 판정 활성화 및 피격 액터 목록 초기화. (Replication도 이 단계에서 활성화)
 *   `[RPC] ServerSetAttackDetection`.
-*   `ProcessHitDamage(...)`: 실제 데미지 적용.
-*   `ApplyHitStop(...)`: 역경직 효과 적용.
+*   `ProcessHitDamage(...)`: 실제 데미지 적용 및 타격 대상(Character Mesh의 HitBone 등)에 명시적인 `AddImpulseAtLocation` 물리적 충격 전송.
+*   `ApplyHitStop(...)`: 무기 타격 시 애니메이션 역경직(Hit Stop) 효과 적용(블렌드 아웃 후 강제 종료).
+*   `[RPC] MulticastPlayHitSound(...)`: 타격된 위치에서 물리 사운드(PunchSwingSound/HitSound) 동기화 재생.
 
 ### 4.5. `UBRWidgetFunctionLibrary`
 *   **파일**: `BRWidgetFunctionLibrary.h`
