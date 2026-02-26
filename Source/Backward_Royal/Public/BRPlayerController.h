@@ -105,9 +105,9 @@ public:
 	UFUNCTION(Client, Reliable)
 	void ClientRequestLobbyUIRefresh();
 
-	// 역할에 따른 입력 매핑 교체 함수
+	/** 역할에 따른 입력 매핑 교체. 하체 시 OptionalPawnForFallback 전달 시 해당 폰(PlayerCharacter)의 DefaultMappingContext 폴백 사용 */
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	void SetupRoleInput(bool bIsLower);
+	void SetupRoleInput(bool bIsLower, class APawn* OptionalPawnForFallback = nullptr);
 
 	// 에디터에서 할당할 수 있도록 Mapping Context 변수 추가
 	UPROPERTY(EditAnywhere, Category = "Input")
