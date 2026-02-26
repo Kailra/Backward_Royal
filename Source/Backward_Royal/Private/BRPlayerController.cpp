@@ -2195,6 +2195,15 @@ void ABRPlayerController::SetMainScreenToEntranceMenu()
 		if (Function)
 		{
 			MainScreenWidget->ProcessEvent(Function, nullptr);
+			// UI 전환 후 키보드 인식을 위해 입력 모드 및 포커스 설정
+			if (IsLocalController())
+			{
+				FInputModeUIOnly InputMode;
+				InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+				SetInputMode(InputMode);
+				bShowMouseCursor = true;
+				MainScreenWidget->SetUserFocus(this);
+			}
 			UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToEntranceMenu 호출 완료"));
 			return;
 		}
@@ -2251,6 +2260,15 @@ void ABRPlayerController::SetMainScreenToLobbyMenu()
 		if (Function)
 		{
 			MainScreenWidget->ProcessEvent(Function, nullptr);
+			// UI 전환 후 키보드 인식을 위해 입력 모드 및 포커스 설정
+			if (IsLocalController())
+			{
+				FInputModeUIOnly InputMode;
+				InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+				SetInputMode(InputMode);
+				bShowMouseCursor = true;
+				MainScreenWidget->SetUserFocus(this);
+			}
 			UE_LOG(LogTemp, Log, TEXT("[PlayerController] SetMainScreenToLobbyMenu 호출 완료"));
 			// LobbyMenu 전환 직후 OnPlayerListChanged 브로드캐스트 → 방 제목·플레이어 목록 UI 즉시 갱신
 			if (ABRGameState* BRGS = World->GetGameState<ABRGameState>())
@@ -2426,6 +2444,8 @@ void ABRPlayerController::ShowMenuWidget(TSubclassOf<UUserWidget> WidgetClass)
 			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 			SetInputMode(InputMode);
 			bShowMouseCursor = true;
+			// 키보드 입력이 UI에 전달되도록 위젯에 포커스 부여 (미설정 시 키 인식 안 됨)
+			CurrentMenuWidget->SetUserFocus(this);
 			
 			// Standalone 모드에서 위젯이 입력을 받을 수 있도록 강제 설정
 			if (CurrentMenuWidget->GetOwningPlayer() == nullptr)
