@@ -11,6 +11,7 @@ class UNetDriver;
 class UNetConnection;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPawnChanged, APawn*, NewPawn);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnEnterSpectatorMode);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABRPlayerController : public APlayerController
@@ -198,6 +199,10 @@ public:
 	// [BP 구현] 관전 모드 진입 시 UI 변경 (HUD 숨기기 등)
 	UFUNCTION(BlueprintImplementableEvent, Category = "Spectating")
 	void OnEnterSpectatorMode();
+
+	/** 관전 모드 진입 시 브로드캐스트 (위젯에서 바인딩 가능) */
+	UPROPERTY(BlueprintAssignable, Category = "Spectating")
+	FOnEnterSpectatorMode OnEnterSpectatorModeDelegate;
 
 protected:
 	virtual void BeginPlay() override;
