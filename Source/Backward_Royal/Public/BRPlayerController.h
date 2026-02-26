@@ -193,6 +193,8 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	// 서버에서 빙의했을 때 호출됨
 	virtual void OnPossess(APawn* aPawn) override;
+	// 클라이언트에서 폰 수신 후 호출. 스폰 완료 신호를 서버에 보냄
+	virtual void AcknowledgePossession(APawn* P) override;
 
 	// 클라이언트에서 폰 정보가 복제되었을 때 호출됨
 	virtual void OnRep_Pawn() override;
@@ -244,6 +246,10 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerRequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotIndex);
+
+	/** [클라이언트→서버] 내 스폰(빙의)이 완료되었음을 알림. 전원 수신 시 서버가 bAllClientsSpawnReady 설정 */
+	UFUNCTION(Server, Reliable)
+	void ServerReportSpawnReady();
 
 private:
 	// 내부 헬퍼 함수들

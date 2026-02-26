@@ -841,6 +841,8 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 		{
 			BRGS->bBodyAssignmentComplete = true;
 			BRGS->OnBodyAssignmentComplete.Broadcast();
+			// 전원 스폰 완료 신호를 기다림. 팀 수*2 = 하체+상체 플레이어 수
+			BRGS->SetExpectedSpawnReadyCount(StagedNumTeams * 2);
 		}
 
 		StagedSortedByTeam.Empty();

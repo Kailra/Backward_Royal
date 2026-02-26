@@ -7,6 +7,7 @@
 #include "BRGameMode.h"
 #include "BRGameInstance.h"
 #include "UpperBodyPawn.h"
+#include "PlayerCharacter.h"
 #include "GameFramework/GameModeBase.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
@@ -415,9 +416,37 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		ApplyUpperBodyViewAndInput();
 	}
 
+	// 리슨 서버: 호스트는 클라이언트 쪽 AcknowledgePossession이 호출되지 않을 수 있음 → 서버에서 직접 스폰 완료 집계
+	if (HasAuthority() && IsLocalController() && aPawn && (aPawn->IsA<APlayerCharacter>() || aPawn->IsA<AUpperBodyPawn>()))
+	{
+		if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
+		{
+			GS->ReportClientSpawnReady(this);
+		}
+	}
+
 	if (OnPawnChanged.IsBound())
 	{
 		OnPawnChanged.Broadcast(aPawn);
+	}
+}
+
+void ABRPlayerController::AcknowledgePossession(APawn* P)
+{
+	Super::AcknowledgePossession(P);
+	// 클라이언트만 서버에 스폰 완료 신호 전송 (로비 폰이 아닌 인게임 폰일 때만)
+	if (!HasAuthority() && P && (P->IsA<APlayerCharacter>() || P->IsA<AUpperBodyPawn>()))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 클라이언트 AcknowledgePossession → ServerReportSpawnReady (Pawn=%s)"), P ? *P->GetName() : TEXT("null"));
+		ServerReportSpawnReady();
+	}
+}
+
+void ABRPlayerController::ServerReportSpawnReady_Implementation()
+{
+	if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
+	{
+		GS->ReportClientSpawnReady(this);
 	}
 }
 
