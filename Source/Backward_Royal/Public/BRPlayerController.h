@@ -11,6 +11,8 @@ class UNetDriver;
 class UNetConnection;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPawnChanged, APawn*, NewPawn);
+// [추가] 관전 모드 진입 알림 딜리게이트 선언
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnEnterSpectatorModeDelegate);
 
 UCLASS()
 class BACKWARD_ROYAL_API ABRPlayerController : public APlayerController
@@ -106,7 +108,7 @@ public:
 
 	// 역할에 따른 입력 매핑 교체 함수
 	UFUNCTION(BlueprintCallable, Category = "Input")
-	void SetupRoleInput(bool bIsLower);
+	void SetupRoleInput(bool bIsLowerBody);
 
 	// 에디터에서 할당할 수 있도록 Mapping Context 변수 추가
 	UPROPERTY(EditAnywhere, Category = "Input")
@@ -187,13 +189,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Spectating")
 	void StartSpectatingMode();
 
-	// 관전 모드용 입력 설정 (하체 컨텍스트 재사용)
-	UFUNCTION(BlueprintCallable, Category = "Spectating")
-	void SetupSpectatorInput();
-
 	// [클라이언트] 관전 모드 진입 시 UI 처리 요청
 	UFUNCTION(Client, Reliable)
 	void ClientHandleSpectatorUI();
+
+	// [추가] 관전 모드 진입 시 위젯에서 바인딩할 딜리게이트
+	UPROPERTY(BlueprintAssignable, Category = "Spectating")
+	FOnEnterSpectatorModeDelegate OnEnterSpectatorModeDelegate;
 
 	// [BP 구현] 관전 모드 진입 시 UI 변경 (HUD 숨기기 등)
 	UFUNCTION(BlueprintImplementableEvent, Category = "Spectating")
@@ -207,6 +209,8 @@ protected:
 
 	// 서버에서 빙의했을 때 호출됨
 	virtual void OnPossess(APawn* aPawn) override;
+	// 클라이언트에서 폰 수신 후 호출. 스폰 완료 신호를 서버에 보냄
+	virtual void AcknowledgePossession(APawn* P) override;
 
 	// 클라이언트에서 폰 정보가 복제되었을 때 호출됨
 	virtual void OnRep_Pawn() override;
@@ -259,11 +263,25 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotIndex);
 
+	/** [클라이언트→서버] 내 스폰(빙의)이 완료되었음을 알림. 전원 수신 시 서버가 bAllClientsSpawnReady 설정 */
+	UFUNCTION(Server, Reliable)
+	void ServerReportSpawnReady();
+
 private:
 	// 내부 헬퍼 함수들
 	void RequestRandomTeams();
 	void RequestChangePlayerTeam(int32 PlayerIndex, int32 NewTeamNumber);
 	void RequestStartGame();
+
+	/** 관전 모드용 입력 설정 (하체 컨텍스트 재사용) */
+	UFUNCTION(BlueprintCallable, Category = "Spectating")
+	void SetupSpectatorInput();
+
+	/** 관전 모드 이동 처리 */
+	void Input_SpectatorMove(const struct FInputActionValue& Value);
+
+	/** 관전 모드 시점 회전 처리 */
+	void Input_SpectatorLook(const struct FInputActionValue& Value);
 
 	// UI 관리 내부 함수
 	void ShowMenuWidget(TSubclassOf<class UUserWidget> WidgetClass);
@@ -288,10 +306,15 @@ private:
 	FTimerHandle ShutdownListenServerTimerHandle;
 	void TryShutdownListenServerForRoomSearch();
 
-	/** 관전 모드 이동 처리 */
-	void Input_SpectatorMove(const struct FInputActionValue& Value);
+	// ----- 서버 보안: RPC 레이트 리밋 -----
+	/** 민감한 Server RPC 호출 시각 (같은 플레이어가 짧은 간격으로 연속 호출 시 무시) */
+	float LastSensitiveRPCTime = 0.f;
+	/** 민감 RPC 최소 호출 간격(초). 이 간격 미만으로 호출되면 무시 */
+	static constexpr float MinSensitiveRPCIntervalSec = 0.2f;
+	/** 서버에서만 사용. true면 처리 진행, false면 레이트 리밋으로 무시 */
+	bool CheckSensitiveRPCRateLimit();
 
-	/** 관전 모드 시점 회전 처리 */
-	void Input_SpectatorLook(const struct FInputActionValue& Value);
+	/** 현재 맵이 로비 맵인지 (로비 전용 RPC 허용 여부). 서버 보안용 */
+	bool IsInLobbyMap() const;
 };
 
