@@ -1402,6 +1402,9 @@ void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> Vict
 	{
 		PartnerPC->StartSpectatingMode();
 	}
+
+	CheckMatchWinner(); // 우승 조건 재확인
+
 }
 
 void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, int32 PartnerPlayerIndex)
