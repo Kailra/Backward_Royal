@@ -208,6 +208,9 @@ protected:
 	// 서버에서 빙의했을 때 호출됨
 	virtual void OnPossess(APawn* aPawn) override;
 
+	/** 클라이언트에서 폰 빙의 인정 시 호출. 스폰 완료 신호 전송용. */
+	virtual void AcknowledgePossession(APawn* P) override;
+
 	// 클라이언트에서 폰 정보가 복제되었을 때 호출됨
 	virtual void OnRep_Pawn() override;
 
@@ -259,7 +262,20 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerRequestMoveToLobbyEntry(int32 TeamIndex, int32 SlotIndex);
 
+	/** 클라이언트 스폰 완료 신호 (클라이언트→서버). AcknowledgePossession에서 호출. */
+	UFUNCTION(Server, Reliable)
+	void ServerReportSpawnReady();
+
 private:
+	/** RPC 레이트 리밋: 민감한 서버 RPC 호출 간 최소 간격(초). */
+	static constexpr float MinSensitiveRPCIntervalSec = 0.5f;
+	/** 마지막 민감 RPC 호출 시각 (GetTimeSeconds). */
+	float LastSensitiveRPCTime = 0.f;
+	/** 민감 RPC 레이트 리밋 검사. 서버에서만 사용. */
+	bool CheckSensitiveRPCRateLimit();
+	/** 현재 맵이 로비 맵(Main_Scene 등)인지 여부. */
+	bool IsInLobbyMap() const;
+
 	// 내부 헬퍼 함수들
 	void RequestRandomTeams();
 	void RequestChangePlayerTeam(int32 PlayerIndex, int32 NewTeamNumber);
@@ -293,5 +309,10 @@ private:
 
 	/** 관전 모드 시점 회전 처리 */
 	void Input_SpectatorLook(const struct FInputActionValue& Value);
+
+	/** OnAllClientsSpawnReady 수신 시 하체 플레이어 이동 입력 해제 (바인딩은 OnPossess에서 1회) */
+	UFUNCTION()
+	void OnAllClientsSpawnReadyCallback();
+	bool bSpawnReadyDelegateBound = false;
 };
 

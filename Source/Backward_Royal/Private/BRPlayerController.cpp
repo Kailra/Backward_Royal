@@ -414,9 +414,12 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		}
 	}
 
-	if (IsLocalController() && aPawn->IsA<AUpperBodyPawn>())
+	if (IsLocalController() && aPawn)
 	{
-		ApplyUpperBodyViewAndInput();
+		if (aPawn->IsA<AUpperBodyPawn>())
+			ApplyUpperBodyViewAndInput();
+		else if (aPawn->IsA<APlayerCharacter>())
+			SetupRoleInput(true); // 하체: 이동 키 매핑(LowerBodyContext) 등록
 	}
 
 	// 리슨 서버: 호스트는 클라이언트 쪽 AcknowledgePossession이 호출되지 않을 수 있음 → 서버에서 직접 스폰 완료 집계
@@ -428,20 +431,72 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		}
 	}
 
+	// 서버: 전원 스폰 완료 시 호스트 이동 입력 해제용으로 1회 바인딩 (리슨 서버)
+	if (HasAuthority() && IsLocalController() && aPawn && (aPawn->IsA<APlayerCharacter>() || aPawn->IsA<AUpperBodyPawn>()))
+	{
+		if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
+		{
+			if (!bSpawnReadyDelegateBound)
+			{
+				GS->OnAllClientsSpawnReady.AddDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
+				bSpawnReadyDelegateBound = true;
+			}
+			if (GS->bAllClientsSpawnReady)
+				OnAllClientsSpawnReadyCallback();
+		}
+	}
+
 	if (OnPawnChanged.IsBound())
 	{
 		OnPawnChanged.Broadcast(aPawn);
 	}
 }
 
+void ABRPlayerController::OnAllClientsSpawnReadyCallback()
+{
+	if (!IsLocalController()) return;
+	APawn* P = GetPawn();
+	if (P && P->IsA<APlayerCharacter>())
+	{
+		ResetIgnoreMoveInput();
+		SetIgnoreMoveInput(false);
+		// 로딩 UI에서 입력이 위젯에 잡혀 있을 수 있음 → 게임 전용으로 전환
+		FInputModeGameOnly GameInputMode;
+		SetInputMode(GameInputMode);
+		bShowMouseCursor = false;
+		UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 이동 입력 해제 (하체 로컬 플레이어)"));
+	}
+}
+
 void ABRPlayerController::AcknowledgePossession(APawn* P)
 {
 	Super::AcknowledgePossession(P);
-	// 클라이언트만 서버에 스폰 완료 신호 전송 (로비 폰이 아닌 인게임 폰일 때만)
-	if (!HasAuthority() && P && (P->IsA<APlayerCharacter>() || P->IsA<AUpperBodyPawn>()))
+	if (!P || (!P->IsA<APlayerCharacter>() && !P->IsA<AUpperBodyPawn>())) return;
+
+	// 클라이언트: 서버에 스폰 완료 신호 전송
+	if (!HasAuthority())
 	{
-		UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 클라이언트 AcknowledgePossession → ServerReportSpawnReady (Pawn=%s)"), P ? *P->GetName() : TEXT("null"));
+		UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 클라이언트 AcknowledgePossession → ServerReportSpawnReady (Pawn=%s)"), *P->GetName());
 		ServerReportSpawnReady();
+	}
+
+	// 클라이언트: 하체일 때 이동 키 매핑 등록 (OnRep_PlayerState가 안 불릴 수 있음)
+	if (!HasAuthority() && IsLocalController() && P->IsA<APlayerCharacter>())
+		SetupRoleInput(true);
+
+	// 클라이언트: 전원 스폰 완료 시 이동 입력 해제용 델리게이트 바인딩 (1회만)
+	if (!HasAuthority() && IsLocalController())
+	{
+		if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
+		{
+			if (!bSpawnReadyDelegateBound)
+			{
+				GS->OnAllClientsSpawnReady.AddDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
+				bSpawnReadyDelegateBound = true;
+			}
+			if (GS->bAllClientsSpawnReady)
+				OnAllClientsSpawnReadyCallback();
+		}
 	}
 }
 
@@ -577,6 +632,12 @@ void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 			{
 				GameSession->OnCreateSessionComplete.RemoveAll(this);
 			}
+		}
+		if (bSpawnReadyDelegateBound)
+		{
+			if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+				GS->OnAllClientsSpawnReady.RemoveDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
+			bSpawnReadyDelegateBound = false;
 		}
 	}
 	
