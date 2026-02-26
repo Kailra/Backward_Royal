@@ -244,25 +244,25 @@ void APlayerCharacter::HandleStaminaChanged(float CurrentVal, float MaxVal)
 
 void APlayerCharacter::Move(const FInputActionValue& Value)
 {
-	UWorld* World = GetWorld();
-	ABRGameState* GS = World ? World->GetGameState<ABRGameState>() : nullptr;
-	// 전원 스폰 완료 신호 전까지 이동 입력 무시 (서버가 bAllClientsSpawnReady 브로드캐스트할 때까지)
-	if (GS && !GS->bAllClientsSpawnReady)
-		return;
-
-	// 전원 스폰 완료 후 1회만 컨트롤러 이동 입력 해제 (델리게이트 콜백 미호출 시 폴백)
-	if (!bMoveInputUnblocked && GS && GS->bAllClientsSpawnReady && Controller)
-	{
-		if (APlayerController* PC = Cast<APlayerController>(Controller))
-		{
-			PC->ResetIgnoreMoveInput();
-			PC->SetIgnoreMoveInput(false);
-			FInputModeGameOnly GameMode;
-			PC->SetInputMode(GameMode);
-			PC->bShowMouseCursor = false;
-			bMoveInputUnblocked = true;
-		}
-	}
+	// [로딩 중 키보드 비인식 기능 주석 처리]
+	// UWorld* World = GetWorld();
+	// ABRGameState* GS = World ? World->GetGameState<ABRGameState>() : nullptr;
+	// // 전원 스폰 완료 신호 전까지 이동 입력 무시 (서버가 bAllClientsSpawnReady 브로드캐스트할 때까지)
+	// if (GS && !GS->bAllClientsSpawnReady)
+	// 	return;
+	// // 전원 스폰 완료 후 1회만 컨트롤러 이동 입력 해제 (델리게이트 콜백 미호출 시 폴백)
+	// if (!bMoveInputUnblocked && GS && GS->bAllClientsSpawnReady && Controller)
+	// {
+	// 	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	// 	{
+	// 		PC->ResetIgnoreMoveInput();
+	// 		PC->SetIgnoreMoveInput(false);
+	// 		FInputModeGameOnly GameMode;
+	// 		PC->SetInputMode(GameMode);
+	// 		PC->bShowMouseCursor = false;
+	// 		bMoveInputUnblocked = true;
+	// 	}
+	// }
 
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -313,14 +313,15 @@ void APlayerCharacter::Look(const FInputActionValue& Value)
 
 void APlayerCharacter::Jump()
 {
-	// 전원 스폰 완료 전에는 점프(이동) 입력 무시
-	if (UWorld* World = GetWorld())
-	{
-		if (ABRGameState* GS = World->GetGameState<ABRGameState>())
-		{
-			if (!GS->bAllClientsSpawnReady) return;
-		}
-	}
+	// [로딩 중 키보드 비인식 기능 주석 처리]
+	// // 전원 스폰 완료 전에는 점프(이동) 입력 무시
+	// if (UWorld* World = GetWorld())
+	// {
+	// 	if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+	// 	{
+	// 		if (!GS->bAllClientsSpawnReady) return;
+	// 	}
+	// }
 	// 스태미나가 충분할 때만 점프 시도 (불필요한 입력 방지)
 	if (StaminaComp && StaminaComp->CanJump())
 	{
@@ -697,24 +698,25 @@ void APlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// 전원 스폰 완료 시 로컬 하체 플레이어의 이동 입력 1회 해제 (키가 UI에 잡혀 Move()가 호출되지 않아도 Tick에서 처리)
-	if (!bMoveInputUnblocked && IsLocallyControlled())
-	{
-		UWorld* World = GetWorld();
-		ABRGameState* GS = World ? World->GetGameState<ABRGameState>() : nullptr;
-		if (GS && GS->bAllClientsSpawnReady && Controller)
-		{
-			if (APlayerController* PC = Cast<APlayerController>(Controller))
-			{
-				PC->ResetIgnoreMoveInput();
-				PC->SetIgnoreMoveInput(false);
-				FInputModeGameOnly GameMode;
-				PC->SetInputMode(GameMode);
-				PC->bShowMouseCursor = false;
-				bMoveInputUnblocked = true;
-			}
-		}
-	}
+	// [로딩 중 키보드 비인식 기능 주석 처리]
+	// // 전원 스폰 완료 시 로컬 하체 플레이어의 이동 입력 1회 해제 (키가 UI에 잡혀 Move()가 호출되지 않아도 Tick에서 처리)
+	// if (!bMoveInputUnblocked && IsLocallyControlled())
+	// {
+	// 	UWorld* World = GetWorld();
+	// 	ABRGameState* GS = World ? World->GetGameState<ABRGameState>() : nullptr;
+	// 	if (GS && GS->bAllClientsSpawnReady && Controller)
+	// 	{
+	// 		if (APlayerController* PC = Cast<APlayerController>(Controller))
+	// 		{
+	// 			PC->ResetIgnoreMoveInput();
+	// 			PC->SetIgnoreMoveInput(false);
+	// 			FInputModeGameOnly GameMode;
+	// 			PC->SetInputMode(GameMode);
+	// 			PC->bShowMouseCursor = false;
+	// 			bMoveInputUnblocked = true;
+	// 		}
+	// 	}
+	// }
 
 	// 발자국 소리 로직 실행
 	ProcessFootstep(DeltaTime);
