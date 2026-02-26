@@ -758,6 +758,8 @@ void ABRPlayerController::SetupSpectatorInput()
 {
 	// 관전 모드는 하체(이동) 컨텍스트를 재사용하여 이동을 가능하게 함
 	SetupRoleInput(true);
+	ResetIgnoreMoveInput();
+	SetIgnoreMoveInput(false);
 }
 
 void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
@@ -1986,11 +1988,10 @@ void ABRPlayerController::SetupRoleInput(bool bIsLower, APawn* OptionalPawnForFa
         UE_LOG(LogTemp, Log, TEXT("[SetupRoleInput] 매핑 컨텍스트 적용 완료 bIsLower=%d Context=%s"), bIsLower ? 1 : 0, *TargetContext->GetName());
     }
 
-    // 하체: 시선/입력모드 설정. 이동은 여기서 해제(관전 모드 등). 인게임 로딩 중에는 OnPossess/AcknowledgePossession에서 곧바로 SetIgnoreMoveInput(true)로 막고, OnAllClientsSpawnReady 콜백에서 해제
+    // 하체: 시선/입력모드만 설정. 이동 입력은 여기서 켜지 않음 (OnRep_PlayerState 등이 나중에 SetupRoleInput을 다시 불러 로딩 중 입력이 켜지는 것 방지).
+    // 이동 해제는 OnAllClientsSpawnReady 콜백 또는 SetupSpectatorInput(관전) / BRPlayerState 역할 교체 시에만 수행.
     if (bIsLower && IsLocalController())
     {
-        ResetIgnoreMoveInput();
-        SetIgnoreMoveInput(false);
         ResetIgnoreLookInput();
         SetIgnoreLookInput(false);
         FInputModeGameOnly GameInputMode;
