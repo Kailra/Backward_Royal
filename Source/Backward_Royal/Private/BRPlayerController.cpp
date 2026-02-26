@@ -1953,12 +1953,6 @@ void ABRPlayerController::SetupRoleInput(bool bIsLower)
             Subsystem->AddMappingContext(TargetContext, 0);
         }
     }
-
-    if (APawn* P = GetPawn())
-    {
-        // 클라이언트에게 입력 시스템 재시작 명령 (SetupPlayerInputComponent 재호출 유도)
-        ClientRestart(P);
-    }
 }
 
 void ABRPlayerController::SetupInputComponent()
