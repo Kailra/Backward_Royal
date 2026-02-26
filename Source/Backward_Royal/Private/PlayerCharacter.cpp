@@ -243,6 +243,18 @@ void APlayerCharacter::HandleStaminaChanged(float CurrentVal, float MaxVal)
 
 void APlayerCharacter::Move(const FInputActionValue& Value)
 {
+	// 전원 스폰 완료 신호 전까지 이동 입력 무시 (서버가 bAllClientsSpawnReady 브로드캐스트할 때까지)
+	if (UWorld* World = GetWorld())
+	{
+		if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+		{
+			if (!GS->bAllClientsSpawnReady)
+			{
+				return;
+			}
+		}
+	}
+
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
 	if (Controller != nullptr)
@@ -292,6 +304,14 @@ void APlayerCharacter::Look(const FInputActionValue& Value)
 
 void APlayerCharacter::Jump()
 {
+	// 전원 스폰 완료 전에는 점프(이동) 입력 무시
+	if (UWorld* World = GetWorld())
+	{
+		if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+		{
+			if (!GS->bAllClientsSpawnReady) return;
+		}
+	}
 	// 스태미나가 충분할 때만 점프 시도 (불필요한 입력 방지)
 	if (StaminaComp && StaminaComp->CanJump())
 	{
