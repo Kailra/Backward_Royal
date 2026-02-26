@@ -670,7 +670,18 @@ void ABRGameState::OnRep_BodyAssignmentComplete()
 
 void ABRGameState::OnRep_AllClientsSpawnReady()
 {
+	UE_LOG(LogTemp, Log, TEXT("[OnAllClientsSpawnReady] 복제 수신 → Broadcast (클라이언트/호스트)"));
 	OnAllClientsSpawnReady.Broadcast();
+}
+
+void ABRGameState::NotifyWidgetIfSpawnReady(UObject* Target, FName EventOrFunctionName)
+{
+	if (!bAllClientsSpawnReady || !Target || EventOrFunctionName.IsNone()) return;
+	if (UFunction* Func = Target->GetClass()->FindFunctionByName(EventOrFunctionName))
+	{
+		UE_LOG(LogTemp, Log, TEXT("[OnAllClientsSpawnReady] NotifyWidgetIfSpawnReady 호출 (Target=%s, Event=%s)"), *Target->GetName(), *EventOrFunctionName.ToString());
+		Target->ProcessEvent(Func, nullptr);
+	}
 }
 
 void ABRGameState::SetExpectedSpawnReadyCount(int32 Count)
@@ -693,6 +704,7 @@ void ABRGameState::OnSpawnReadyTimeout()
 	if (!HasAuthority() || bAllClientsSpawnReady) return;
 	UE_LOG(LogTemp, Warning, TEXT("[스폰 완료] 타임아웃 (%d/%d) → 강제 UI 전환"), SpawnReadyControllers.Num(), ExpectedSpawnReadyCount);
 	bAllClientsSpawnReady = true;
+	UE_LOG(LogTemp, Warning, TEXT("[OnAllClientsSpawnReady] Broadcast (서버, 타임아웃)"));
 	OnAllClientsSpawnReady.Broadcast();
 }
 
@@ -711,6 +723,7 @@ void ABRGameState::ReportClientSpawnReady(APlayerController* PC)
 		if (UWorld* World = GetWorld())
 			World->GetTimerManager().ClearTimer(SpawnReadyTimeoutHandle);
 		bAllClientsSpawnReady = true;
+		UE_LOG(LogTemp, Log, TEXT("[OnAllClientsSpawnReady] Broadcast (서버, 전원 수신)"));
 		OnAllClientsSpawnReady.Broadcast();
 		UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 전원 수신 완료 → UI 전환·입력 허용"));
 	}

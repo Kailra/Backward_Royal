@@ -419,7 +419,7 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		if (aPawn->IsA<AUpperBodyPawn>())
 			ApplyUpperBodyViewAndInput();
 		else if (aPawn->IsA<APlayerCharacter>())
-			SetupRoleInput(true); // 하체: 이동 키 매핑(LowerBodyContext) 등록
+			SetupRoleInput(true, aPawn); // 하체: 이동 키 매핑(LowerBodyContext) 등록, 폰 전달로 폴백 확실히 동작
 	}
 
 	// 리슨 서버: 호스트는 클라이언트 쪽 AcknowledgePossession이 호출되지 않을 수 있음 → 서버에서 직접 스폰 완료 집계
@@ -431,20 +431,20 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 		}
 	}
 
-	// 서버: 전원 스폰 완료 시 호스트 이동 입력 해제용으로 1회 바인딩 (리슨 서버)
-	if (HasAuthority() && IsLocalController() && aPawn && (aPawn->IsA<APlayerCharacter>() || aPawn->IsA<AUpperBodyPawn>()))
-	{
-		if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
-		{
-			if (!bSpawnReadyDelegateBound)
-			{
-				GS->OnAllClientsSpawnReady.AddDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
-				bSpawnReadyDelegateBound = true;
-			}
-			if (GS->bAllClientsSpawnReady)
-				OnAllClientsSpawnReadyCallback();
-		}
-	}
+	// [로딩 중 키보드 비인식 기능 주석 처리] 서버: 전원 스폰 완료 시 호스트 이동 입력 해제용 바인딩
+	// if (HasAuthority() && IsLocalController() && aPawn && (aPawn->IsA<APlayerCharacter>() || aPawn->IsA<AUpperBodyPawn>()))
+	// {
+	// 	if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
+	// 	{
+	// 		if (!bSpawnReadyDelegateBound)
+	// 		{
+	// 			GS->OnAllClientsSpawnReady.AddDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
+	// 			bSpawnReadyDelegateBound = true;
+	// 		}
+	// 		if (GS->bAllClientsSpawnReady)
+	// 			OnAllClientsSpawnReadyCallback();
+	// 	}
+	// }
 
 	if (OnPawnChanged.IsBound())
 	{
@@ -454,18 +454,19 @@ void ABRPlayerController::OnPossess(APawn* aPawn)
 
 void ABRPlayerController::OnAllClientsSpawnReadyCallback()
 {
-	if (!IsLocalController()) return;
-	APawn* P = GetPawn();
-	if (P && P->IsA<APlayerCharacter>())
-	{
-		ResetIgnoreMoveInput();
-		SetIgnoreMoveInput(false);
-		// 로딩 UI에서 입력이 위젯에 잡혀 있을 수 있음 → 게임 전용으로 전환
-		FInputModeGameOnly GameInputMode;
-		SetInputMode(GameInputMode);
-		bShowMouseCursor = false;
-		UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 이동 입력 해제 (하체 로컬 플레이어)"));
-	}
+	// [로딩 중 키보드 비인식 기능 주석 처리] 스폰 완료 시 입력 모드 전환·이동 입력 해제
+	// if (!IsLocalController()) return;
+	// UE_LOG(LogTemp, Log, TEXT("[OnAllClientsSpawnReady] 콜백 실행 (로컬 플레이어, 서버=%d)"), HasAuthority() ? 1 : 0);
+	// FInputModeGameOnly GameInputMode;
+	// SetInputMode(GameInputMode);
+	// bShowMouseCursor = false;
+	// APawn* P = GetPawn();
+	// if (P && P->IsA<APlayerCharacter>())
+	// {
+	// 	ResetIgnoreMoveInput();
+	// 	SetIgnoreMoveInput(false);
+	// 	UE_LOG(LogTemp, Log, TEXT("[스폰 완료] 이동 입력 해제 (하체 로컬 플레이어)"));
+	// }
 }
 
 void ABRPlayerController::AcknowledgePossession(APawn* P)
@@ -480,24 +481,24 @@ void ABRPlayerController::AcknowledgePossession(APawn* P)
 		ServerReportSpawnReady();
 	}
 
-	// 클라이언트: 하체일 때 이동 키 매핑 등록 (OnRep_PlayerState가 안 불릴 수 있음)
-	if (!HasAuthority() && IsLocalController() && P->IsA<APlayerCharacter>())
-		SetupRoleInput(true);
+	// 클라이언트: 상체(UpperBodyPawn)가 아니면 하체로 간주하고 이동 키 매핑 등록. BP_LowerBodyCharacter 등 APlayerCharacter가 아닌 하체 폰도 포함
+	if (!HasAuthority() && IsLocalController() && P && !P->IsA<AUpperBodyPawn>())
+		SetupRoleInput(true, P);
 
-	// 클라이언트: 전원 스폰 완료 시 이동 입력 해제용 델리게이트 바인딩 (1회만)
-	if (!HasAuthority() && IsLocalController())
-	{
-		if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
-		{
-			if (!bSpawnReadyDelegateBound)
-			{
-				GS->OnAllClientsSpawnReady.AddDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
-				bSpawnReadyDelegateBound = true;
-			}
-			if (GS->bAllClientsSpawnReady)
-				OnAllClientsSpawnReadyCallback();
-		}
-	}
+	// [로딩 중 키보드 비인식 기능 주석 처리] 클라이언트: 전원 스폰 완료 시 이동 입력 해제용 델리게이트 바인딩
+	// if (!HasAuthority() && IsLocalController())
+	// {
+	// 	if (ABRGameState* GS = GetWorld() ? GetWorld()->GetGameState<ABRGameState>() : nullptr)
+	// 	{
+	// 		if (!bSpawnReadyDelegateBound)
+	// 		{
+	// 			GS->OnAllClientsSpawnReady.AddDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
+	// 			bSpawnReadyDelegateBound = true;
+	// 		}
+	// 		if (GS->bAllClientsSpawnReady)
+	// 			OnAllClientsSpawnReadyCallback();
+	// 	}
+	// }
 }
 
 void ABRPlayerController::ServerReportSpawnReady_Implementation()
@@ -633,12 +634,13 @@ void ABRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 				GameSession->OnCreateSessionComplete.RemoveAll(this);
 			}
 		}
-		if (bSpawnReadyDelegateBound)
-		{
-			if (ABRGameState* GS = World->GetGameState<ABRGameState>())
-				GS->OnAllClientsSpawnReady.RemoveDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
-			bSpawnReadyDelegateBound = false;
-		}
+		// [로딩 중 키보드 비인식 기능 주석 처리] 스폰 완료 델리게이트 바인딩 해제
+		// if (bSpawnReadyDelegateBound)
+		// {
+		// 	if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+		// 		GS->OnAllClientsSpawnReady.RemoveDynamic(this, &ABRPlayerController::OnAllClientsSpawnReadyCallback);
+		// 	bSpawnReadyDelegateBound = false;
+		// }
 	}
 	
 	Super::EndPlay(EndPlayReason);
@@ -1938,20 +1940,57 @@ void ABRPlayerController::ShowRoomInfo()
 	UE_LOG(LogTemp, Log, TEXT("==================="));
 }
 
-void ABRPlayerController::SetupRoleInput(bool bIsLower)
+void ABRPlayerController::SetupRoleInput(bool bIsLower, APawn* OptionalPawnForFallback)
 {
+    UE_LOG(LogTemp, Log, TEXT("[SetupRoleInput] 호출됨 bIsLower=%d Pawn=%s OptionalPawn=%s"), bIsLower ? 1 : 0, GetPawn() ? *GetPawn()->GetName() : TEXT("null"), OptionalPawnForFallback ? *OptionalPawnForFallback->GetName() : TEXT("null"));
+
     ULocalPlayer* LocalPlayer = GetLocalPlayer();
-    if (!LocalPlayer) return;
-
-    if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer))
+    if (!LocalPlayer)
     {
-        Subsystem->ClearAllMappings();
+        UE_LOG(LogTemp, Warning, TEXT("[SetupRoleInput] 조기 반환: GetLocalPlayer()=null (하체일 경우 키보드 미동작 원인)"));
+        return;
+    }
 
-        UInputMappingContext* TargetContext = bIsLower ? LowerBodyContext : UpperBodyContext;
-        if (TargetContext)
+    UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+    if (!Subsystem)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[SetupRoleInput] 조기 반환: EnhancedInputLocalPlayerSubsystem 없음 (하체일 경우 키보드 미동작 원인)"));
+        return;
+    }
+
+    Subsystem->ClearAllMappings();
+
+    UInputMappingContext* TargetContext = bIsLower ? LowerBodyContext : UpperBodyContext;
+    // 하체인데 BRPlayerController에 LowerBodyContext가 할당되지 않은 경우, 폰(PlayerCharacter)의 DefaultMappingContext 사용
+    if (!TargetContext && bIsLower)
+    {
+        APlayerCharacter* PC = OptionalPawnForFallback ? Cast<APlayerCharacter>(OptionalPawnForFallback) : Cast<APlayerCharacter>(GetPawn());
+        if (PC && PC->DefaultMappingContext)
         {
-            Subsystem->AddMappingContext(TargetContext, 0);
+            TargetContext = PC->DefaultMappingContext;
+            UE_LOG(LogTemp, Warning, TEXT("[SetupRoleInput] 하체: BRPlayerController의 Lower Body Context 미할당 → PlayerCharacter의 Default Mapping Context 사용 중. 에디터에서 Input > Lower Body Context 할당 권장."));
         }
+    }
+    if (!TargetContext && bIsLower)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[SetupRoleInput] 하체 키보드 인식 불가: Lower Body Context와 PlayerCharacter의 Default Mapping Context가 모두 비어 있습니다. PlayerCharacter 블루프린트의 Input > Default Mapping Context 또는 BRPlayerController의 Lower Body Context를 할당해주세요."));
+    }
+    if (TargetContext)
+    {
+        Subsystem->AddMappingContext(TargetContext, 0);
+        UE_LOG(LogTemp, Log, TEXT("[SetupRoleInput] 매핑 컨텍스트 적용 완료 bIsLower=%d Context=%s"), bIsLower ? 1 : 0, *TargetContext->GetName());
+    }
+
+    // 하체일 때 이동/시선 입력 무시 해제 (상체 전환 시 SetIgnoreMoveInput(true) 되므로, 하체로 돌아올 때 명시적으로 해제 필요)
+    if (bIsLower && IsLocalController())
+    {
+        ResetIgnoreMoveInput();
+        SetIgnoreMoveInput(false);
+        ResetIgnoreLookInput();
+        SetIgnoreLookInput(false);
+        FInputModeGameOnly GameInputMode;
+        SetInputMode(GameInputMode);
+        bShowMouseCursor = false;
     }
 }
 

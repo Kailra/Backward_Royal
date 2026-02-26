@@ -95,6 +95,13 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnAllClientsSpawnReady OnAllClientsSpawnReady;
 
+	/** 블루프린트 위젯용: 이미 전원 스폰 완료(bAllClientsSpawnReady) 상태면 Object에 지정한 이벤트/함수 호출.
+	 *  Construct에서 OnAllClientsSpawnReady 바인딩한 뒤 이 함수를 호출하면, 복제가 먼저 와서 이벤트를 놓친 경우에도 UI 전환이 됨.
+	 *  @param Target 바인딩한 위젯(self 등)
+	 *  @param EventOrFunctionName 위젯에 있는 Custom Event 또는 함수 이름 (예: "OnSpawnReadyForUI") */
+	UFUNCTION(BlueprintCallable, Category = "Game", meta = (DisplayName = "Notify If Spawn Ready"))
+	void NotifyWidgetIfSpawnReady(UObject* Target, FName EventOrFunctionName);
+
 	// [서버->클라이언트] 매치 종료 이벤트를 모든 클라이언트에게 전파
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastMatchEnded(FVector WinnerLocation, const FString& UpperName, const FString& LowerName);
@@ -209,7 +216,7 @@ protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
 
-	/** [서버 전용] 스폰 완료 신호를 기대하는 클라이언트 수 (팀 수 * 2). 복제 안 함 */
+	/** [서버 전용] 스폰 완료 신호를 기대하는 컨트롤러 수 (플레이어/팀 수). 복제 안 함 */
 	int32 ExpectedSpawnReadyCount = 0;
 	/** [서버 전용] 이미 스폰 완료 신호를 보낸 컨트롤러. 중복 카운트 방지 */
 	TSet<class APlayerController*> SpawnReadyControllers;
