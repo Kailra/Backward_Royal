@@ -697,6 +697,12 @@ void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
 	// 입력 매핑을 하체(이동 가능) 컨텍스트로 변경하여 관전 시 이동 가능하게 함
 	SetupSpectatorInput();
 
+	// [추가] 1. 딜리게이트 브로드캐스트 (위젯에서 바인딩 가능)
+	if (OnEnterSpectatorModeDelegate.IsBound())
+	{
+		OnEnterSpectatorModeDelegate.Broadcast();
+	}
+
 	// 블루프린트에서 구현된 이벤트 호출 (HUD 숨기기 등)
 	OnEnterSpectatorMode();
 }
