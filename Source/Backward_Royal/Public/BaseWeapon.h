@@ -34,8 +34,8 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
     FName WeaponRowName;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Weapon")
     FWeaponData CurrentWeaponData;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
@@ -63,7 +63,8 @@ protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override; // Ãß°¡
     virtual void OnConstruction(const FTransform& Transform) override;
-
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    
 private:
     bool bIsEquipped;
 
