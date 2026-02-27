@@ -1,9 +1,11 @@
 #include "BaseWeapon.h"
 #include "BaseCharacter.h"
 #include "BRGameInstance.h"
+#include "Net/UnrealNetwork.h"
 #include "GeometryCollection/GeometryCollectionActor.h"
 #include "GeometryCollection/GeometryCollectionComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 // 로그 매크로
 DEFINE_LOG_CATEGORY_STATIC(LogBaseWeapon, Display, All);
@@ -247,6 +249,19 @@ void ABaseWeapon::BreakWeapon()
     {
         OwnerCharacter->HandleWeaponBroken();
     }
+    
+    // 무기 파괴
+    Destroy();
+}
+
+
+void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    // [중요] 매크로의 첫 번째 인자는 자신의 클래스 이름(ABaseWeapon)이어야 합니다!
+    DOREPLIFETIME(ABaseWeapon, CurrentWeaponData);
+}
 
     //// 3. 장착 해제 및 물리적 분리
     //FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
@@ -292,5 +307,3 @@ void ABaseWeapon::BreakWeapon()
     //}
 
     // 5. 원본 액터 제거
-    Destroy();
-}
