@@ -229,9 +229,17 @@ void ABaseWeapon::DecreaseDurability(float DamageAmount)
     }
 }
 
+void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    // [중요] 매크로의 첫 번째 인자는 자신의 클래스 이름(ABaseWeapon)이어야 합니다!
+    DOREPLIFETIME(ABaseWeapon, CurrentWeaponData);
+}
+
 void ABaseWeapon::BreakWeapon()
 {
-    // [2025-11-18] 커스텀 디버그 로그 매크로 사용
+    // 커스텀 디버그 로그 매크로 사용
     LOG_WEAPON(Warning, "Weapon [%s] has been BROKEN!", *WeaponRowName.ToString());
 
     // 1. 시각적 처리: 원본 메시를 즉시 숨기고 충돌을 제거
@@ -249,19 +257,6 @@ void ABaseWeapon::BreakWeapon()
     {
         OwnerCharacter->HandleWeaponBroken();
     }
-    
-    // 무기 파괴
-    Destroy();
-}
-
-
-void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-    // [중요] 매크로의 첫 번째 인자는 자신의 클래스 이름(ABaseWeapon)이어야 합니다!
-    DOREPLIFETIME(ABaseWeapon, CurrentWeaponData);
-}
 
     // 3. 장착 해제 및 물리적 분리
     FDetachmentTransformRules DetachRules(EDetachmentRule::KeepWorld, true);
@@ -275,6 +270,7 @@ void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
         FActorSpawnParameters SpawnParams;
         SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+        // Geometry Collection 액터 스폰
         AGeometryCollectionActor* FracturedActor = GetWorld()->SpawnActor<AGeometryCollectionActor>(
             AGeometryCollectionActor::StaticClass(),
             SpawnTransform,
@@ -286,24 +282,29 @@ void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
             UGeometryCollectionComponent* GCComp = FracturedActor->GetGeometryCollectionComponent();
             if (GCComp)
             {
-                // 데이터 테이블에서 가져온 파괴 에셋 설정
+                // 데이터 테이블에서 가져온 파괴 에셋(Geometry Collection) 설정
                 GCComp->SetRestCollection(CurrentWeaponData.FracturedMesh);
 
-                // [수정] 물리 시뮬레이션 활성화 및 히트 이벤트 설정
+                // 물리 시뮬레이션 활성화 및 히트 이벤트 설정
                 GCComp->SetSimulatePhysics(true);
                 GCComp->SetNotifyRigidBodyCollision(true);
+                GCComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-                // [추가] 조각들이 사방으로 흩어지도록 초기 충격을 가함
-                // 단순히 스폰만 하면 형태를 유지한 채 떨어질 수 있으므로 임펄스를 추가합니다.
-                GCComp->AddImpulse(FVector(0.f, 0.f, 50.f)); // 위쪽으로 살짝 튀게 함
+                // 조각들이 사방으로 흩어지도록 초기 충격을 가함
+                // 무기 중심부에서 바깥쪽으로 힘을 가해 자연스럽게 부서지도록 유도합니다.
+                FVector ImpulseDirection = GetActorUpVector() * 100.0f + FMath::VRand() * 50.0f;
+                GCComp->AddImpulse(ImpulseDirection);
             }
+
+            // 파괴된 조각들이 월드에 무한정 남아있지 않도록 수명 설정 (10초 후 소멸)
             FracturedActor->SetLifeSpan(10.0f);
         }
     }
     else
     {
         LOG_WEAPON(Error, "No FracturedMesh defined in DataTable for [%s]!", *WeaponRowName.ToString());
-        Destroy();
     }
 
     // 5. 원본 액터 제거
+    Destroy();
+}
