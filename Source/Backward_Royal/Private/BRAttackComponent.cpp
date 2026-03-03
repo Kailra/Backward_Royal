@@ -223,7 +223,7 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
     else
     {
         // [수정] 맨손 공격 시 기본 데미지 10 추가
-        CalculatedDamage = (ImpactForce * 0.001f) + 10.0f;
+        CalculatedDamage = (ImpactForce * 0.001f) + Global_BasePunchDamage;
     }
 
     // 디버그 출력
