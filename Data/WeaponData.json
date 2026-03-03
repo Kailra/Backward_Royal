@@ -32,6 +32,83 @@
       "AttackSpeedCoefficient": 1.0,
       "DamageCategory": 0,
       "WeaponType": 0
+    },
+    {
+      "Name": "Weapon_04",
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 0,
+      "WeaponType": 0
+    },
+    {
+      "Name": "Weapon_05",
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 0,
+      "WeaponType": 0
+    },
+    {
+      "Name": "Weapon_06",
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 0,
+      "WeaponType": 1
+    },
+    {
+      "Name": "Weapon_07",
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 0,
+      "WeaponType": 1
+    },
+    {
+      "Name": "Weapon_08",
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 1,
+      "WeaponType": 1
+    },
+    {
+      "Name": "Weapon_09",
+      "DisplayName": "None",
+      "MassKg": 20.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 1,
+      "WeaponType": 1
+    },
+    {
+      "Name": "Weapon_10",
+      "DisplayName": "None",
+      "MassKg": 10.0,
+      "Durability": 100.0,
+      "DamageCoefficient": 1.0,
+      "ImpulseCoefficient": 1.0,
+      "AttackSpeedCoefficient": 1.0,
+      "DamageCategory": 1,
+      "WeaponType": 1
     }
   ]
 }
