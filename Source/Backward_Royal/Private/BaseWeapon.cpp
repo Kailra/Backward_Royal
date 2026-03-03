@@ -236,30 +236,42 @@ void ABaseWeapon::Multicast_BreakWeaponVisual_Implementation(const FTransform& S
             if (GCComp)
             {
                 GCComp->SetRestCollection(CurrentWeaponData.FracturedMesh);
-                // [핵심 수정] 콜리전 프로파일을 Custom으로 변경하고 수동으로 채널 제어
-                GCComp->SetCollisionProfileName(TEXT("Custom"));
 
-                // 물리 연산만 하고 트레이스(레이캐스트) 등은 막지 않도록 설정
-                GCComp->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly);
-                GCComp->SetCollisionObjectType(ECC_PhysicsBody);
+                // 1. 파괴가 100% 보장되는 기본 물리 프로파일 사용
+                GCComp->SetCollisionProfileName(TEXT("PhysicsActor"));
 
-                // 1. 우선 모든 오브젝트(캐릭터, 카메라, 다른 파편 등)를 무시하여 통과하게 만듦
-                GCComp->SetCollisionResponseToAllChannels(ECR_Ignore);
-
-                // 2. 오직 바닥/벽(WorldStatic)과 움직이는 지형(WorldDynamic)하고만 충돌하게 설정
-                GCComp->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-                GCComp->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+                // 2. 그 위에 덮어쓰기: 파편이 플레이어의 길을 막거나 튕겨내지 않도록 무시
+                GCComp->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+                GCComp->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
                 GCComp->SetSimulatePhysics(true);
                 GCComp->SetNotifyRigidBodyCollision(true);
+
+                GCComp->RecreatePhysicsState();
             }
 
             UGameplayStatics::FinishSpawningActor(FracturedActor, SpawnTransform);
 
-            // 아주 살짝 흩어지도록 임펄스 추가
-            FVector CrumbleImpulse = FMath::VRand() * 10.0f;
-            GCComp->AddImpulse(CrumbleImpulse, NAME_None, true);
+            if (GCComp)
+            {
+                // 타겟 액터에만 점 데미지를 주어 제자리에서 즉시 분리
+                FHitResult HitInfo;
+                HitInfo.ImpactPoint = SpawnTransform.GetLocation();
 
+                UGameplayStatics::ApplyPointDamage(
+                    FracturedActor,
+                    1000000.f,
+                    FVector::DownVector,
+                    HitInfo,
+                    nullptr,
+                    this,
+                    nullptr
+                );
+
+                // 아주 살짝 흩어지도록 임펄스 추가
+                FVector CrumbleImpulse = FMath::VRand() * 10.0f;
+                GCComp->AddImpulse(CrumbleImpulse, NAME_None, true);
+            }
             FracturedActor->SetLifeSpan(10.0f);
         }
     }
