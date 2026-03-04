@@ -1253,10 +1253,15 @@ void ABRGameMode::CheckMatchWinner()
 
 	// 생존 팀(TeamNumber) 수집
 	TSet<int32> AliveTeams;
+	UE_LOG(LogTemp, Warning, TEXT("[CheckMatchWinner] 현재 플레이어 상태 점검 시작"));
 	for (APlayerState* PS : BRGameState->PlayerArray)
 	{
 		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
 		{
+			//  팀 번호(TeamNumber)와 상태(CurrentStatus) 로그 추가
+			UE_LOG(LogTemp, Warning, TEXT(" - %s: TeamNumber = %d, Status = %d"),
+				*BRPS->GetPlayerName(), BRPS->TeamNumber, (int32)BRPS->CurrentStatus);
+			
 			// 팀 번호가 있고(>0), 살아있는 경우
 			if (BRPS->TeamNumber > 0 && BRPS->CurrentStatus == EPlayerStatus::Alive)
 			{
