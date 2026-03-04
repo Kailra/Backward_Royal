@@ -97,8 +97,8 @@ APlayerCharacter::APlayerCharacter()
 
 	// [네트워크] 클라이언트 예측/서버 보정 및 스무딩 튜닝 (고지연·패킷유실 환경 대응)
 	bReplicates = true;
-	SetNetUpdateFrequency(144.0f);
-	SetMinNetUpdateFrequency(100.0f);
+	SetNetUpdateFrequency(60.f);
+	SetMinNetUpdateFrequency(30.f);
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	MoveComp->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
