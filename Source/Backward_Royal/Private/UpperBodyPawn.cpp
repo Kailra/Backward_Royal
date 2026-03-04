@@ -43,8 +43,10 @@ AUpperBodyPawn::AUpperBodyPawn()
 	FrontCameraBoom->bInheritYaw = true;
 	FrontCameraBoom->bInheritRoll = false;
 
-	FrontCameraBoom->bEnableCameraLag = false;
-	FrontCameraBoom->bEnableCameraRotationLag = false;
+	FrontCameraBoom->bEnableCameraLag = true;           // 이동 지연 켜기
+	FrontCameraBoom->CameraLagSpeed = 20.0f;            // 이동 지연 속도
+	FrontCameraBoom->bEnableCameraRotationLag = true;   // 회전 지연 켜기 (끌려갈 때 부드럽게)
+	FrontCameraBoom->CameraRotationLagSpeed = 15.0f;    // 수치가 작을수록 더 부드럽고 늦게 따라감
 
 	FrontCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FrontCamera"));
 	FrontCamera->SetupAttachment(FrontCameraBoom);
@@ -97,6 +99,23 @@ void AUpperBodyPawn::BeginPlay()
 
 	//	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Magenta, DebugMsg);
 	//}
+}
+
+void AUpperBodyPawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+
+	// [크래시 방지] 물리/충돌 컴포넌트 정리
+	// 상체 폰은 RootComponent가 SceneComponent일 수 있으나, 
+	// 혹시 모를 물리 충돌이나 자식 컴포넌트의 물리 작용을 차단
+	if (RootComponent)
+	{
+		if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(RootComponent))
+		{
+			PrimComp->SetSimulatePhysics(false);
+			PrimComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
 }
 
 void AUpperBodyPawn::Tick(float DeltaTime)

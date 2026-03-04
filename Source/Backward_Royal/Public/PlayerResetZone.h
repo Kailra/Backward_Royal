@@ -2,9 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-// ¹Ú½º ÄÄÆ÷³ÍÆ®¸¦ »ç¿ëÇÏ±â À§ÇØ Çì´õ Ãß°¡
-#include "Components/BoxComponent.h" 
+// ë°•ìŠ¤ ì»´í¬ë„ŒíŠ¸ë¥¼ ì‚¬ìš©í•˜ê¸° ìœ„í•œ í—¤ë” ì¶”ê°€
+#include "Components/BoxComponent.h"
+#include "Components/BillboardComponent.h"
 #include "PlayerResetZone.generated.h"
+
+class UTexture2D;
 
 UCLASS()
 class BACKWARD_ROYAL_API APlayerResetZone : public AActor
@@ -12,24 +15,24 @@ class BACKWARD_ROYAL_API APlayerResetZone : public AActor
 	GENERATED_BODY()
 
 public:
-	// »ı¼ºÀÚ
+	// ìƒì„±ì
 	APlayerResetZone();
 
 protected:
-	// °ÔÀÓ ½ÃÀÛ ½Ã
+	// ê²Œì„ ì‹œì‘ ì‹œ í˜¸ì¶œ
 	virtual void BeginPlay() override;
 
 public:
-	// [ÇÙ½É] ¹«¾ğ°¡°¡ ÀÌ ¹Ú½º¿¡ °ãÃÆÀ» ¶§ ½ÇÇàµÉ ÇÔ¼ö
+	// [í•µì‹¬] ë¬´ì–¸ê°€ê°€ ì´ ë°•ìŠ¤ì— ê²¹ì³¤ì„ ë•Œ ì‹¤í–‰ë  í•¨ìˆ˜
 	UFUNCTION()
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 private:
-	// Ãæµ¹À» °¨ÁöÇÒ Åõ¸íÇÑ ¹Ú½º ÄÄÆ÷³ÍÆ®
+	// ì¶©ëŒì„ ê°ì§€í•  íŠ¸ë¦¬ê±° ë°•ìŠ¤ ì»´í¬ë„ŒíŠ¸
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Zone Settings", meta = (AllowPrivateAccess = "true"))
 	UBoxComponent* TriggerBox;
 
-	// (¼±ÅÃ»çÇ×) ¿¡µğÅÍ¿¡¼­ ´«¿¡ Àß ¶ç°Ô ÇÏ±â À§ÇÑ ºôº¸µå ¾ÆÀÌÄÜ (½ÇÁ¦ °ÔÀÓ¿¡¼± ¾È º¸ÀÓ)
+	// (ì„ íƒì‚¬í•­) ì—ë””í„°ì—ì„œ ì‰½ê²Œ ë³¼ ìˆ˜ ìˆê²Œ í•´ì£¼ëŠ” ë¹Œë³´ë“œ ì•„ì´ì½˜ (ì‹¤ì œ ê²Œì„ì—ì„  ì•ˆ ë³´ì„)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Zone Settings", meta = (AllowPrivateAccess = "true"))
 	UBillboardComponent* SpriteIcon;
 };

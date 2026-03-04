@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "GeometryCollection/GeometryCollectionObject.h"
+#include "Sound/SoundBase.h"
 #include "WeaponTypes.generated.h"
 
 // 무기 종류
@@ -28,11 +29,13 @@ struct FWeaponData : public FTableRowBase
 {
     GENERATED_BODY()
 
+    // Initialize pointer to nullptr
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UStaticMesh* WeaponMesh;
+    UStaticMesh* WeaponMesh = nullptr;
 
+    // Initialize pointer to nullptr
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UGeometryCollection* FracturedMesh;
+    UGeometryCollection* FracturedMesh = nullptr;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FName DisplayName;
@@ -53,9 +56,20 @@ struct FWeaponData : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     float AttackSpeedCoefficient = 1.0f;
 
+    // Initialize Enum to a safe default (first value)
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    EDamageCategory DamageCategory; // 데미지 타입
+    EDamageCategory DamageCategory = EDamageCategory::Slash_Pierce; // 데미지 타입
 
+    // Initialize Enum to None
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    EWeaponType WeaponType; // 무기 타입
+    EWeaponType WeaponType = EWeaponType::None; // 무기 타입
+    
+    // 휘두르는 소리 (붕~, 쉭!)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+    USoundBase* SwingSound;
+
+    // 때렸을 때 소리 (퍽!, 챙강!)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sound")
+    USoundBase* HitSound;
+
 };

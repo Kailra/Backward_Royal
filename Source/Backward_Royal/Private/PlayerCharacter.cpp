@@ -2,6 +2,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Components/SceneComponent.h"
 #include "Components/CapsuleComponent.h"	
 #include "EnhancedInputComponent.h"
@@ -19,17 +20,34 @@ DEFINE_LOG_CATEGORY(LogPlayerChar);
 #define LOG_PLAYER(Verbosity, Format, ...) \
     UE_LOG(LogPlayerChar, Verbosity, TEXT("%s - %s"), *FString(__FUNCTION__), *FString::Printf(Format, ##__VA_ARGS__))
 
+// static 변수 초기화
+float APlayerCharacter::Global_RotationRateYaw = 300.0f;
+float APlayerCharacter::Global_BrakingFriction = 1.0f;
+float APlayerCharacter::Global_BrakingDecelerationWalking = 500.0f;
+
 APlayerCharacter::APlayerCharacter()
 {
-	// [기본 설정 유지]
+	// [기본 설정 유지 및 수정]
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = true;
+
+	// 1. 마우스 시점 이동 관성 (회전)
+	// 컨트롤러의 방향으로 즉각 회전하지 않고 부드럽게 돌아가도록 변경합니다.
+	bUseControllerRotationYaw = false; // 기존 true에서 false로 변경하여 즉각 회전을 방지합니다.
 	bUseControllerRotationRoll = false;
 
+	// 회전 관성 적용
+	GetCharacterMovement()->bUseControllerDesiredRotation = true; // 컨트롤러 시점 방향으로 천천히 회전하게 만듭니다.
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, Global_RotationRateYaw, 0.0f); // Yaw 수치가 낮을수록 회전이 더 묵직하고 느려집니다. (기존 500.0f)
 	GetCharacterMovement()->bOrientRotationToMovement = false;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
-	//GetMesh()->SetOwnerNoSee(true); // <- 몸 투명화
+	// 2. WASD 이동 관성 (가속 및 감속)
+	// 캐릭터의 초기 가속을 느리게 하고, 키를 뗐을 때 즉시 멈추지 않고 미끄러지듯 감속하게 합니다.
+	GetCharacterMovement()->MaxAcceleration = 600.f; // 가속도: 수치가 낮을수록 최고 속도에 도달하기까지 오래 걸려 무겁게 느껴집니다.
+	GetCharacterMovement()->bUseSeparateBrakingFriction = true; // 감속 마찰력을 별도로 사용하도록 활성화합니다.
+	GetCharacterMovement()->BrakingFriction = Global_BrakingFriction; // 마찰력: 수치가 낮을수록 키를 뗐을 때 지면에서 더 많이 미끄러집니다.
+	GetCharacterMovement()->BrakingDecelerationWalking = Global_BrakingDecelerationWalking; // 감속도: 수치가 낮을수록 완전히 정지할 때까지의 거리가 길어집니다.
+
+	// GetMesh()->SetOwnerNoSee(true); // <- 몸 투명화
 	GetMesh()->bCastHiddenShadow = true;
 	GetMesh()->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 
@@ -39,26 +57,21 @@ APlayerCharacter::APlayerCharacter()
 	{
 		if (Part)
 		{
-			//Part->SetOwnerNoSee(true);   //  <- 몸 투명화
+			// Part->SetOwnerNoSee(true);   //  <- 몸 투명화
 			Part->bCastHiddenShadow = true;
 
 			// A. [틱 순서 고정] 
-			// "몸통(GetMesh)의 애니메이션/위치 계산이 완전히 끝난 뒤에 -> 갑옷(Part)을 처리해라"
-			// 이 설정이 없으면 몸통은 움직였는데 갑옷은 제자리에 있는 프레임이 섞여서 덜덜 떨립니다.
 			Part->AddTickPrerequisiteComponent(GetMesh());
 
 			// B. [부착 관계 확인]
-			// 갑옷은 반드시 'Root'나 'Capsule'이 아니라 'GetMesh()'에 붙어있어야 합니다.
-			// 왜냐하면 'GetMesh()'에는 네트워크 위치 보정(Smoothing)이 적용되는데, 
-			// 캡슐에 붙어있으면 이 보정을 못 받아서 갑옷만 따로 놉니다.
 			if (Part->GetAttachParent() != GetMesh())
 			{
 				Part->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetIncludingScale);
-				UE_LOG(LogTemp, Warning, TEXT("[%s] 파츠가 GetMesh에 붙어있지 않아 강제로 재부착했습니다."), *Part->GetName());
+
+				// UE_LOG(LogTemp, Warning, TEXT("[%s] 파츠가 GetMesh에 붙어있지 않아 강제로 재부착했습니다."), *Part->GetName());
 			}
 
 			// C. [Leader Pose 재확인]
-			// 혹시라도 풀렸을 경우를 대비해 다시 연결
 			Part->SetLeaderPoseComponent(GetMesh());
 		}
 	}
@@ -79,7 +92,7 @@ APlayerCharacter::APlayerCharacter()
 	HeadMountPoint->SetupAttachment(GetCapsuleComponent());
 	HeadMountPoint->SetRelativeLocation(FVector(0.0f, 0.0f, 65.0f));
 
-	// 3. [신규] 스태미나 컴포넌트 생성
+	// 3. 스태미나 컴포넌트 생성
 	StaminaComp = CreateDefaultSubobject<UStaminaComponent>(TEXT("StaminaComp"));
 
 	// [네트워크] 클라이언트 예측/서버 보정 및 스무딩 튜닝 (고지연·패킷유실 환경 대응)
@@ -231,10 +244,43 @@ void APlayerCharacter::HandleStaminaChanged(float CurrentVal, float MaxVal)
 
 void APlayerCharacter::Move(const FInputActionValue& Value)
 {
+	// [로딩 중 키보드 비인식 기능 주석 처리]
+	// UWorld* World = GetWorld();
+	// ABRGameState* GS = World ? World->GetGameState<ABRGameState>() : nullptr;
+	// // 전원 스폰 완료 신호 전까지 이동 입력 무시 (서버가 bAllClientsSpawnReady 브로드캐스트할 때까지)
+	// if (GS && !GS->bAllClientsSpawnReady)
+	// 	return;
+	// // 전원 스폰 완료 후 1회만 컨트롤러 이동 입력 해제 (델리게이트 콜백 미호출 시 폴백)
+	// if (!bMoveInputUnblocked && GS && GS->bAllClientsSpawnReady && Controller)
+	// {
+	// 	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	// 	{
+	// 		PC->ResetIgnoreMoveInput();
+	// 		PC->SetIgnoreMoveInput(false);
+	// 		FInputModeGameOnly GameMode;
+	// 		PC->SetInputMode(GameMode);
+	// 		PC->bShowMouseCursor = false;
+	// 		bMoveInputUnblocked = true;
+	// 	}
+	// }
+
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
 	if (Controller != nullptr)
 	{
+		// 테스트 맵 직접 실행 시 컨트롤러 이동 차단이 남아 있으면 WASD가 무시됨(점프만 됨). 여기서 해제하고 bForce로 이동 적용
+		bool bForceMove = false;
+		if (ABRPlayerController* PC = Cast<ABRPlayerController>(Controller))
+		{
+			UWorld* W = GetWorld();
+			if (ABRGameState* GS = W ? W->GetGameState<ABRGameState>() : nullptr; GS && GS->bSkipLoadingScreen)
+			{
+				PC->ResetIgnoreMoveInput();
+				PC->SetIgnoreMoveInput(false);
+				bForceMove = true;
+			}
+		}
+
 		const FRotator Rotation = Controller->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
 
@@ -262,9 +308,9 @@ void APlayerCharacter::Move(const FInputActionValue& Value)
 		}
 		// [신규 로직 끝] ------------------------------------------------------------
 
-		// 계산된 배율(SpeedScale)을 곱해서 이동 적용
-		AddMovementInput(CameraForward, MovementVector.Y * SpeedScale);
-		AddMovementInput(CameraRight, MovementVector.X * SpeedScale);
+		// 계산된 배율(SpeedScale)을 곱해서 이동 적용. bForce=true면 IsMoveInputIgnored() 무시하고 이동 적용(테스트 맵 직접 실행용)
+		AddMovementInput(CameraForward, MovementVector.Y * SpeedScale, bForceMove);
+		AddMovementInput(CameraRight, MovementVector.X * SpeedScale, bForceMove);
 	}
 }
 
@@ -280,6 +326,15 @@ void APlayerCharacter::Look(const FInputActionValue& Value)
 
 void APlayerCharacter::Jump()
 {
+	// [로딩 중 키보드 비인식 기능 주석 처리]
+	// // 전원 스폰 완료 전에는 점프(이동) 입력 무시
+	// if (UWorld* World = GetWorld())
+	// {
+	// 	if (ABRGameState* GS = World->GetGameState<ABRGameState>())
+	// 	{
+	// 		if (!GS->bAllClientsSpawnReady) return;
+	// 	}
+	// }
 	// 스태미나가 충분할 때만 점프 시도 (불필요한 입력 방지)
 	if (StaminaComp && StaminaComp->CanJump())
 	{
@@ -361,13 +416,6 @@ void APlayerCharacter::OnRep_PlayerState()
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (MyPS)
 	{
-		// [수정] 이미 상/하체 모두 적용(Lock)이 끝났다면 델리게이트 재연결 불필요
-		if (!bUpperBodyApplied || !bLowerBodyApplied)
-		{
-			MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-			MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
-		}
-
 		// 파트너 바인딩은 로직 유지를 위해 연결
 		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
@@ -421,15 +469,14 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 
 void APlayerCharacter::TryApplyCustomization()
 {
+	// [핵심 1] 이미 최초 외형 세팅이 끝나서 잠겼다면, SwitchOrb 스왑 등으로 불려도 무시합니다.
+	if (bAppearanceLocked) return;
+
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS) return;
 
-	// [수정 1] Lock 가능 여부 판단
-	// Index가 -1이면 아직 팀 정보가 안 왔거나 솔로일 수 있음 -> 일단 적용하되, 확정(Lock)은 짓지 않음
-	bool bCanLock = (MyPS->ConnectedPlayerIndex != -1);
-
-	// [기존 가드 유지] 팀은 배정됐는데 파트너가 아직 안 왔으면 대기
-	if (bCanLock && MyPS->PartnerPlayerState == nullptr)
+	// [역할 동기화 과도기 방지 가드]
+	if (MyPS->PartnerPlayerState && (MyPS->bIsLowerBody == MyPS->PartnerPlayerState->bIsLowerBody))
 	{
 		return;
 	}
@@ -438,63 +485,43 @@ void APlayerCharacter::TryApplyCustomization()
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
 	// --- 상체 적용 ---
-	if (UpperPS && UpperPS->CustomizationData.bIsDataValid)
+	if (UpperPS && !UpperPS->bIsLowerBody)
 	{
-		// [핵심] 이미 적용됐더라도 Lock이 안 걸려있다면(!bCanLock) 다시 적용 허용 (덮어쓰기)
-		if (!bUpperBodyApplied || !bCanLock)
-		{
-			// 역할 교차 검증 (UpperPS가 진짜 상체 역할인지?)
-			if (!UpperPS->bIsLowerBody)
-			{
-				ApplyMeshFromID(EArmorSlot::Head, UpperPS->CustomizationData.HeadID);
-				ApplyMeshFromID(EArmorSlot::Chest, UpperPS->CustomizationData.ChestID);
-				ApplyMeshFromID(EArmorSlot::Hands, UpperPS->CustomizationData.HandID);
+		int32 ApplyHeadID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HeadID : 0;
+		int32 ApplyChestID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.ChestID : 0;
+		int32 ApplyHandID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HandID : 0;
 
-				// [수정 2] 확실한 상황일 때만 잠금
-				if (bCanLock)
-				{
-					bUpperBodyApplied = true;
-					UpperPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-					LOG_PLAYER(Display, TEXT("Upper Body LOCKED (Valid Team Found)"));
-				}
-				else
-				{
-					// 아직 확정이 아니므로 델리게이트 유지 + 로그
-					// LOG_PLAYER(Warning, TEXT("Upper Body Applied but NOT LOCKED (Waiting for Index)"));
-				}
-			}
-		}
+		ApplyMeshFromID(EArmorSlot::Head, ApplyHeadID);
+		ApplyMeshFromID(EArmorSlot::Chest, ApplyChestID);
+		ApplyMeshFromID(EArmorSlot::Hands, ApplyHandID);
 	}
 
 	// --- 하체 적용 ---
-	if (LowerPS && LowerPS->CustomizationData.bIsDataValid)
+	if (LowerPS && LowerPS->bIsLowerBody)
 	{
-		if (!bLowerBodyApplied || !bCanLock)
-		{
-			if (LowerPS->bIsLowerBody)
-			{
-				ApplyMeshFromID(EArmorSlot::Legs, LowerPS->CustomizationData.LegID);
-				ApplyMeshFromID(EArmorSlot::Feet, LowerPS->CustomizationData.FootID);
+		int32 ApplyLegID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.LegID : 0;
+		int32 ApplyFootID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.FootID : 0;
 
-				if (bCanLock)
-				{
-					bLowerBodyApplied = true;
-					LowerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
-					LOG_PLAYER(Display, TEXT("Lower Body LOCKED (Valid Team Found)"));
-				}
-			}
-		}
+		ApplyMeshFromID(EArmorSlot::Legs, ApplyLegID);
+		ApplyMeshFromID(EArmorSlot::Feet, ApplyFootID);
+	}
+
+	// =================================================================
+	// [핵심 2] 두 플레이어의 상/하체 역할이 정상적으로 나뉘어 배정되었다면,
+	// 커마 적용이 완전하게 끝났다고 판단하고 영구 잠금(Lock)을 겁니다.
+	// =================================================================
+	if (MyPS && MyPS->PartnerPlayerState && (MyPS->bIsLowerBody != MyPS->PartnerPlayerState->bIsLowerBody))
+	{
+		bAppearanceLocked = true;
+		LOG_PLAYER(Display, TEXT("Initial Appearance Fully Locked. It won't change on SwitchOrb Swaps."));
 	}
 }
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 {
-	if (bBoundToPartner) return;
-
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (!MyPS)
 	{
-		// [수정] 람다 대신 CreateUObject를 사용하여 this 포인터 안전성 확보
 		if (UWorld* World = GetWorld())
 		{
 			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
@@ -511,7 +538,6 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	{
 		if (UWorld* World = GetWorld())
 		{
-			// [수정] 안전한 델리게이트 사용
 			FTimerDelegate RetryDelegate = FTimerDelegate::CreateUObject(this, &APlayerCharacter::BindToPartnerPlayerState, bIsLowerBody);
 			World->GetTimerManager().SetTimer(TimerHandle_RetryBindPartner, RetryDelegate, 0.5f, false);
 		}
@@ -524,13 +550,17 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	// --- 성공 ---
 	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
 
+	// [핵심] SwitchOrb 등으로 파트너 역할이 스왑될 수 있으므로, 항상 기존 바인딩을 제거하고 새로 연결
 	PartnerPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
 	PartnerPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
-	bBoundToPartner = true;
+	PartnerPS->OnPlayerRoleChanged.RemoveDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+	PartnerPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+
 	LOG_PLAYER(Display, TEXT("Bound to Partner Success: %s"), *PartnerPS->GetPlayerName());
 
-	// 파트너 찾았으니 커마 적용 재시도
+	// 파트너가 갱신되었으므로 커스터마이징 갱신을 찔러줍니다.
+	// (최초 1회는 정상 적용 후 bAppearanceLocked가 true가 되며, 이후 스왑 시에는 무시되어 외형이 고정됩니다.)
 	TryApplyCustomization();
 }
 
@@ -645,10 +675,98 @@ void APlayerCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 
+	// [크래시 방지] 레벨 이동 시 물리 엔진이 소멸된 컴포넌트를 참조하지 않도록 강제 종료
+	if (GetCapsuleComponent())
+	{
+		GetCapsuleComponent()->SetSimulatePhysics(false);
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	if (GetMesh())
+	{
+		GetMesh()->SetSimulatePhysics(false);
+		GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
+
+	// 파츠들도 물리 끄기
+	TArray<USkeletalMeshComponent*> Parts = { HeadMesh, ChestMesh, HandMesh, LegMesh, FootMesh };
+	for (USkeletalMeshComponent* Part : Parts)
+	{
+		if (Part)
+		{
+			Part->SetSimulatePhysics(false);
+			Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
+	}
+
 	// [핵심] 캐릭터가 파괴될 때 돌고 있던 타이머를 모두 해제하여 
 	// 댕글링 포인터 크래시(Access Violation) 방지
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(TimerHandle_RetryBindPartner);
+	}
+}
+
+void APlayerCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// [로딩 중 키보드 비인식 기능 주석 처리]
+	// // 전원 스폰 완료 시 로컬 하체 플레이어의 이동 입력 1회 해제 (키가 UI에 잡혀 Move()가 호출되지 않아도 Tick에서 처리)
+	// if (!bMoveInputUnblocked && IsLocallyControlled())
+	// {
+	// 	UWorld* World = GetWorld();
+	// 	ABRGameState* GS = World ? World->GetGameState<ABRGameState>() : nullptr;
+	// 	if (GS && GS->bAllClientsSpawnReady && Controller)
+	// 	{
+	// 		if (APlayerController* PC = Cast<APlayerController>(Controller))
+	// 		{
+	// 			PC->ResetIgnoreMoveInput();
+	// 			PC->SetIgnoreMoveInput(false);
+	// 			FInputModeGameOnly GameMode;
+	// 			PC->SetInputMode(GameMode);
+	// 			PC->bShowMouseCursor = false;
+	// 			bMoveInputUnblocked = true;
+	// 		}
+	// 	}
+	// }
+
+	// 발자국 소리 로직 실행
+	ProcessFootstep(DeltaTime);
+}
+
+void APlayerCharacter::ProcessFootstep(float DeltaTime)
+{
+	// 1. 소리 파일이 없으면 실행 안 함
+	if (!FootstepSound) return;
+
+	// 2. 공중에 떠 있거나(점프 중), 수영 중이면 소리 안 남
+	if (GetCharacterMovement()->IsFalling() || GetCharacterMovement()->IsSwimming()) 
+	{
+		AccumulatedDistance = 0.0f; 
+		return;
+	}
+
+	// 3. 현재 속도(Velocity) 가져오기 (Z축 제외, 수평 이동만 계산)
+	FVector Velocity = GetVelocity();
+	Velocity.Z = 0.0f;
+	float Speed = Velocity.Size();
+
+	// 4. 멈춰있으면(속도가 10 미만) 계산 중단
+	if (Speed < 10.0f) return;
+
+	// 5. 이동 거리 누적 (속도 * 시간 = 거리)
+	AccumulatedDistance += Speed * DeltaTime;
+
+	// 6. 누적 거리가 설정한 간격(Threshold)을 넘었는지 확인
+	if (AccumulatedDistance >= FootstepDistanceThreshold)
+	{
+		// [수정됨] 소리 재생 (볼륨 적용)
+		// PlaySoundAtLocation(WorldContextObject, Sound, Location, VolumeMultiplier, PitchMultiplier...)
+		// 네 번째 인자에 FootstepVolume을 넣어줍니다.
+		UGameplayStatics::PlaySoundAtLocation(this, FootstepSound, GetActorLocation(), FootstepVolume);
+
+		// 7. 누적 거리 초기화 (나머지 값은 남겨두어 박자 밀림 방지)
+		AccumulatedDistance -= FootstepDistanceThreshold;
 	}
 }

@@ -14,7 +14,7 @@ class BACKWARD_ROYAL_API UBRAttackComponent : public UActorComponent
 public:
 	UBRAttackComponent();
 
-	static float BasePunchDamage;
+	static float Global_BasePunchDamage;
 
 protected:
 	virtual void BeginPlay() override;
@@ -51,6 +51,10 @@ public:
 	// 서버에서 모든 클라이언트로 히트 스탑 명령 전송
 	UFUNCTION(NetMulticast, Reliable)
 	void MulticastApplyHitStop(float Duration);
+	
+	// [신규] 멀티플레이어 타격음 재생용 함수
+	UFUNCTION(NetMulticast, Unreliable)
+	void MulticastPlayHitSound(USoundBase* SoundToPlay, FVector Location, float Volume);
 
 private:
 	bool bIsDetectionActive = false;

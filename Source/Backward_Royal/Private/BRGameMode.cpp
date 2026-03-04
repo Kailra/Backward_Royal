@@ -94,10 +94,30 @@ void ABRGameMode::BeginPlay()
 	Super::BeginPlay();
 
 	// GameState에 최소/최대 플레이어 수 설정
-	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	ABRGameState* BRGameState = GetGameState<ABRGameState>();
+	if (BRGameState)
 	{
 		BRGameState->MinPlayers = MinPlayers;
 		BRGameState->MaxPlayers = MaxPlayers;
+	}
+
+	// 맵을 로비 없이 바로 실행한 경우(테스트): 로딩 창을 표시하지 않도록 플래그 설정 (블루프린트 로딩 위젯에서 bSkipLoadingScreen 확인)
+	if (BRGameState && GetWorld())
+	{
+		UBRGameInstance* GI = Cast<UBRGameInstance>(GetGameInstance());
+		FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(GetWorld(), true);
+		if (CurrentMapName.IsEmpty())
+		{
+			CurrentMapName = GetWorld()->GetMapName();
+			CurrentMapName.RemoveFromStart(GetWorld()->StreamingLevelsPrefix);
+		}
+		FString LobbyMapBase = LobbyMapPath.IsEmpty() ? TEXT("Main_Scene") : FPaths::GetBaseFilename(LobbyMapPath);
+		const bool bIsLobbyMap = CurrentMapName.Equals(LobbyMapBase, ESearchCase::IgnoreCase);
+		if (!bIsLobbyMap && GI && !GI->GetPendingApplyRandomTeamRoles())
+		{
+			BRGameState->bSkipLoadingScreen = true;
+			UE_LOG(LogTemp, Log, TEXT("[맵 직접 실행] 로딩 창 비표시 (bSkipLoadingScreen=true)"));
+		}
 	}
 
 	// 로비에서 랜덤 팀 배정 후 예약된 경우: 게임 맵 로드 후 플레이어 스폰이 끝날 때까지 지연 후 적용
@@ -159,14 +179,25 @@ void ABRGameMode::PreLogin(const FString& Options, const FString& Address, const
 	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
 	if (!ErrorMessage.IsEmpty()) return;
 
-	// 게임 진행 중 입장 차단이 꺼져 있으면 통과
-	if (!bBlockJoinWhenGameStarted) return;
-
 	UWorld* World = GetWorld();
 	if (!World || World->GetNetMode() == NM_Standalone)
 	{
 		return; // 단일 플레이어/로컬에서는 차단하지 않음
 	}
+
+	// 최대 인원 초과 시 입장 거부 (서버 보안)
+	if (ABRGameState* BRGameState = GetGameState<ABRGameState>())
+	{
+		if (BRGameState->PlayerArray.Num() >= MaxPlayers)
+		{
+			ErrorMessage = FString::Printf(TEXT("방 인원이 가득 찼습니다. (%d/%d)"), BRGameState->PlayerArray.Num(), MaxPlayers);
+			UE_LOG(LogTemp, Warning, TEXT("[PreLogin] 최대 인원 초과로 입장 거부 (현재 %d/%d)"), BRGameState->PlayerArray.Num(), MaxPlayers);
+			return;
+		}
+	}
+
+	// 게임 진행 중 입장 차단이 꺼져 있으면 통과
+	if (!bBlockJoinWhenGameStarted) return;
 
 	// 현재 맵이 로비 맵이면 항상 입장 허용
 	FString CurrentMapName = UGameplayStatics::GetCurrentLevelName(World, true);
@@ -381,6 +412,7 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 
 void ABRGameMode::Logout(AController* Exiting)
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_BR_Logout);
 	// 방장이 나갔을 경우 새로운 방장 지정 및 역할 재할당
 	if (ABRPlayerState* ExitingPS = Exiting->GetPlayerState<ABRPlayerState>())
 	{
@@ -824,6 +856,15 @@ void ABRGameMode::ApplyRoleChangesForRandomTeams_ApplyOneTeam()
 		if (StagedUpperBodiesSpawnedCount == 0)
 			UE_LOG(LogTemp, Warning, TEXT("[랜덤 팀 적용] 순차 상체 스폰 완료 but 상체 0명 스폰됨 (하체만 스폰된 상태일 수 있음)"));
 		UE_LOG(LogTemp, Log, TEXT("[랜덤 팀 적용] 순차 상체 스폰 완료 (고정 규칙: 하체 %d명, 상체 %d명 / 실제 상체 스폰 %d명)"), StagedNumTeams, StagedNumTeams, StagedUpperBodiesSpawnedCount);
+
+		if (ABRGameState* BRGS = GetGameState<ABRGameState>())
+		{
+			BRGS->bBodyAssignmentComplete = true;
+			BRGS->OnBodyAssignmentComplete.Broadcast();
+			// 전원 스폰 완료 신호를 기다림. ReportClientSpawnReady는 컨트롤러당 1회만 집계하므로 기대 개수 = 플레이어(팀) 수
+			BRGS->SetExpectedSpawnReadyCount(StagedNumTeams);
+		}
+
 		StagedSortedByTeam.Empty();
 		StagedNumTeams = 0;
 		StagedCurrentTeamIndex = 0;
@@ -1198,6 +1239,77 @@ void ABRGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 }
 
+void ABRGameMode::ReturnToLobby()
+{
+	TravelToLobby();
+}
+
+void ABRGameMode::CheckMatchWinner()
+{
+	if (bMatchEnded) return;
+
+	ABRGameState* BRGameState = Cast<ABRGameState>(GameState);
+	if (!BRGameState) return;
+
+	// 생존 팀(TeamNumber) 수집
+	TSet<int32> AliveTeams;
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			// 팀 번호가 있고(>0), 살아있는 경우
+			if (BRPS->TeamNumber > 0 && BRPS->CurrentStatus == EPlayerStatus::Alive)
+			{
+				AliveTeams.Add(BRPS->TeamNumber);
+			}
+		}
+	}
+
+	// 오직 1팀만 살아있다면 우승
+	if (AliveTeams.Num() == 1)
+	{
+		int32 WinnerTeamID = AliveTeams.Array()[0];
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 우승 팀 결정: Team %d"), WinnerTeamID);
+
+		FString UpperName;
+		FString LowerName;
+		FVector WinnerLocation = FVector::ZeroVector;
+
+		// 우승 팀 정보 수집 (상체 이름, 하체 이름, 하체 Pawn 위치)
+		for (APlayerState* PS : BRGameState->PlayerArray)
+		{
+			if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+			{
+				if (BRPS->TeamNumber == WinnerTeamID)
+				{
+					if (BRPS->bIsLowerBody)
+					{
+						LowerName = BRPS->GetPlayerName();
+						// 위치는 하체(Control Pawn) 기준
+						if (APawn* MyPawn = BRPS->GetPawn())
+						{
+							WinnerLocation = MyPawn->GetActorLocation();
+						}
+					}
+					else
+					{
+						UpperName = BRPS->GetPlayerName();
+					}
+				}
+			}
+		}
+
+		// 결산 이벤트 브로드캐스트 (모든 클라이언트에 전파)
+		BRGameState->MulticastMatchEnded(WinnerLocation, UpperName, LowerName);
+
+		// 우승자 확정 -> 중복 실행 방지
+		bMatchEnded = true;
+
+		// 10초 후 로비 복귀 타이머 시작
+		GetWorld()->GetTimerManager().SetTimer(ReturnToLobbyTimerHandle, this, &ABRGameMode::ReturnToLobby, 10.0f, false);
+	}
+}
+
 void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 {
 	if (!VictimCharacter) return;
@@ -1207,6 +1319,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	// 캐릭터에서 Controller 가져오기 (없으면 PlayerState에서 시도 — 하체/상체 공유 폰 등)
 	AController* Controller = VictimCharacter->GetController();
 	ABRPlayerState* PS = nullptr;
+
 	if (Controller)
 	{
 		PS = Controller->GetPlayerState<ABRPlayerState>();
@@ -1236,8 +1349,7 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	}
 
 	// -----------------------------------------------------------
-	// 팀 탈락: 같은 팀 파트너도 사망 처리 후, 2초 뒤 피해자·파트너(하체+상체) 둘 다 관전 전환
-	// (인덱스로 예약해 콜백에서 팀 번호 복제 이슈 없이 전원 전환 보장)
+	// [수정] 팀 탈락: 파트너 찾기 (ConnectedPlayerIndex 우선 사용 + 팀 번호 백업)
 	// -----------------------------------------------------------
 	ABRGameState* GS = GetGameState<ABRGameState>();
 	if (!GS || !PS)
@@ -1253,31 +1365,73 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		return;
 	}
 
-	int32 PartnerPlayerIndex = INDEX_NONE;
-	for (APlayerState* OtherPS : GS->PlayerArray)
+	// 1. 먼저 '연결된 인덱스'로 파트너를 찾습니다. (가장 정확함)
+	int32 PartnerPlayerIndex = PS->ConnectedPlayerIndex;
+	ABRPlayerState* TargetPartnerPS = nullptr; // [수정] 변수명 변경 (PartnerPS -> TargetPartnerPS)
+
+	if (PartnerPlayerIndex != INDEX_NONE && GS->PlayerArray.IsValidIndex(PartnerPlayerIndex))
 	{
-		ABRPlayerState* BRPS = Cast<ABRPlayerState>(OtherPS);
-		if (BRPS && BRPS != PS && BRPS->TeamNumber == PS->TeamNumber)
+		TargetPartnerPS = Cast<ABRPlayerState>(GS->PlayerArray[PartnerPlayerIndex]);
+	}
+
+	// 2. 만약 인덱스로 못 찾았다면, 기존 방식(팀 번호)으로 백업 검색합니다.
+	if (!TargetPartnerPS)
+	{
+		for (int32 i = 0; i < GS->PlayerArray.Num(); ++i)
 		{
-			PartnerPlayerIndex = GS->PlayerArray.Find(BRPS);
-			if (BRPS->CurrentStatus != EPlayerStatus::Dead)
+			ABRPlayerState* OtherPS = Cast<ABRPlayerState>(GS->PlayerArray[i]);
+			if (OtherPS && OtherPS != PS && OtherPS->TeamNumber == PS->TeamNumber && PS->TeamNumber > 0)
 			{
-				BRPS->SetPlayerStatus(EPlayerStatus::Dead);
+				TargetPartnerPS = OtherPS;
+				PartnerPlayerIndex = i;
+				break;
 			}
-			// 파트너도 PlayerState를 관전(PlayerIndex 0)으로 변경
-			BRPS->SetSpectator(true);
-			break;
 		}
 	}
 
-	FTimerDelegate TimerDel;
-	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectatorByPlayerIndices, VictimPlayerIndex, PartnerPlayerIndex);
-	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
-	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (VictimIdx=%d, PartnerIdx=%d)"),
-		PS->TeamNumber, VictimPlayerIndex, PartnerPlayerIndex);
+	// 3. 찾은 파트너를 확실하게 사망 처리합니다.
+	if (TargetPartnerPS)
+	{
+		if (TargetPartnerPS->CurrentStatus != EPlayerStatus::Dead)
+		{
+			TargetPartnerPS->SetPlayerStatus(EPlayerStatus::Dead);
+		}
+		// 파트너도 PlayerState를 관전(PlayerIndex 0)으로 변경
+		TargetPartnerPS->SetSpectator(true);
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 파트너(%s)도 함께 사망 처리됨."), *TargetPartnerPS->GetPlayerName());
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 파트너를 찾지 못했습니다. (ConnectedIndex: %d, Team: %d)"), PS->ConnectedPlayerIndex, PS->TeamNumber);
+	}
 
-	// 승리 조건 즉시 체크 (타이머에만 의존하지 않음 — 피해자·파트너는 이미 Dead 처리됨)
-	CheckAndEndGameIfWinner();
+	// 생존 팀 확인 및 우승 처리
+	CheckMatchWinner();
+
+	// [수정] Victim과 Partner의 Controller를 각각 독립적으로 찾아서 WeakPtr로 바인딩
+	// Victim이 나가더라도 Partner는 정상적으로 관전 전환됨
+	ABRPlayerController* VictimPC = Cast<ABRPlayerController>(PS->GetOwningController());
+
+	ABRPlayerController* PartnerPC = nullptr;
+	if (GS->PlayerArray.IsValidIndex(PartnerPlayerIndex))
+	{
+		if (APlayerState* PartnerPS = GS->PlayerArray[PartnerPlayerIndex])
+		{
+			PartnerPC = Cast<ABRPlayerController>(PartnerPS->GetOwningController());
+		}
+	}
+
+	TWeakObjectPtr<ABRPlayerController> WeakVictimPC = VictimPC;
+	TWeakObjectPtr<ABRPlayerController> WeakPartnerPC = PartnerPC;
+
+	FTimerDelegate TimerDel;
+	TimerDel.BindUObject(this, &ABRGameMode::SwitchTeamToSpectator, WeakVictimPC, WeakPartnerPC);
+	GetWorld()->GetTimerManager().SetTimer(SpecTimerHandle_DeathSpectator, TimerDel, 2.0f, false);
+
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 2초 후 하체·상체 관전 전환 예약 (Victim: %s, Partner: %s)"),
+		PS->TeamNumber,
+		VictimPC ? *VictimPC->GetName() : TEXT("None"),
+		PartnerPC ? *PartnerPC->GetName() : TEXT("None"));
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
@@ -1291,6 +1445,9 @@ void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> Vict
 	{
 		PartnerPC->StartSpectatingMode();
 	}
+
+	CheckMatchWinner(); // 우승 조건 재확인
+
 }
 
 void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, int32 PartnerPlayerIndex)
@@ -1347,8 +1504,10 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s Controller 없음"), *BRPS->GetPlayerName());
 			return false;
 		}
+
 		// SetSpectator(true)는 OnPlayerDied/파트너 루프에서 이미 호출됨 — 여기서는 시점 전환만
 		PC->StartSpectatingMode();
+
 		UE_LOG(LogTemp, Log, TEXT("[GameMode] 관전 전환 완료: %s (Index %d)"), *BRPS->GetPlayerName(), PlayerIndex);
 		return true;
 	};
@@ -1363,8 +1522,8 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 	LogGameStateRolePlayerIndex(VictimPlayerIndex, TEXT("후(피해자)"));
 	LogGameStateRolePlayerIndex(PartnerPlayerIndex, TEXT("후(파트너)"));
 
-	// 승리 조건 체크: 생존 팀이 1개면 해당 팀 승리
-	CheckAndEndGameIfWinner();
+	/** 승리 조건 체크 : 생존 팀이 1개면 해당 팀 승리
+	CheckAndEndGameIfWinner(); */
 }
 
 void ABRGameMode::CheckAndEndGameIfWinner()
@@ -1406,13 +1565,12 @@ void ABRGameMode::TravelToLobby()
 		return;
 	}
 
-	// 로비로 돌아가면 "시작한 방 제외" 플래그 해제 (다시 방 찾기 시 자신의 방이 목록에 보이도록)
+	// 로비로 돌아가면 "시작한 방 제외" 플래그 해제
 	if (UBRGameInstance* GI = Cast<UBRGameInstance>(World->GetGameInstance()))
 	{
 		GI->SetExcludeOwnSessionFromSearch(false);
 	}
 
-	// LobbyMapPath가 블루프린트에서 비어 있으면 기본 로비 맵 사용 (BP_MainGameMode에서 미설정 시)
 	static const FString DefaultLobbyMapPath = TEXT("/Game/Main/Level/Main_Scene");
 	FString MapToUse = LobbyMapPath.IsEmpty() ? DefaultLobbyMapPath : LobbyMapPath;
 	if (LobbyMapPath.IsEmpty())
@@ -1422,11 +1580,16 @@ void ABRGameMode::TravelToLobby()
 
 	ReturnToLobbyTimerHandle.Invalidate();
 
+	// [핵심 수정] 로비로 돌아갈 때는 클라이언트 크래시 방지를 위해 Seamless Travel을 끕니다.
+	// (게임 진입 시에는 생성자 기본값인 true가 적용되어 심리스로 이동)
+	bUseSeamlessTravel = false;
+
 	const bool bIsPIE = World->IsPlayInEditor();
+	// 이제 bShouldUseSeamlessTravel은 항상 false가 됨 (PIE 여부 무관)
 	const bool bShouldUseSeamlessTravel = bUseSeamlessTravel && !bIsPIE;
 	const FString TravelURL = MapToUse + TEXT("?listen");
 
-	UE_LOG(LogTemp, Warning, TEXT("[게임 종료] 로비로 이동: %s"), *MapToUse);
+	UE_LOG(LogTemp, Warning, TEXT("[게임 종료] 로비로 이동(Hard Travel): %s"), *MapToUse);
 
 	if (bShouldUseSeamlessTravel)
 	{
@@ -1480,3 +1643,5 @@ void ABRGameMode::SwitchEliminatedTeamToSpectator(int32 EliminatedTeamNumber)
 	}
 	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 %d 탈락 — 하체·상체 전원 관전 전환 완료 (%d명)"), EliminatedTeamNumber, SwitchedCount);
 }
+
+

@@ -5,10 +5,14 @@
       "Global_Weapon_DamageMultiplier": 1.25,
       "Global_Weapon_ImpulseMultiplier": 0.7,
       "Global_Weapon_AttackSpeedMultiplier": 1.0,
-      "Global_Durability_Reduction": 20.0,
+      "Global_Durability_Reduction": 50.0,
       "Global_Stamina_SprintDrainRate": 20.0,
       "Global_Stamina_JumpCost": 30.0,
-      "Global_Stamina_RegenRate": 10.0
+      "Global_Stamina_RegenRate": 10.0,
+      "Global_BasePunchDamage": 10.0,
+      "Global_Player_RotationRateYaw": 300.0,
+      "Global_Player_BrakingFriction": 1.0,
+      "Global_Player_BrakingDecelerationWalking": 500.0
     }
   ]
 }

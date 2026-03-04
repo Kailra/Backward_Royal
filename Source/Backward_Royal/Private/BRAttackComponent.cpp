@@ -10,12 +10,13 @@
 DEFINE_LOG_CATEGORY(LogAttackComp);
 
 // 기본 펀치 데미지 전역 변수
-float UBRAttackComponent::BasePunchDamage = 10.f;
+
+float UBRAttackComponent::Global_BasePunchDamage = 10.0f;
 
 UBRAttackComponent::UBRAttackComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
-    SetIsReplicated(true);
+    SetIsReplicatedByDefault(true); // 수정
 }
 
 void UBRAttackComponent::BeginPlay()
@@ -37,6 +38,12 @@ void UBRAttackComponent::SetAttackDetection(bool bEnabled)
     if (!GetOwner()->HasAuthority())
     {
         ServerSetAttackDetection(bEnabled);
+    }
+
+    // 공격이 새로 시작될 때마다 피격 액터 목록을 초기화하여 여러 번 휘두를 때 정상 타격되도록 보정
+    if (bEnabled)
+    {
+        HitActors.Empty();
     }
 
     // 1. 무기 공격 설정
@@ -141,8 +148,7 @@ void UBRAttackComponent::ResetHitStop()
         // 1. 시간 속도 정상 복구
         OwnerChar->CustomTimeDilation = 1.0f;
 
-        // 2. [요청 사항] 공격 애니메이션 강제 종료 (Idle 복귀)
-        // 0.25초 정도의 블렌드 아웃 시간을 주어 부드럽게 돌아가도록 StopAnimMontage 사용
+        // 2. 공격 애니메이션 강제 종료 (Idle 복귀)
         OwnerChar->StopAnimMontage();
     }
 }
@@ -170,6 +176,15 @@ void UBRAttackComponent::InternalHandleOwnerHit(UPrimitiveComponent* HitComponen
     ProcessHitDamage(OtherActor, OtherComp, NormalImpulse, Hit);
 }
 
+void UBRAttackComponent::MulticastPlayHitSound_Implementation(USoundBase* SoundToPlay, FVector Location, float Volume)
+{
+    if (SoundToPlay)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, SoundToPlay, Location, Volume);
+    }
+}
+
+
 void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponent* OtherComp, const FVector& NormalImpulse, const FHitResult& Hit)
 {
     ABaseCharacter* OwnerChar = Cast<ABaseCharacter>(GetOwner());
@@ -177,8 +192,8 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
 
     if (HitActors.Contains(OtherActor)) return;
 
-    // [충격량 계산]
-    float ImpactForce = NormalImpulse.Size();
+    // [수정] 피지컬 애니메이션 적용 시 무기 충돌 반발력이 수십만 단위로 폭증하여 무기가 즉시 파괴되는 현상 방지를 위해 제한(Clamp)
+    float ImpactForce = FMath::Clamp(NormalImpulse.Size(), 0.0f, 5000.0f);
     float ImpulseMultiplier = 1.0f;
 
     if (MyWeapon)
@@ -207,7 +222,8 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
     }
     else
     {
-        CalculatedDamage = (ImpactForce * 0.001f) + BasePunchDamage;
+        // [수정] 맨손 공격 시 기본 데미지 10 추가
+        CalculatedDamage = (ImpactForce * 0.001f) + Global_BasePunchDamage;
     }
 
     // 디버그 출력
@@ -234,12 +250,18 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
     // 공격 성공 시 히트 스탑 적용 (0.1초 멈춤 -> 이후 애니메이션 종료)
     MulticastApplyHitStop(0.1f);
 
-    // 캐릭터 외 물체 물리 적용
-    if (GetOwner()->HasAuthority() && OtherComp && OtherComp->IsSimulatingPhysics())
+    if (GetOwner()->HasAuthority())
     {
-        if (!Cast<ABaseCharacter>(OtherActor))
+        if (ABaseCharacter* VictimChar = Cast<ABaseCharacter>(OtherActor))
         {
-            OtherComp->AddImpulseAtLocation(FinalImpulseVector, Hit.ImpactPoint);
+            // [핵심] 피지컬 애니메이션 흔들림은 멀티캐스트를 통해 모든 화면에서 실행
+            VictimChar->MulticastPlayPhysicalHitReaction(FinalImpulseVector, Hit.ImpactPoint, Hit.BoneName);
+        }
+        // 캐릭터 외 일반 물리 시뮬레이션 물체 처리
+        else if (OtherComp && OtherComp->IsSimulatingPhysics())
+        {
+            // 일반 프롭들도 멀티캐스트로 처리해야 완벽하지만, 기본적으로 Replicate Movement가 켜져 있다면 서버가 밀어냅니다.
+            OtherComp->AddImpulseAtLocation(FinalImpulseVector, Hit.ImpactPoint, Hit.BoneName);
         }
     }
 

@@ -40,10 +40,11 @@ public:
 	/** Stage 맵 목록 (폴백용). Stage 폴더 자동 수집이 실패할 때만 사용됩니다. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Game Settings")
 	TArray<FString> StageMapPathsFallback = { 
-		//TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
-		//TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
-		//TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
-		TEXT("/Game/Main/Level/Stage/Stage04_Race") 
+		TEXT("/Game/Main/Level/Stage/Stage01_Temple"),
+		TEXT("/Game/Main/Level/Stage/Stage02_Bushes"),
+		TEXT("/Game/Main/Level/Stage/Stage03_Arena"),
+		TEXT("/Game/Main/Level/Stage/Stage04_Race"),
+		TEXT("/Game/Main/Level/Stage/Stage05_Lament")
 		};
 
 	// 랜덤 맵 선택 사용 여부
@@ -107,6 +108,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Game Settings|Rules")
 	bool bUseStunInsteadOfDeath = false;
 
+	// 생존 팀 확인 후 1팀만 남으면 결산 이벤트 호출
+	UFUNCTION(Exec)
+	void CheckMatchWinner();
+
+	// 매치 종료 여부 (중복 실행 방지)
+	bool bMatchEnded = false;
+
+	// 10초 후 로비로 복귀하는 타이머 핸들
+	FTimerHandle ReturnToLobbyTimerHandle;
+
+	// 로비 맵으로 심리스 이동 (ServerTravel)
+	void ReturnToLobby();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -144,8 +158,8 @@ protected:
 	FTimerHandle DirectStartRoleApplyTimerHandle;
 	/** 사망 후 2초 뒤 관전 전환용 (인덱스 콜백 사용) */
 	FTimerHandle SpecTimerHandle_DeathSpectator;
-	/** 승리 후 로비 이동용 타이머 */
-	FTimerHandle ReturnToLobbyTimerHandle;
+	/** 승리 후 로비 이동용 타이머
+	FTimerHandle ReturnToLobbyTimerHandle; */
 
 	/** 테스트 맵을 로비 없이 바로 실행했을 때: 저장된 역할이 없고 전원 하체면 랜덤 팀 배정 후 상체/하체 적용 */
 	void TryApplyDirectStartRolesFallback();

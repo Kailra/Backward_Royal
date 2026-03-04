@@ -22,7 +22,6 @@ public:
     virtual FText GetInteractionPrompt() override;
 
     // --- 전역 밸런싱 배율 (모든 무기 공통) ---
-    // static으로 선언하여 모든 무기 인스턴스가 하나의 값을 공유하게 합니다.
     static float GlobalDamageMultiplier;
     static float GlobalImpulseMultiplier;
     static float GlobalAttackSpeedMultiplier;
@@ -47,8 +46,11 @@ public:
     virtual void OnEquipped();
     virtual void OnDropped();
 
-    // [추가됨] 파괴 로직 함수
+    // 파괴 로직 함수
     void BreakWeapon();
+
+    UFUNCTION(NetMulticast, Reliable)
+    void Multicast_BreakWeaponVisual(const FTransform& SpawnTransform, class UGeometryCollection* InFracturedMesh);
 
     // DamageAmount: 공격 시 가한 데미지 (버전 2에서 사용)
     UFUNCTION(BlueprintCallable, Category = "Weapon|Durability")
@@ -61,6 +63,7 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void OnConstruction(const FTransform& Transform) override;
 
 private:
