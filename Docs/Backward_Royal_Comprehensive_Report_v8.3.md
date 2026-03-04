@@ -1,4 +1,4 @@
-# Backward Royal 종합 분석 보고서 (v8.2)
+# Backward Royal 종합 분석 보고서 (v8.3)
 
 ## 1. 프로젝트 소개 및 최신 현황
 
@@ -15,8 +15,12 @@
 *   **네트워크 장애 및 예외 처리 강화**:
     *   게임 플레이 중 접속이 끊기거나 타임아웃이 발생하면 로컬 컨트롤러(`HandleNetworkFailure`)에서 이를 감지하여 유저를 메인 화면(`EntranceMenu`)으로 안전하게 되돌아가게 하는 로직이 추가되었습니다.
     *   에러 사유(ConnectionTimeout, PendingConnectionFailure 등)를 명확히 분류하고 로깅을 지원합니다.
+*   **클라이언트 스폰 동기화 로직 (All Clients Spawn Ready)**:
+    *   로딩 시간 차이로 인해 플레이어블 캐릭터가 불공평하게 시작하는 문제를 막기 위해, 서버에서 모든 클라이언트의 스폰 완료 신호(`ServerReportSpawnReady`)를 모읍니다.
+    *   모두 준비가 완료되면 서버에서 `OnAllClientsSpawnReady` 이벤트를 멀티캐스트하며, 이때 비로소 캐릭터 이동 및 조작 제어가 해제되어 동시에 게임을 시작하게 됩니다.
 *   **사망 및 관전(Spectator) 모드 보강**:
-    *   사망 시 남은 파트너가 관전자 모드로 자동 전환되며(`StartSpectatingMode`), UI 갱신(`OnEnterSpectatorMode`) 처리를 포함한 관전 상태 진입이 안정화되었습니다.
+    *   사망 시 남은 파트너가 관전자 모드로 자동 전환되며(`StartSpectatingMode`), UI 갱신(`OnEnterSpectatorModeDelegate`) 처리를 포함한 관전 상태 진입이 안정화되었습니다.
+    *   주요 RPC 함수 호출 빈도를 제한(`CheckSensitiveRPCRateLimit`)하여 스팸을 방지하고 서버 틱 안정성을 높였습니다.
     *   상체 컨트롤러의 시점 전환을 더 부드럽게(CameraLag, CameraRotationLag) 연출되도록 수정했습니다.
 *   **청각적 피드백 보강 (Sound Event)**:
     *   하체 카메라의 움직임(이동 거리)에 비례하여 자동으로 재생되는 **발자국 사운드 시스템(`ProcessFootstep`)**이 도입되었습니다.
@@ -26,13 +30,12 @@
     *   내구도가 줄어들어 파괴될 위험 여부를 알리며(`BreakWeapon`), 내구도 파괴 연출을 위한 `FracturedMesh`(GeometryCollection) 설정이 추가되었습니다.
 *   **콘텐츠 확장 및 랜덤 레벨**:
     *   **Killzone**: `BP_Killzone` 블루프린트가 추가되어, 맵 밖으로 떨어진 플레이어를 처치하는 로직이 정형화되었습니다.
-    *   **Level**: `Stage01_DevTemple`, `Stage04_Race` 맵 업데이트와 더불어 방 생성 시 맵을 무작위로 고르는 **랜덤 레벨 선택 기능**(`bUseRandomMap`)이 추가되었습니다.
-    *   JSON 기반의 밸런스 데이터(`GlobalSettings`, `WeaponData` 등)가 최신 `uasset`으로 동기화되었습니다.
+    *   **Level & UI**: 랜덤 레벨 선택 기능(`bUseRandomMap`) 추가 및 게임 맵 진입 전 로딩 화면을 표시하기 위해 `WBP_Loading` 위젯 시스템이 새롭게 구축되었습니다. 각종 기반 UI(`WBP_InGameScreen`)가 최신화되었습니다.
 
 ### 1.3. 연관 문서 (Linked Documents)
 본 보고서는 프로젝트의 거시적인 분석을 담고 있으며, 세부적인 구현 내용과 코드 참조는 아래의 별첨 문서를 통해 확인할 수 있습니다.
-*   **[Codebase Reference Report (v2.2)](Backward_Royal_Codebase_Reference_v2.2.md)**: 소스 코드를 전수 조사하여 작성한 **클래스 멤버 완벽 분석서**. 모든 변수와 함수를 빠짐없이 나열함(Full Inventory).
-*   **[Exhaustive Causal Chain Specification (v8.2)](Backward_Royal_Technical_Spec_v8.2.md)**: 인과 사슬 및 **블루프린트 연동 가이드(BP Hooks)** 가 포함된 최종 기술 명세서. 각 실행 흐름에서 사용 가능한 BP 함수(BlueprintCallable)를 명확히 태깅함.
+*   **[Codebase Reference Report (v2.4)](Backward_Royal_Codebase_Reference_v2.4.md)**: 소스 코드를 전수 조사하여 작성한 **클래스 멤버 완벽 분석서**. 모든 변수와 함수를 빠짐없이 나열함(Full Inventory).
+*   **[Exhaustive Causal Chain Specification (v8.3)](Backward_Royal_Technical_Spec_v8.3.md)**: 인과 사슬 및 **블루프린트 연동 가이드(BP Hooks)** 가 포함된 최종 기술 명세서. 각 실행 흐름에서 사용 가능한 BP 함수(BlueprintCallable)를 명확히 태깅함.
 
 ---
 
