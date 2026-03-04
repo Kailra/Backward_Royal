@@ -285,13 +285,17 @@ void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
 
 float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+    // [수정 핵심 1] 오직 서버에서만 데미지를 계산하도록 제한합니다.
+    if (!HasAuthority()) return 0.0f;
+
     // 이미 사망 상태이거나 스턴 상태면 데미지 무시
     if (IsDead() || bIsStunned) return 0.0f;
 
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
     CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
 
-    UpdateHPUI();
+    UpdateHPUI(); // 참고: 이 함수는 OnRep_CurrentHP() 쪽에서 클라이언트들이 업데이트 하도록 유도하는 것이 좋습니다.
+    // 서버측 UI 업데이트를 위해 놔둬도 무방
 
     if (CurrentHP <= 0.0f)
     {
@@ -318,6 +322,9 @@ float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 
 void ABaseCharacter::Die(FVector KillImpulse, FVector HitLocation)
 {
+    // [수정 핵심 2] 안전을 위해 다시 한번 권한 체크 (서버에서만 실행 보장)
+    if (!HasAuthority()) return;
+
     // 중복 사망 방지
     if (IsDead()) return;
 
@@ -333,10 +340,10 @@ void ABaseCharacter::Die(FVector KillImpulse, FVector HitLocation)
     LastDeathInfo.ServerDieLocation = GetActorLocation();
     LastDeathInfo.ServerDieRotation = GetActorRotation();
 
-    // 3. [핵심 수정] 변수 복제를 기다리지 않고 멀티캐스트로 랙돌 명령과 충격량을 한 번에 전송!
+    // 3. 변수 복제를 기다리지 않고 멀티캐스트로 랙돌 명령과 충격량을 한 번에 전송!
     MulticastPerformDeathVisuals(KillImpulse, HitLocation, LastDeathInfo.ServerDieLocation, LastDeathInfo.ServerDieRotation);
 
-    // 4. 게임 모드에 알림
+    // 4. 게임 모드에 알림 (서버이므로 GameMode가 무조건 유효합니다)
     if (ABRGameMode* GM = GetWorld()->GetAuthGameMode<ABRGameMode>())
     {
         GM->OnPlayerDied(this);
