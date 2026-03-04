@@ -1315,6 +1315,45 @@ void ABRGameMode::CheckMatchWinner()
 	}
 }
 
+void ABRGameMode::Authority_DeclareWinner(APawn* WinnerPawn)
+{
+	// 1. 중복 종료 방지 및 서버 권한 체크
+	if (bMatchEnded || !WinnerPawn || !HasAuthority()) return;
+
+	ABRGameState* BRGameState = Cast<ABRGameState>(GameState);
+	ABRPlayerState* WinnerPS = WinnerPawn->GetPlayerState<ABRPlayerState>();
+
+	if (!BRGameState || !WinnerPS) return;
+
+	// 2. 우승 데이터 추출 (팀 번호 기반)
+	int32 WinnerTeamID = WinnerPS->TeamNumber;
+	FString UpperName = "";
+	FString LowerName = "";
+	FVector WinnerLocation = WinnerPawn->GetActorLocation();
+
+	// 3. 해당 팀의 상/하체 닉네임 수집 (기존 로직 활용)
+	for (APlayerState* PS : BRGameState->PlayerArray)
+	{
+		if (ABRPlayerState* BRPS = Cast<ABRPlayerState>(PS))
+		{
+			if (BRPS->TeamNumber == WinnerTeamID)
+			{
+				if (BRPS->bIsLowerBody) LowerName = BRPS->GetPlayerName();
+				else UpperName = BRPS->GetPlayerName();
+			}
+		}
+	}
+
+	// 4. 전역 알림 (UI 표시)
+	BRGameState->MulticastMatchEnded(WinnerLocation, UpperName, LowerName);
+
+	// 5. 후속 처리 (중복 방지 및 로비 이동 타이머)
+	bMatchEnded = true;
+	GetWorld()->GetTimerManager().SetTimer(ReturnToLobbyTimerHandle, this, &ABRGameMode::ReturnToLobby, 10.0f, false);
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 승리 선언! 팀: %d, 방식: %s"), WinnerTeamID, *WinnerPawn->GetName());
+}
+
 void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[OnPlayerDied] 함수 진입"));
