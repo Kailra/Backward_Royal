@@ -285,13 +285,17 @@ void ABaseCharacter::SetLastHitInfo(FVector Impulse, FVector HitLocation)
 
 float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+    // [수정 핵심 1] 오직 서버에서만 데미지를 계산하도록 제한합니다.
+    if (!HasAuthority()) return 0.0f;
+
     // 이미 사망 상태이거나 스턴 상태면 데미지 무시
     if (IsDead() || bIsStunned) return 0.0f;
 
     float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
     CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
 
-    UpdateHPUI();
+    UpdateHPUI(); // 참고: 이 함수는 OnRep_CurrentHP() 쪽에서 클라이언트들이 업데이트 하도록 유도하는 것이 좋습니다.
+    // 서버측 UI 업데이트를 위해 놔둬도 무방
 
     if (CurrentHP <= 0.0f)
     {
@@ -318,28 +322,40 @@ float ABaseCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageE
 
 void ABaseCharacter::Die(FVector KillImpulse, FVector HitLocation)
 {
-    // 중복 사망 방지
+    // 1. 누가 이 함수를 불렀는지 로그 출력 (서버인지 클라이언트인지 확인!)
+    if (HasAuthority())
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Die] 서버에서 %s 의 Die() 가 호출되었습니다!"), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Die] 클라이언트에서 %s 의 Die() 가 호출되었습니다! (이러면 게임모드 작동 안함)"), *GetName());
+    }
+
     if (IsDead()) return;
 
-    // 1. PlayerState 상태 변경 (Alive -> Dead)
     if (ABRPlayerState* PS = GetPlayerState<ABRPlayerState>())
     {
         PS->SetPlayerStatus(EPlayerStatus::Dead);
     }
 
-    // 2. 사망 정보 확정 저장
     LastDeathInfo.Impulse = KillImpulse;
     LastDeathInfo.HitLocation = HitLocation;
     LastDeathInfo.ServerDieLocation = GetActorLocation();
     LastDeathInfo.ServerDieRotation = GetActorRotation();
 
-    // 3. [핵심 수정] 변수 복제를 기다리지 않고 멀티캐스트로 랙돌 명령과 충격량을 한 번에 전송!
     MulticastPerformDeathVisuals(KillImpulse, HitLocation, LastDeathInfo.ServerDieLocation, LastDeathInfo.ServerDieRotation);
 
-    // 4. 게임 모드에 알림
-    if (ABRGameMode* GM = GetWorld()->GetAuthGameMode<ABRGameMode>())
+    // 2. 게임모드 호출 직전 로그
+    ABRGameMode* GM = GetWorld()->GetAuthGameMode<ABRGameMode>();
+    if (GM)
     {
+        UE_LOG(LogTemp, Warning, TEXT("[Die] 게임모드를 정상적으로 찾았습니다. OnPlayerDied 호출합니다."));
         GM->OnPlayerDied(this);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("[Die] 치명적 오류: GameMode를 찾을 수 없습니다! (클라이언트 환경이거나 서버 초기화 문제)"));
     }
 }
 
