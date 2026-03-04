@@ -112,6 +112,9 @@ public:
 	UFUNCTION(Exec)
 	void CheckMatchWinner();
 
+	UFUNCTION(BlueprintCallable, Category = "GameRules")
+	void Authority_DeclareWinner(APawn* WinnerPawn);
+
 	// 매치 종료 여부 (중복 실행 방지)
 	bool bMatchEnded = false;
 
