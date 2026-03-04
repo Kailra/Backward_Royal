@@ -816,19 +816,16 @@ void UBRGameInstance::LoadConfigFromJson(const FString &FileName,
 }
 
 FString UBRGameInstance::GetConfigDirectory() {
-  FString TargetPath;
+    // FPaths::ProjectDir()는 에디터에서는 .uproject가 있는 프로젝트 루트,
+    // 패키징 빌드에서는 exe의 상위 디렉토리를 반환하므로 두 환경 모두에서 사용 가능.
+    FString TargetPath = FPaths::ProjectDir() / TEXT("Data/");
 
-#if WITH_EDITOR
-  // 1. 에디터 환경: 프로젝트 루트의 Data 폴더
-  TargetPath = FPaths::ProjectDir() / TEXT("Data/");
-#else
-  // 2. 패키징 환경: 빌드된 .exe 옆의 Data 폴더 (예:
-  // Build/Windows/MyProject/Data/) FPaths::ProjectDir()는 패키징 후에도 실행
-  // 파일 기준 경로를 반환합니다.
-  TargetPath = FPaths::ProjectDir() / TEXT("Data/");
-#endif
+    // 디버깅: 실제 경로와 폴더 존재 여부 로그
+    GI_LOG(Log, TEXT("Config Directory: %s (Exists: %s)"), *TargetPath,
+        FPlatformFileManager::Get().GetPlatformFile().DirectoryExists(*TargetPath)
+        ? TEXT("Yes") : TEXT("No"));
 
-  return TargetPath;
+    return TargetPath;
 }
 
 /** JSON 문자열을 DataTable에 주입 */
