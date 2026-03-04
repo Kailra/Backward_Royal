@@ -58,7 +58,7 @@ void UBRGameInstance::Init() {
   // S_UserInfo 에셋에서 PlayerName 로드
   LoadPlayerNameFromUserInfo();
   // 로컬 슬롯에 저장된 설정이 있으면 복원 (데이터 보존)
-  LoadPlayerSettingsFromSlot();
+  // LoadPlayerSettingsFromSlot();
 
   // PIE 월드 클린업이 엔진의 '월드 참조 검사'보다 먼저 일어나게 등록.
   // Shutdown에서 Remove.
@@ -1168,7 +1168,7 @@ void UBRGameInstance::SavePlayerSettingsToSlot()
       UGameplayStatics::CreateSaveGameObject(UBRPlayerSettingsSaveGame::StaticClass()));
   if (!Save) return;
   Save->SavedPlayerName = PlayerName;
-  Save->SavedCustomization = LocalCustomizationData;
+  // Save->SavedCustomization = LocalCustomizationData;
   Save->SavedUserUID = UserUID;
   if (UGameplayStatics::SaveGameToSlot(Save, PlayerSettingsSlotName, PlayerSettingsUserIndex))
   {
@@ -1190,10 +1190,10 @@ void UBRGameInstance::LoadPlayerSettingsFromSlot()
     PlayerName = Loaded->SavedPlayerName;
     UE_LOG(LogBRGameInstance, Log, TEXT("플레이어 설정 로드: 이름='%s'"), *PlayerName);
   }
-  if (Loaded->SavedCustomization.bIsDataValid)
-  {
-    LocalCustomizationData = Loaded->SavedCustomization;
-  }
+  //if (Loaded->SavedCustomization.bIsDataValid)
+  //{
+  //  LocalCustomizationData = Loaded->SavedCustomization;
+  //}
   if (!Loaded->SavedUserUID.IsEmpty())
   {
     UserUID = Loaded->SavedUserUID;
