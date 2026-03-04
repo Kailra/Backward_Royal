@@ -1317,7 +1317,13 @@ void ABRGameMode::CheckMatchWinner()
 
 void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 {
-	if (!VictimCharacter) return;
+	UE_LOG(LogTemp, Warning, TEXT("[OnPlayerDied] 함수 진입")); // 추가
+
+		if (!VictimCharacter)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[OnPlayerDied] VictimCharacter가 Null입니다.")); // 추가
+		return;
+	}
 
 	UE_LOG(LogTemp, Warning, TEXT("[GameMode] 플레이어 사망 확인: %s"), *VictimCharacter->GetName());
 
@@ -1349,8 +1355,11 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 		}
 		// PlayerState를 관전(PlayerIndex 0)으로 변경. bIsSpectatorSlot=true 설정 → GameState는 PS에서 읽어 반영
 		PS->SetSpectator(true);
-		UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"),
-			*PS->GetPlayerName(), PS->TeamNumber);
+		UE_LOG(LogTemp, Log, TEXT("[GameMode] %s (Team %d) 탈락 처리 완료"), *PS->GetPlayerName(), PS->TeamNumber);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[OnPlayerDied] PS(PlayerState)를 찾을 수 없습니다.")); // 추가
 	}
 
 	// -----------------------------------------------------------
@@ -1359,7 +1368,8 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	ABRGameState* GS = GetGameState<ABRGameState>();
 	if (!GS || !PS)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환 스킵: GameState 또는 피해자 PS 없음"));
+		UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환 스킵: GameState 또는 피해자 PS 없음 (GS: %s, PS: %s)"),
+			GS ? TEXT("Valid") : TEXT("Null"), PS ? TEXT("Valid") : TEXT("Null"));
 		return;
 	}
 
