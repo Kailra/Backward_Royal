@@ -42,5 +42,6 @@ public class Backward_Royal : ModuleRules
         // NonUFS: .pak 파일 안이 아니라 별도 파일로 복사 (FFileHelper로 읽기 위해)
         // $(ProjectDir) = 프로젝트 루트 (.uproject 위치), ... = 재귀적 모든 파일
         RuntimeDependencies.Add("$(ProjectDir)/Data/...", StagedFileType.NonUFS);
+        RuntimeDependencies.Add("$(ProjectDir)/BR_DataTool.exe", StagedFileType.NonUFS);
     }
 }
