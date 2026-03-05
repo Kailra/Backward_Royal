@@ -379,19 +379,33 @@ void ABRPlayerController::BeginPlay()
 	{
 		// PlayerState가 아직 없을 수 있으므로 타이머로 체크 후 전송
 		FTimerHandle SubmitTimer;
-		GetWorld()->GetTimerManager().SetTimer(SubmitTimer, [this]()
-			{
-				if (GetPlayerState<ABRPlayerState>())
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			World->GetTimerManager().SetTimer(SubmitTimer, [this]()
 				{
-					SubmitCustomizationToServer();
-				}
-				else
-				{
-					// 만약 아직도 없다면 0.5초 뒤 재시도 (재귀 호출 대신 간단히 딜레이 처리 예시)
-					FTimerHandle RetryHandle;
-					GetWorld()->GetTimerManager().SetTimer(RetryHandle, this, &ABRPlayerController::SubmitCustomizationToServer, 0.5f, false);
-				}
-			}, 0.2f, false);
+					// 방 생성 등으로 맵 리로드 시 이 컨트롤러/월드가 파괴된 뒤 타이머가 돌 수 있음 → 유효성 검사
+					if (!IsValid(this))
+					{
+						return;
+					}
+					UWorld* W = GetWorld();
+					if (!W || !IsValid(W))
+					{
+						return;
+					}
+					if (GetPlayerState<ABRPlayerState>())
+					{
+						SubmitCustomizationToServer();
+					}
+					else
+					{
+						// 만약 아직도 없다면 0.5초 뒤 재시도 (재귀 호출 대신 간단히 딜레이 처리 예시)
+						FTimerHandle RetryHandle;
+						W->GetTimerManager().SetTimer(RetryHandle, this, &ABRPlayerController::SubmitCustomizationToServer, 0.5f, false);
+					}
+				}, 0.2f, false);
+		}
 	}
 }
 
