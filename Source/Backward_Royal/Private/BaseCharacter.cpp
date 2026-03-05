@@ -155,7 +155,7 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
     CHAR_LOG(Log, TEXT("Equipped Weapon: %s"), *NewWeapon->GetName());
 }
 
-// [신규] 공격 요청 처리 함수
+// 공격 요청 처리 함수
 void ABaseCharacter::RequestAttack()
 {
     if (bIsStunned || CurrentHP <= 0.0f || IsDead()) return;
