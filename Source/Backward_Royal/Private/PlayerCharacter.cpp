@@ -441,11 +441,26 @@ ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
 	// 1. 내가 상체면 -> 나 자신 리턴
 	if (!MyPS->bIsLowerBody) return MyPS;
 
-	// 2. [핵심] 내가 하체면 -> PartnerPlayerState 포인터 확인 (가장 확실함)
+	// 2. 내가 하체면 -> PartnerPlayerState 포인터 확인
 	if (MyPS->PartnerPlayerState)
 	{
 		return MyPS->PartnerPlayerState;
 	}
+	// 3. 파트너 포인터가 클라이언트에 아직 복제되지 않았다면, 연결된 인덱스로 GameState에서 직접 안전하게 탐색 (서버 인덱스 꼬임 방지)
+	else if (MyPS->ConnectedPlayerIndex >= 0)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (AGameStateBase* GS = World->GetGameState())
+			{
+				if (GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+				{
+					return Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
+				}
+			}
+		}
+	}
+
 	return nullptr;
 }
 
@@ -462,6 +477,20 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 	if (MyPS->PartnerPlayerState)
 	{
 		return MyPS->PartnerPlayerState;
+	}
+	// 3. 파트너 포인터가 아직 유효하지 않다면 GameState 교차 참조
+	else if (MyPS->ConnectedPlayerIndex >= 0)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (AGameStateBase* GS = World->GetGameState())
+			{
+				if (GS->PlayerArray.IsValidIndex(MyPS->ConnectedPlayerIndex))
+				{
+					return Cast<ABRPlayerState>(GS->PlayerArray[MyPS->ConnectedPlayerIndex]);
+				}
+			}
+		}
 	}
 
 	return nullptr;
