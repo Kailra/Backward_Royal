@@ -41,7 +41,7 @@
 *   **Trigger**: UI에서 팀 슬롯 버튼 클릭
 *   **Flow**:
     1.  **BP Call**: `BRPlayerController::RequestAssignToLobbyTeam(TeamIndex, SlotIndex)`
-        *   `TeamIndex`: 0~3 (팀 1~4)
+        *   `TeamIndex`: 0'~'3 (팀 1'~'4)
         *   `SlotIndex`: 1(하체), 2(상체)
     2.  `BRGameState::AssignPlayerToLobbyTeam` (Server)
         *   -> `LobbyTeamSlots` 갱신.
