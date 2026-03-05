@@ -1,9 +1,9 @@
-# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.4)
+# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.5)
 
 ## 1. 개요 (Overview)
 본 문서는 `Source/Backward_Royal` 디렉토리 내의 핵심 소스 코드 파일(헤더)을 **전면 재조사(Exhaustive Inventory)**하여 작성된 상세 분석서입니다. 누락되었던 가상 함수(`PreLogin`, `Logout`), 각종 타이머 핸들(`FTimerHandle`), 내부 검증용 변수까지 모두 포함하여 **단 하나의 함수나 변수도 빠짐없이 명세**하는 것을 원칙으로 합니다.
 
-*   **Version**: v2.4 (Exhaustive Full Inventory)
+*   **Version**: v2.5 (Exhaustive Full Inventory + Sound Sync/UI Updates)
 *   **Coverage**: Core Framework, Characters, Items, Components, UI Library
 *   **Legend**:
     *   `[Prop]`: `UPROPERTY` (변수)
@@ -288,6 +288,7 @@
 *   `[Prop] WalkSpeed`, `SprintSpeed` (float): 이동 스펙.
 *   `[Prop] UpperBodyAimRotation` (FRotator, Rep): 머리핀처럼 상체가 바라보는 에임 방향.
 *   `[Prop] FootstepSound` (USoundBase*), `FootstepVolume`, `FootstepDistanceThreshold` (float): 거리 기반 발소리 구동 프로퍼티.
+*   `[Prop] ForwardSprintFootstepMultiplier`, `BackwardSprintFootstepMultiplier`, `BackwardWalkFootstepMultiplier` (float): 전후좌우 이동 및 상태별 발소리 간격 디테일 배율.
 *   `[Prop] OnStaminaChanged` (Delegate): 게이지 UI 조절용 액션.
 *   `(Internal) CurrentUpperBodyPawn` (AUpperBodyPawn*): 타고 있는 2P 포인터.
 *   `(Internal) AccumulatedDistance` (float): 여태 이동한 거리 적산치.
@@ -368,7 +369,7 @@
 *   `[Func] GetCalculatedAttackSpeed()`.
 *   `[RPC Server] ServerSetAttackDetection(bool)`.
 *   `[RPC NetMulticast] MulticastApplyHitStop(float)`.
-*   `[RPC NetMulticast] MulticastPlayHitSound(...)`.
+*   `[RPC NetMulticast] MulticastPlayHitSound(USoundBase*, FVector, float)`: 타격음 전역 동기화 (Volume 포함).
 *   `(Internal) ProcessHitDamage(...)`, `InternalHandleOwnerHit(...)`, `ApplyHitStop(...)`, `ResetHitStop()`.
 
 ### 4.3. `ABaseWeapon` 및 `ASwitchOrb`
@@ -383,3 +384,12 @@
 *   **파일**: `BRWidgetFunctionLibrary.h`
 *   **설명**: UMG 블프와 C++ 통신 가교 함수 일체.
 *   **주요 API**: `GetBRGameSession()`, `GetBRGameInstance()`, `GetBRGameState()`, `NotifyWidgetIfSpawnReady()`, `GetRoomTitleForDisplay()`, `GetDisplayNameForLobby()`, `RequestAssignToLobbyTeam()`, `ShowMainScreen()` 외 UI 교체 및 세션 명령 래퍼 노드들 모음.
+
+---
+
+## 5. UI Widgets & Blueprint Assets (주요 추가 사항)
+
+### 5.1. UI (UMG) Widgets
+*   `WBP_ResultMenu`: 게임 결산 화면을 담당. 승리자 정보 및 로비 복귀 타이머를 표시.
+*   `WBP_AIHPBar`: PVE 몬스터(`BP_AI_Enemy` 등) 머리 위에 출력되는 체력 프로그레스바 위젯.
+*   `WBP_Loading`, `WBP_InGameScreen`: 레벨 전환 시 및 게임 내 상태 HUD.

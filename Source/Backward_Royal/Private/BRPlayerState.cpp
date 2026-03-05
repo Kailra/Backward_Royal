@@ -167,8 +167,6 @@ void ABRPlayerState::SetPlayerRole(bool bLowerBody, int32 ConnectedIndex)
 
 					if (TargetPartner)
 					{
-						// [핵심] 서로를 가리키도록 양방향 참조 설정 (Double Linking)
-
 						// 나 -> 파트너
 						this->PartnerPlayerState = TargetPartner;
 
@@ -284,7 +282,6 @@ void ABRPlayerState::SwapControlWithPartner()
 		MyPC->ClientRestart(PartnerOldPawn);
 		PartnerPC->ClientRestart(MyOldPawn);
 
-		// 6. 설정 적용 람다 실행
 		auto ApplyRoleSettings = [this](ABRPlayerController* PC, bool bIsLower)
 			{
 				if (!PC) return;

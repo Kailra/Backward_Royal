@@ -100,7 +100,9 @@ public:
     bool bNextAttackIsLeft = false;
 
     void RequestAttack();
-    void HandleWeaponBroken();
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastHandleWeaponBroken();
 
     UFUNCTION(NetMulticast, Reliable)
     void MulticastPlayWeaponAttack(UAnimMontage* MontageToPlay, APawn* RequestingPawn);
