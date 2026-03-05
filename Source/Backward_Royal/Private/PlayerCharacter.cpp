@@ -464,32 +464,14 @@ ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
 	// 1. 내가 상체면 -> 나 자신 리턴
 	if (!MyPS->bIsLowerBody) return MyPS;
 
-	// 2. 내 파트너 포인터가 이미 유효하게 복제되었다면 바로 리턴 (가장 확실함)
+	// 2. 내가 하체면 -> 확실하게 리플리케이트된 PartnerPlayerState만 신뢰합니다.
 	if (MyPS->PartnerPlayerState)
 	{
 		return MyPS->PartnerPlayerState;
 	}
 
-	// 3. [핵심] 인덱스 직접 참조를 제거하고 전체 순회(Iteration) 탐색
-	if (UWorld* World = GetWorld())
-	{
-		if (AGameStateBase* GS = World->GetGameState())
-		{
-			for (APlayerState* State : GS->PlayerArray)
-			{
-				ABRPlayerState* OtherPS = Cast<ABRPlayerState>(State);
-
-				// OtherPS가 유효하고 나 자신이 아니며, 
-				// 상대방(OtherPS)의 파트너가 '나(MyPS)'로 설정되어 있는 상체 플레이어를 찾습니다.
-				if (OtherPS && OtherPS != MyPS && OtherPS->PartnerPlayerState == MyPS && !OtherPS->bIsLowerBody)
-				{
-					LOG_PLAYER(Log, TEXT("GetUpperBodyPlayerState: 순회 탐색을 통해 상체 파트너를 찾았습니다."));
-					return OtherPS;
-				}
-			}
-		}
-	}
-
+	// 3. 서버와 클라이언트 간 인덱스 순서가 보장되지 않는 PlayerArray 참조를 제거했습니다.
+	// 파트너 포인터가 아직 없다면 안전하게 nullptr을 반환하여 리플리케이션을 대기합니다.
 	return nullptr;
 }
 
@@ -502,32 +484,13 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 	// 1. 내가 하체면 -> 나 자신 리턴
 	if (MyPS->bIsLowerBody) return MyPS;
 
-	// 2. 내 파트너 포인터가 이미 유효하게 복제되었다면 바로 리턴
+	// 2. 내가 상체면 -> 확실하게 리플리케이트된 PartnerPlayerState만 신뢰합니다.
 	if (MyPS->PartnerPlayerState)
 	{
 		return MyPS->PartnerPlayerState;
 	}
 
-	// 3. [핵심] 인덱스 직접 참조를 제거하고 전체 순회(Iteration) 탐색
-	if (UWorld* World = GetWorld())
-	{
-		if (AGameStateBase* GS = World->GetGameState())
-		{
-			for (APlayerState* State : GS->PlayerArray)
-			{
-				ABRPlayerState* OtherPS = Cast<ABRPlayerState>(State);
-
-				// OtherPS가 유효하고 나 자신이 아니며, 
-				// 상대방(OtherPS)의 파트너가 '나(MyPS)'로 설정되어 있는 하체 플레이어를 찾습니다.
-				if (OtherPS && OtherPS != MyPS && OtherPS->PartnerPlayerState == MyPS && OtherPS->bIsLowerBody)
-				{
-					LOG_PLAYER(Log, TEXT("GetLowerBodyPlayerState: 순회 탐색을 통해 하체 파트너를 찾았습니다."));
-					return OtherPS;
-				}
-			}
-		}
-	}
-
+	// 3. 위험했던 PlayerArray 직접 인덱싱 제거
 	return nullptr;
 }
 
