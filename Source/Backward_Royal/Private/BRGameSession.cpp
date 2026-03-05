@@ -465,23 +465,35 @@ void ABRGameSession::FindSessionsInternal(bool bIsRetry)
 	
 	// LAN 여부 설정
 	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	FString OSSName = OnlineSubsystem ? OnlineSubsystem->GetSubsystemName().ToString() : TEXT("NULL");
 	if (OnlineSubsystem && OnlineSubsystem->GetSubsystemName() == "NULL")
 	{
 		SessionSearch->bIsLanQuery = true;
+		UE_LOG(LogTemp, Log, TEXT("[방 찾기] OSS=%s, bIsLanQuery=true (LAN 검색)"), *OSSName);
 	}
 	else
 	{
 		SessionSearch->bIsLanQuery = false;
+		UE_LOG(LogTemp, Log, TEXT("[방 찾기] OSS=%s, bIsLanQuery=false (인터넷/Steam 검색)"), *OSSName);
 	}
 	
 	// FindSessions 호출
 	bool bFindSessionsResult = SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
 	if (!bFindSessionsResult)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[방 찾기] FindSessions 호출 실패"));
+		UE_LOG(LogTemp, Error, TEXT("[방 찾기] FindSessions 호출 실패 - OSS=%s. Steam 로그인/네트워크/방화벽 확인"), *OSSName);
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red,
+				TEXT("[방 찾기] 검색 요청 실패. Steam 로그인·네트워크 확인"));
+		}
 		bIsSearchingSessions = false;
 		OnFindSessionsComplete.Broadcast(TArray<FOnlineSessionSearchResult>());
 		OnFindSessionsCompleteBP.Broadcast(0);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("[방 찾기] FindSessions 비동기 요청 성공 - 결과 대기 중 (OSS=%s)"), *OSSName);
 	}
 }
 
@@ -518,11 +530,17 @@ void ABRGameSession::JoinSession(const FOnlineSessionSearchResult& SessionResult
 	auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
 	if (ExistingSession != nullptr)
 	{
+		UE_LOG(LogTemp, Log, TEXT("[방 참가] 기존 로컬 세션 제거 후 참가 시도"));
 		SessionInterface->DestroySession(NAME_GameSession);
 	}
 	
+	FString JoinSessName, JoinSessId = SessionResult.Session.GetSessionIdStr();
+	SessionResult.Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), JoinSessName);
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] 참가 시도 - 세션 Id=%s Name=%s"), *JoinSessId, JoinSessName.IsEmpty() ? TEXT("(이름없음)") : *JoinSessName);
+	
 	// JoinSession 호출
 	SessionInterface->JoinSession(0, NAME_GameSession, SessionResult);
+	UE_LOG(LogTemp, Log, TEXT("[방 참가] JoinSession 비동기 요청 완료 - 결과 대기 중"));
 }
 
 void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool bWasSuccessful)
@@ -557,10 +575,10 @@ void ABRGameSession::OnCreateSessionCompleteDelegate(FName InSessionName, bool b
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[방 생성] 실패"));
+		UE_LOG(LogTemp, Error, TEXT("[방 생성] CreateSession 실패 - Steam 로그인/네트워크/동일세션중복 등 확인"));
 		if (GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[방 생성] 실패"));
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, TEXT("[방 생성] 실패 - Steam 로그인·네트워크 확인"));
 		}
 		OnCreateSessionComplete.Broadcast(false);
 	}
@@ -690,6 +708,12 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 		}
 
 		UE_LOG(LogTemp, Warning, TEXT("[방 찾기] 완료: %d개 세션 발견"), Results.Num());
+		for (int32 i = 0; i < Results.Num(); i++)
+		{
+			FString SessName, SessId = Results[i].Session.GetSessionIdStr();
+			Results[i].Session.SessionSettings.Get(FName(TEXT("SESSION_NAME")), SessName);
+			UE_LOG(LogTemp, Log, TEXT("[방 찾기] 세션[%d] Id=%s Name=%s"), i, *SessId, SessName.IsEmpty() ? TEXT("(이름없음)") : *SessName);
+		}
 		
 		// 0건일 때 Steam/Null 모두 최대 2회 자동 재검색 (한번 호스트였던 경우 OSS 지연 대응)
 		if (Results.Num() == 0)
@@ -713,7 +737,12 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[방 찾기] 실패"));
+		UE_LOG(LogTemp, Error, TEXT("[방 찾기] 검색 실패 (bWasSuccessful=false). Steam 연결/로그인/방화벽 또는 OSS 초기화 확인"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red,
+				TEXT("[방 찾기] 검색 실패 - Steam 연결·로그인 확인"));
+		}
 	}
 	
 	OnFindSessionsComplete.Broadcast(Results);
@@ -722,10 +751,36 @@ void ABRGameSession::OnFindSessionsCompleteDelegate(bool bWasSuccessful)
 
 void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinSessionCompleteResult::Type Result)
 {
+	const TCHAR* ResultStr = TEXT("Unknown");
+	switch (Result)
+	{
+		case EOnJoinSessionCompleteResult::Success: ResultStr = TEXT("Success"); break;
+		case EOnJoinSessionCompleteResult::SessionIsFull: ResultStr = TEXT("SessionIsFull"); break;
+		case EOnJoinSessionCompleteResult::SessionDoesNotExist: ResultStr = TEXT("SessionDoesNotExist"); break;
+		case EOnJoinSessionCompleteResult::CouldNotRetrieveAddress: ResultStr = TEXT("CouldNotRetrieveAddress"); break;
+		case EOnJoinSessionCompleteResult::AlreadyInSession: ResultStr = TEXT("AlreadyInSession"); break;
+		case EOnJoinSessionCompleteResult::UnknownError: ResultStr = TEXT("UnknownError"); break;
+		default: break;
+	}
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] JoinSession 결과: %s"), ResultStr);
+	
 	bool bWasSuccessful = (Result == EOnJoinSessionCompleteResult::Success);
 	
 	if (!SessionInterface.IsValid())
 	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] SessionInterface 없음 - 입장 실패"));
+		OnJoinSessionComplete.Broadcast(false);
+		return;
+	}
+	
+	if (!bWasSuccessful)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] 입장 실패 - 이유: %s (방이 없음/만료/인원초과/주소조회실패 등 확인)"), ResultStr);
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red,
+				FString::Printf(TEXT("[방 참가] 실패: %s"), ResultStr));
+		}
 		OnJoinSessionComplete.Broadcast(false);
 		return;
 	}
@@ -734,19 +789,33 @@ void ABRGameSession::OnJoinSessionCompleteDelegate(FName InSessionName, EOnJoinS
 	FString ConnectURL;
 	if (!SessionInterface->GetResolvedConnectString(InSessionName, ConnectURL))
 	{
-		UE_LOG(LogTemp, Error, TEXT("[방 참가] 연결 주소를 가져올 수 없습니다."));
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] GetResolvedConnectString 실패 - 연결 주소를 가져올 수 없습니다. (세션은 성공이나 이동 불가)"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.0f, FColor::Red, TEXT("[방 참가] 연결 주소 조회 실패"));
+		}
 		OnJoinSessionComplete.Broadcast(false);
 		return;
 	}
+	
+	UE_LOG(LogTemp, Warning, TEXT("[방 참가] 연결 주소 조회 성공 - ClientTravel: %s"), *ConnectURL);
 	
 	// ClientTravel 호출
 	if (UWorld* World = GetWorld())
 	{
 		if (APlayerController* PC = World->GetFirstPlayerController())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[방 참가] 서버로 이동: %s"), *ConnectURL);
 			PC->ClientTravel(ConnectURL, ETravelType::TRAVEL_Absolute);
+			UE_LOG(LogTemp, Log, TEXT("[방 참가] ClientTravel 호출 완료"));
 		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("[방 참가] PlayerController 없음 - ClientTravel 미호출"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[방 참가] World 없음 - ClientTravel 미호출"));
 	}
 	
 	OnJoinSessionComplete.Broadcast(bWasSuccessful);
