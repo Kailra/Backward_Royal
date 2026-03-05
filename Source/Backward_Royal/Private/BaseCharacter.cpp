@@ -11,6 +11,8 @@
 #include "BRPlayerState.h"
 #include "BRGameMode.h"
 #include "Kismet/GameplayStatics.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimInstance.h"
 
 DEFINE_LOG_CATEGORY(LogBaseChar);
 
@@ -450,38 +452,28 @@ void ABaseCharacter::OnRep_CurrentHP()
     CHAR_LOG(Log, TEXT("HP가 복제되었습니다. 현재 HP: %.1f"), CurrentHP);
 }
 
+// [수정] 매개변수에 UAnimMontage* MontageToPlay 추가하여 헤더와 일치시킴!
 void ABaseCharacter::MulticastPlayWeaponAttack_Implementation(UAnimMontage* MontageToPlay, APawn* RequestingPawn)
 {
-    // 몽타주가 없으면 실행 불가
-    if (!MontageToPlay) return;
-
-    if (GetMesh())
+    if (MontageToPlay && GetMesh())
     {
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
             float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
-
-            // [핵심] 인자로 받은 몽타주를 재생
             AnimInstance->Montage_Play(MontageToPlay, AttackSpeed);
-            
-            // [신규] 무기 휘두르는 소리 재생 (모든 클라이언트에서 실행됨)
+
+            // [신규] 무기 휘두르는 소리 재생 (모든 클라이언트)
             if (CurrentWeapon && CurrentWeapon->CurrentWeaponData.SwingSound)
             {
-                UGameplayStatics::PlaySoundAtLocation(
-                    this, 
-                    CurrentWeapon->CurrentWeaponData.SwingSound, 
-                    GetActorLocation()
-                );
+                UGameplayStatics::PlaySoundAtLocation(this, CurrentWeapon->CurrentWeaponData.SwingSound, GetActorLocation());
             }
 
-            // [기존 로직 유지] UpperBodyPawn이 요청한 경우(VR 등), 몽타주 종료 콜백 연결
+            // 상체 몽타주 동기화
             if (AUpperBodyPawn* UpperPawn = Cast<AUpperBodyPawn>(RequestingPawn))
             {
                 FOnMontageEnded EndDelegate;
                 EndDelegate.BindUObject(UpperPawn, &AUpperBodyPawn::OnAttackMontageEnded);
-
-                // 해당 몽타주가 끝날 때 델리게이트 호출
                 AnimInstance->Montage_SetEndDelegate(EndDelegate, MontageToPlay);
             }
         }
@@ -495,14 +487,14 @@ void ABaseCharacter::MulticastPlayPunch_Implementation(UAnimMontage* TargetMonta
         UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
         if (AnimInstance)
         {
+            float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
+            AnimInstance->Montage_Play(TargetMontage, AttackSpeed);
+
             // [신규] 주먹 휘두르는 소리 재생
             if (PunchSwingSound)
             {
                 UGameplayStatics::PlaySoundAtLocation(this, PunchSwingSound, GetActorLocation());
             }
-
-            float AttackSpeed = AttackComponent->GetCalculatedAttackSpeed();
-            AnimInstance->Montage_Play(TargetMontage, AttackSpeed);
         }
     }
 }
