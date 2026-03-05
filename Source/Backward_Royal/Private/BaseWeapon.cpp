@@ -4,6 +4,7 @@
 #include "GeometryCollection/GeometryCollectionActor.h"
 #include "GeometryCollection/GeometryCollectionComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 // 로그 매크로
 DEFINE_LOG_CATEGORY_STATIC(LogBaseWeapon, Display, All);
@@ -288,4 +289,12 @@ void ABaseWeapon::Multicast_BreakWeaponVisual_Implementation(const FTransform& S
     {
         LOG_WEAPON(Warning, "InFracturedMesh is NULL! Multicast failed to spawn GC on this client.");
     }
+}
+
+void ABaseWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    // CurrentWeaponData 안의 모든 정보(스윙 사운드, 히트 사운드 등)를 참가자에게 동기화!
+    DOREPLIFETIME(ABaseWeapon, CurrentWeaponData);
 }
