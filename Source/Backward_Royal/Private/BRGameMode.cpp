@@ -352,7 +352,11 @@ void ABRGameMode::PostLogin(APlayerController* NewPlayer)
 		}
 		else if (BRGameState->PlayerArray.Num() == 1 && NetMode == NM_Standalone)
 		{
-			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] Standalone 모드 — 방 생성 버튼을 누르면 방장이 됩니다."));
+			// 리슨 실패 시에도 로비에서 호스트로 표시·게임 시작 버튼 노출 (방 생성 후 재로드 또는 ?Listen 실패 시)
+			UE_LOG(LogTemp, Log, TEXT("[플레이어 입장] Standalone 모드 — 단일 플레이어를 방장으로 설정 (로비 UI용)."));
+			BRPS->SetIsHost(true);
+			FString RoomTitleStr = PlayerName.IsEmpty() ? FString(TEXT("Host's Game")) : (PlayerName + TEXT("'s Game"));
+			BRGameState->SetRoomTitle(RoomTitleStr);
 		}
 
 		// [A안] 새 접속자는 접속 순(0,1/2,3) 역할 할당 없이 대기열(관전)만. 팀/역할은 랜덤 버튼 또는 1P·2P 선택으로만 설정.

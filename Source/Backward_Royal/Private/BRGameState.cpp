@@ -145,7 +145,16 @@ void ABRGameState::CheckCanStartGame()
 {
 	if (HasAuthority())
 	{
-		bool bCanStart = (PlayerCount >= MinPlayers && PlayerCount <= MaxPlayers && AreAllPlayersReady());
+		// Standalone 1인(리슨 실패 등): 최소 인원 무시하고 준비되면 게임 시작 버튼 활성화
+		bool bCanStart = false;
+		if (UWorld* W = GetWorld(); W && W->GetNetMode() == NM_Standalone && PlayerCount >= 1 && PlayerCount <= MaxPlayers && AreAllPlayersReady())
+		{
+			bCanStart = true;
+		}
+		else
+		{
+			bCanStart = (PlayerCount >= MinPlayers && PlayerCount <= MaxPlayers && AreAllPlayersReady());
+		}
 		if (bCanStart != bCanStartGame)
 		{
 			bCanStartGame = bCanStart;

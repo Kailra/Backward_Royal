@@ -149,19 +149,23 @@ void APlayerCharacter::BeginPlay()
 	else
 	{
 		// 3. PlayerState가 아직 없다면(클라이언트 로딩 지연 등), 0.5초 뒤 재시도
-		FTimerHandle RetryHandle;
-		GetWorld()->GetTimerManager().SetTimer(RetryHandle, [this]()
-			{
-				// 람다 내부에서 다시 확인
-				if (ABRPlayerState* RetryPS = GetPlayerState<ABRPlayerState>())
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			TWeakObjectPtr<APlayerCharacter> WeakChar(this);
+			FTimerHandle RetryHandle;
+			World->GetTimerManager().SetTimer(RetryHandle, [WeakChar]()
 				{
-					// 재시도 성공 시 초기화 실행
-					// OnRep_PlayerState를 수동으로 호출하여 바인딩/적용 로직을 수행
-					OnRep_PlayerState();
-
-					UE_LOG(LogTemp, Log, TEXT("[Character] BeginPlay: PlayerState 뒤늦게 로드됨 -> 초기화 수행"));
-				}
-			}, 0.5f, false);
+					// 맵 전환/파괴 후 타이머가 돌 수 있음 → 유효성 검사
+					if (!WeakChar.IsValid()) return;
+					APlayerCharacter* Char = WeakChar.Get();
+					if (ABRPlayerState* RetryPS = Char->GetPlayerState<ABRPlayerState>())
+					{
+						Char->OnRep_PlayerState();
+						UE_LOG(LogTemp, Log, TEXT("[Character] BeginPlay: PlayerState 뒤늦게 로드됨 -> 초기화 수행"));
+					}
+				}, 0.5f, false);
+		}
 	}
 }
 
