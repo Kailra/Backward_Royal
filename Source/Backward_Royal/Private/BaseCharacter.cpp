@@ -512,7 +512,7 @@ void ABaseCharacter::EnhancePhysics(bool bEnable)
     }
 }
 
-void ABaseCharacter::HandleWeaponBroken()
+void ABaseCharacter::MulticastHandleWeaponBroken_Implementation()
 {
     CurrentWeapon = nullptr;
 }

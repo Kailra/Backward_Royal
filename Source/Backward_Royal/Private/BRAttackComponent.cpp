@@ -243,7 +243,7 @@ void UBRAttackComponent::ProcessHitDamage(AActor* OtherActor, UPrimitiveComponen
         // =======================================================
         // [수정] 무기 내구도 감소 및 "피격 사운드 재생"
         // =======================================================
-        if (MyWeapon)
+        if (Cast<ABaseCharacter>(OtherActor))
         {
             MyWeapon->DecreaseDurability(CalculatedDamage);
 

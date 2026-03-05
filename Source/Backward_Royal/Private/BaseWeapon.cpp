@@ -199,7 +199,7 @@ void ABaseWeapon::BreakWeapon()
     ABaseCharacter* OwnerCharacter = Cast<ABaseCharacter>(GetOwner());
     if (OwnerCharacter)
     {
-        OwnerCharacter->HandleWeaponBroken();
+        OwnerCharacter->MulticastHandleWeaponBroken();
     }
 
     // 3. Transform 저장 및 장착 해제
