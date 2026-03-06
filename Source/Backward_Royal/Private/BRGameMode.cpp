@@ -1447,23 +1447,19 @@ void ABRGameMode::OnPlayerDied(ABaseCharacter* VictimCharacter)
 	CheckMatchWinner();
 
 	// 관전 전환 타이머 처리 (기존 코드 유지)
-	ABRPlayerController* VictimPC = Cast<ABRPlayerController>(Controller);
-	ABRPlayerController* PartnerPC = TargetPartnerPS ? Cast<ABRPlayerController>(TargetPartnerPS->GetOwningController()) : nullptr;
+	// 타이머 설정 전에 컨트롤러가 있는지 엄격하게 체크하지 않고, 인덱스만 있다면 일단 타이머를 예약합니다.
+	// 하체나 상체의 컨트롤러가 중간에 사라지거나 늦게 찾아지는 경우에도 관전 모드 진입 처리가 실행될 수 있도록 보장합니다.
+	FTimerHandle SpectatorTimerHandle;
+	FTimerDelegate TimerDel;
 
-	if (VictimPC || PartnerPC)
-	{
-		FTimerHandle SpectatorTimerHandle;
-		FTimerDelegate TimerDel;
+	// 인자로 PlayerIndex 2개만 넘겨주면, 함수 내부에서 GameState->PlayerArray를 통해 최신 컨트롤러를 찾음
+	TimerDel.BindLambda([this, VictimPlayerIndex, PartnerPlayerIndex]()
+		{
+			this->SwitchTeamToSpectatorByPlayerIndices(VictimPlayerIndex, PartnerPlayerIndex);
+		});
 
-		// 인자로 PlayerIndex 2개만 넘겨주면, 함수 내부에서 GameState->PlayerArray를 통해 최신 컨트롤러를 찾음
-		TimerDel.BindLambda([this, VictimPlayerIndex, PartnerPlayerIndex]()
-			{
-				this->SwitchTeamToSpectatorByPlayerIndices(VictimPlayerIndex, PartnerPlayerIndex);
-			});
-
-		UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 탈락 — 2초 후 하체·상체 관전 전환 예약"));
-		GetWorld()->GetTimerManager().SetTimer(SpectatorTimerHandle, TimerDel, 2.0f, false);
-	}
+	UE_LOG(LogTemp, Log, TEXT("[GameMode] 팀 탈락 — 2초 후 하체·상체 관전 전환 예약"));
+	GetWorld()->GetTimerManager().SetTimer(SpectatorTimerHandle, TimerDel, 2.0f, false);
 }
 
 void ABRGameMode::SwitchTeamToSpectator(TWeakObjectPtr<ABRPlayerController> VictimPC, TWeakObjectPtr<ABRPlayerController> PartnerPC)
@@ -1518,19 +1514,22 @@ void ABRGameMode::SwitchTeamToSpectatorByPlayerIndices(int32 VictimPlayerIndex, 
 		ABRPlayerState* BRPS = Cast<ABRPlayerState>(GS->PlayerArray[PlayerIndex]);
 		if (!BRPS) return false;
 		ABRPlayerController* PC = Cast<ABRPlayerController>(BRPS->GetOwningController());
+
 		// 상체 등 원격 플레이어에서 OwningController가 비어 있을 수 있음 → 월드에서 해당 PlayerState 소유 컨트롤러 검색
+			// 이때 APlayerController가 가지고 있는 PlayerState와 비교하여 정확한 컨트롤러를 찾습니다.
 		if (!PC && GetWorld())
 		{
 			for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 			{
 				APlayerController* C = It->Get();
-				if (C && C->GetPlayerState<ABRPlayerState>() == BRPS)
+					if (C && C->PlayerState == BRPS)
 				{
 					PC = Cast<ABRPlayerController>(C);
 					if (PC) break;
 				}
 			}
 		}
+
 		if (!PC)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[GameMode] 관전 전환: %s Controller 없음"), *BRPS->GetPlayerName());
