@@ -801,15 +801,31 @@ void ABRPlayerController::StartSpectatingMode()
 
 void ABRPlayerController::SetupSpectatorInput()
 {
-	// 관전 모드는 하체(이동) 컨텍스트를 재사용하여 이동을 가능하게 함
-	SetupRoleInput(true);
+	// 언리얼 엔진 기본 SpectatorPawn의 자유 시점 비행 이동을 사용하기 위해, 기존의 하체/상체 전용 매핑을 지워 간섭을 막습니다.
+	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+		{
+			Subsystem->ClearAllMappings();
+		}
+	}
+
+	// 입력 잠금 해제 (이동 및 시야)
 	ResetIgnoreMoveInput();
 	SetIgnoreMoveInput(false);
+
+	ResetIgnoreLookInput();
+	SetIgnoreLookInput(false);
+
+	// 게임 모드로 입력 설정하여 UI 등에 의해 입력이 막히는 것 방지
+	FInputModeGameOnly GameInputMode;
+	SetInputMode(GameInputMode);
+	bShowMouseCursor = false;
 }
 
 void ABRPlayerController::ClientHandleSpectatorUI_Implementation()
 {
-	// 입력 매핑을 하체(이동 가능) 컨텍스트로 변경하여 관전 시 이동 가능하게 함
+	// 관전 모드 입력 세팅 (기존 입력 클리어 및 입력 활성화)
 	SetupSpectatorInput();
 
 	// [추가] 1. 딜리게이트 브로드캐스트 (위젯에서 바인딩 가능)
