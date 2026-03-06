@@ -9,6 +9,7 @@
 #include "WeaponTypes.h"
 #include "BaseWeapon.generated.h"
 
+
 UCLASS()
 class BACKWARD_ROYAL_API ABaseWeapon : public AActor, public IInteractableInterface
 {
@@ -34,8 +35,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
     FName WeaponRowName;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, ReplicatedUsing = OnRep_CurrentWeaponData, Category = "Weapon")
     FWeaponData CurrentWeaponData;
+
+    UFUNCTION()
+    void OnRep_CurrentWeaponData();
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
     FName GripSocketName;
@@ -65,6 +69,7 @@ protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void OnConstruction(const FTransform& Transform) override;
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
     bool bIsEquipped;

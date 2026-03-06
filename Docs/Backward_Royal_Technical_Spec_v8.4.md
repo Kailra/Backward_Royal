@@ -1,4 +1,4 @@
-# Backward Royal 기술 분석서 (Exhaustive Causal Chain Spec v8.2)
+# Backward Royal 기술 분석서 (Exhaustive Causal Chain Spec v8.4)
 
 ## 1. 개요 (Overview)
 본 문서는 Backward Royal 프로젝트의 **모든 실행 흐름(Execution Flow)** 을 인과 사슬(Causal Chain)로 정리하고, 각 단계에서 **블루프린트로 제어 가능한 지점(BP Hook / API)** 을 완벽하게 망라한 최종 기술 명세서입니다.
@@ -41,7 +41,7 @@
 *   **Trigger**: UI에서 팀 슬롯 버튼 클릭
 *   **Flow**:
     1.  **BP Call**: `BRPlayerController::RequestAssignToLobbyTeam(TeamIndex, SlotIndex)`
-        *   `TeamIndex`: 0~3 (팀 1~4)
+        *   `TeamIndex`: 0 ~ 3 (팀 1 ~ 4)
         *   `SlotIndex`: 1(하체), 2(상체)
     2.  `BRGameState::AssignPlayerToLobbyTeam` (Server)
         *   -> `LobbyTeamSlots` 갱신.
@@ -81,9 +81,16 @@
         *   하체(`PlayerCharacter`) 스폰.
         *   상체(`UpperBodyPawn`) 스폰 -> 하체 머리에 `Attach`.
     3.  **Possess**: 각 `PlayerController`가 자신의 Pawn에 빙의.
-    4.  **Input Setup**:
+    4.  *(신규) 클라이언트 스폰 완료 동기화 (All Clients Spawn Ready)*:
+        *   클라이언트 `PlayerController`는 빙의(Possess) 직후 즉각적으로 `ServerReportSpawnReady()` RPC를 발생시켜 스스로 맵 로드와 스폰이 끝났음을 서버에 알림 (호스트는 직접 카운트).
+        *   서버의 `BRGameState`는 접속한 모든 클라이언트가 이 `ReportClientSpawnReady`를 쐈는지 집계.
+        *   모두 수집되면 `OnAllClientsSpawnReady`가 NetMulticast로 브로드캐스트.
+    5.  **Input Setup**:
+        *   `bAllClientsSpawnReady`가 true가 되기 전까지, 최하단 `PlayerCharacter::Move` 함수의 이동 입력(`bMoveInputUnblocked`)은 차단됨.
         *   `SetupRoleInput(true)`: WASD 이동 (하체).
         *   `SetupRoleInput(false)`: 마우스 회전 (상체).
+    6.  **BP Hook**: `GameState::OnAllClientsSpawnReady` 델리게이트를 통해 `WBP_Loading`을 숨기거나 카운트다운(`WBP_InGameScreen`)을 띄우는 용도로 사용 가능 (`NotifyWidgetIfSpawnReady` 활용).
+    7.  **BP Hook**: `GameState::OnBodyAssignmentComplete`에 바인딩하여 InGame UI(크로스헤어, 체력바 등) 띄우기 수행 가능.
 
 ---
 
@@ -168,24 +175,52 @@
 
 ## 8. Chain 8: 게임 종료 (Game End)
 
-### 7-1. 승리 판정 (Win Check)
-*   **Trigger**: `OnPlayerDied` 호출 시
+### 8-1. 사망 및 관전 전환 (Death & Spectating)
+*   **Trigger**: 무기 공격으로 체력이 0이 되어 `BaseCharacter::Die` 실행
 *   **Flow**:
-    1.  `BRGameMode::CheckAndEndGameIfWinner`.
-    2.  생존 팀이 1팀만 남았는지 확인.
+    1.  `PlayerState::CurrentStatus`를 `Dead`로 변경.
+    2.  `MulticastPerformDeathVisuals`: 치명타 충격량과 위치를 받아 랙돌(Ragdoll) 물리 효과 즉시 동기화.
+    3.  `BRGameMode::OnPlayerDied(Victim)` 내부 후속 처리:
+        *   Victim과 동일 팀 파트너(`ConnectedPlayerIndex` 기준)를 찾아 둘 다 `CurrentStatus = Dead`, `SetSpectator(true)`로 변경.
+        *   동시에 `CheckMatchWinner()` 즉각 호출.
+        *   2초 후 타이머를 통해 `SwitchTeamToSpectator` 호출하여 죽은 팀원 양쪽 모두 관전 모드로 전환.
 
-### 7-2. 결과 처리 (End Game)
-*   **Trigger**: 승리 확정
+### 8-2. 승리 판정 및 결산 처리 (Win Check & Result)
+*   **Trigger**: `CheckMatchWinner` 실행
 *   **Flow**:
-    1.  `BRGameMode::EndGameWithWinner(WinningTeamIdx)`.
-    2.  `BRGameState::WinningTeamNumber` 변수 복제.
-    3.  **BP Event**: `BRGameState::OnGameEndedWithWinner` 델리게이트 방송.
-        *   **[Must Implement]**: 레벨 블루프린트나 HUD 위젯에서 이 이벤트를 잡아 **"Victory" UI**를 띄워야 함.
-    4.  3초 후 로비로 자동 이동.
+    1.  `BRGameMode::CheckMatchWinner`: `PlayerArray`를 순회하며 살아있는 팀(`AliveTeams`) 집계.
+    2.  생존 팀이 오직 1팀만 남은 경우 결산 진입.
+    3.  결산 정보 수집: 승리 팀의 위치(`WinnerLocation`) 및 상/하체 플레이어 이름 추출.
+    4.  `BRGameState::MulticastMatchEnded` (RPC) 방송:
+        *   전 클라이언트에 승리 위치와 팀원들 이름 데이터가 전파되어 결과(Result) UI 띄움 가능.
+    5.  `BRGameMode`의 10초 타이머(`ReturnToLobbyTimerHandle`)를 세팅하여 시간이 되면 로비 맵으로 전원 자동 복귀(`ReturnToLobby`).
 
 ---
 
-## 9. Blueprint API Reference (주요 함수 목록)
+## 9. Chain 9: 사운드 동기화 (Sound Synchronization)
+
+### 9-1. 발소리 다방향 배율 동기화 (Footstep Directional Sync)
+*   **Trigger**: 하체 플레이어의 WASD 틱 이동 (`PlayerCharacter::ProcessFootstep`)
+*   **Flow**:
+    1.  `GetVelocity`의 수평 속도와 `GetActorForwardVector`를 내적(Dot Product)하여 이동 방향(전진/후진) 판별.
+    2.  `StaminaComp`를 통해 현재 달리기(`bIsSprinting`) 여부 획득.
+    3.  뱡향과 달리기 상태에 따라 3가지 배율 모델 적용:
+        *   뒤로 달릴 때: `FootstepDistanceThreshold * BackwardSprintFootstepMultiplier`
+        *   앞으로 달릴 때: `FootstepDistanceThreshold * ForwardSprintFootstepMultiplier`
+        *   뒤로 걸을 때: `FootstepDistanceThreshold * BackwardWalkFootstepMultiplier`
+    4.  이동 누적 거리(`AccumulatedDistance`)가 위 임계치를 넘으면 `PlaySoundAtLocation` 호출 (로컬 기반 재생이며 위치가 복제되므로 타 클라에서도 자연스럽게 재생).
+
+### 9-2. 타격음 전역 동기화 (Combat Hit Sound Sync)
+*   **Trigger**: 무기 공격 혹은 맨손 펀치가 적중했을 때 (`BRAttackComponent::ProcessHitDamage`)
+*   **Flow**:
+    1.  `BaseCharacter`에 장착된 무기(`MyWeapon`)가 있다면 무기의 고유 정보(`CurrentWeaponData.HitSound`) 로드.
+    2.  무기가 없다면(맨손) 캐릭터 본체의 `PunchHitSound` 로드.
+    3.  `MulticastPlayHitSound(Sound, ImpactPoint, Volume=1.0)` RPC 기폭.
+    4.  전 클라이언트의 `MulticastPlayHitSound_Implementation` 진입 -> 해당 충돌 좌표 허공에서 모두가 공통된 타격음을 듣게 됨.
+
+---
+
+## 10. Blueprint API Reference (주요 함수 목록)
 
 ### BRPlayerController
 *   `CreateRoom(RoomName)`
@@ -200,11 +235,16 @@
 *   `ShowRoomInfo()`
 *   `SetMainScreenWidget(Widget)`: 메인 UI 위젯 등록
 *   `ShowEntranceMenu()`, `ShowLobbyMenu()`, `ShowMainScreen()`: UI 전환
+*   `StartSpectatingMode()` (관전 모드 진입)
+*   `[Event] OnEnterSpectatorModeDelegate`: 관전 UI 갱신 바인딩용 블루프린트 노드
 
 ### BRGameState
-*   `GetPlayerListForDisplay()`: 로비 UI용 접속자 정보 배열 반환.
-*   `OnPlayerListChanged` (Delegate): 접속자/팀 변경 시 알림.
-*   `OnGameEndedWithWinner` (Delegate): 게임 종료 및 승리팀 알림.
+*   `[Event] OnPlayerListChanged`: 대기열/팀 슬롯 변경 시 갱신 통보
+*   `[Event] OnTeamChanged`: 팀 번호 복제 갱신
+*   `[Event] OnMatchEnded`: 게임 결산 완료 정보 브로드캐스트
+*   `[Event] OnAllClientsSpawnReady`: 전체 스폰 싱크 완료 (게임 시작 타이밍)
+*   `[Event] OnBodyAssignmentComplete`: 상/하체 모델링 배정 완료 (인게임 UI용)
+*   `NotifyWidgetIfSpawnReady(...)`: 스폰 완료 타이밍을 안전하게 호출
 
 ### PlayerCharacter / BaseCharacter
 *   `OnHPChanged` (Delegate): 체력 변경 알림 (HUD 연결용).
@@ -212,4 +252,4 @@
 *   `ApplyMeshFromID`: 커스터마이징 적용 함수.
 
 이 문서는 Backward Royal의 모든 코드 흐름을 블루프린트 관점에서 제어할 수 있도록 재구성한 것입니다.
-특히 **Chain 7-2 (게임 종료)** 와 **Chain 6-1 (상호작용)** 의 수정 사항을 확인하시고 구현에 참고하십시오.
+새롭게 추가된 **Chain 9 (사운드 동기화)** 기능과 위젯 연동(`NotifyWidgetIfSpawnReady` 등)의 훅(Hook) 설계 사항을 확인하시고 구현에 참고하십시오.

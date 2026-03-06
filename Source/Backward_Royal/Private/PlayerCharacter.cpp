@@ -97,16 +97,16 @@ APlayerCharacter::APlayerCharacter()
 
 	// [네트워크] 클라이언트 예측/서버 보정 및 스무딩 튜닝 (고지연·패킷유실 환경 대응)
 	bReplicates = true;
-	SetNetUpdateFrequency(144.0f);
-	SetMinNetUpdateFrequency(100.0f);
+	SetNetUpdateFrequency(60.f);
+	SetMinNetUpdateFrequency(30.f);
 
 	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
 	MoveComp->NetworkSmoothingMode = ENetworkSmoothingMode::Exponential;
 	// 고지연(100ms+) 환경: 보정 허용 거리 확대 → 불필요한 보정·덜컹임 감소
-	MoveComp->NetworkMaxSmoothUpdateDistance = 256.0f;   // 이 거리 이하만 스무딩, 그 이상은 보정 허용
-	MoveComp->NetworkNoSmoothUpdateDistance = 0.0f;    // 0 = 작은 오차도 스무딩으로 흡수
+	MoveComp->NetworkMaxSmoothUpdateDistance = 92.0f;   // 이 거리 이하만 스무딩, 그 이상은 보정 허용
+	MoveComp->NetworkNoSmoothUpdateDistance = 100.f;    // 0 = 작은 오차도 스무딩으로 흡수
 	// 서버-클라이언트 위치 오차가 이 값(단위: cm) 이하면 보정 생략 → 핑 높을 때 덜 튐
-	MoveComp->NetworkLargeClientCorrectionDistance = 120.0f;
+	MoveComp->NetworkLargeClientCorrectionDistance = 15.f;
 }
 
 void APlayerCharacter::BeginPlay()
@@ -388,6 +388,23 @@ void APlayerCharacter::PossessedBy(AController* NewController)
 		MoveComp->SetMovementMode(MOVE_Walking);
 		MoveComp->Activate();
 	}
+
+	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
+	if (MyPS)
+	{
+		// 역할 변경 시 파트너 바인딩 
+		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
+
+		MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
+
+		if (MyPS->ConnectedPlayerIndex != -1)
+		{
+			BindToPartnerPlayerState(MyPS->bIsLowerBody);
+		}
+
+		TryApplyCustomization();
+	}
 }
 
 void APlayerCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -405,6 +422,8 @@ void APlayerCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 
+	LOG_PLAYER(Log, TEXT("OnRep_PlayerState() 호출됨"));
+
 	if (IsLocallyControlled())
 	{
 		if (ABRPlayerController* PC = Cast<ABRPlayerController>(GetController()))
@@ -416,17 +435,21 @@ void APlayerCharacter::OnRep_PlayerState()
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
 	if (MyPS)
 	{
-		// 파트너 바인딩은 로직 유지를 위해 연결
+		// 역할 변경 시 파트너 바인딩 
 		MyPS->OnPlayerRoleChanged.AddDynamic(this, &APlayerCharacter::BindToPartnerPlayerState);
 
-		// 적용 시도
-		TryApplyCustomization();
+		// [추가할 곳] 내 커마 데이터가 리플리케이트 되어 도착했을 때 다시 적용 시도
+		MyPS->OnCustomizationDataChanged.RemoveDynamic(this, &APlayerCharacter::TryApplyCustomization);
+		MyPS->OnCustomizationDataChanged.AddDynamic(this, &APlayerCharacter::TryApplyCustomization);
 
 		// 파트너가 이미 지정되어 있다면 바인딩 시도
 		if (MyPS->ConnectedPlayerIndex != -1)
 		{
 			BindToPartnerPlayerState(MyPS->bIsLowerBody);
 		}
+
+		// 데이터가 다 도착했는지 최초 1회 확인
+		TryApplyCustomization();
 	}
 
 	UpdateHPUI();
@@ -441,11 +464,14 @@ ABRPlayerState* APlayerCharacter::GetUpperBodyPlayerState() const
 	// 1. 내가 상체면 -> 나 자신 리턴
 	if (!MyPS->bIsLowerBody) return MyPS;
 
-	// 2. [핵심] 내가 하체면 -> PartnerPlayerState 포인터 확인 (가장 확실함)
+	// 2. 내가 하체면 -> 확실하게 리플리케이트된 PartnerPlayerState만 신뢰합니다.
 	if (MyPS->PartnerPlayerState)
 	{
 		return MyPS->PartnerPlayerState;
 	}
+
+	// 3. 서버와 클라이언트 간 인덱스 순서가 보장되지 않는 PlayerArray 참조를 제거했습니다.
+	// 파트너 포인터가 아직 없다면 안전하게 nullptr을 반환하여 리플리케이션을 대기합니다.
 	return nullptr;
 }
 
@@ -458,25 +484,26 @@ ABRPlayerState* APlayerCharacter::GetLowerBodyPlayerState() const
 	// 1. 내가 하체면 -> 나 자신 리턴
 	if (MyPS->bIsLowerBody) return MyPS;
 
-	// 2. [핵심] 내가 상체면 -> PartnerPlayerState 포인터 확인
+	// 2. 내가 상체면 -> 확실하게 리플리케이트된 PartnerPlayerState만 신뢰합니다.
 	if (MyPS->PartnerPlayerState)
 	{
 		return MyPS->PartnerPlayerState;
 	}
 
+	// 3. 위험했던 PlayerArray 직접 인덱싱 제거
 	return nullptr;
 }
 
 void APlayerCharacter::TryApplyCustomization()
 {
 	// [핵심 1] 이미 최초 외형 세팅이 끝나서 잠겼다면, SwitchOrb 스왑 등으로 불려도 무시합니다.
-	if (bAppearanceLocked) return;
+	if (bAppearanceLocked)
+	{
+		return;
+	}
 
 	ABRPlayerState* MyPS = Cast<ABRPlayerState>(GetPlayerState());
-	if (!MyPS) return;
-
-	// [역할 동기화 과도기 방지 가드]
-	if (MyPS->PartnerPlayerState && (MyPS->bIsLowerBody == MyPS->PartnerPlayerState->bIsLowerBody))
+	if (!MyPS)
 	{
 		return;
 	}
@@ -484,37 +511,46 @@ void APlayerCharacter::TryApplyCustomization()
 	ABRPlayerState* UpperPS = GetUpperBodyPlayerState();
 	ABRPlayerState* LowerPS = GetLowerBodyPlayerState();
 
-	// --- 상체 적용 ---
-	if (UpperPS && !UpperPS->bIsLowerBody)
+	// [핵심 2] 파트너가 아직 할당되지 않았거나, 상하체 역할이 아직 겹쳐있다면(동기화 중) 대기합니다.
+	if (!UpperPS || !LowerPS || (UpperPS->bIsLowerBody == LowerPS->bIsLowerBody))
 	{
-		int32 ApplyHeadID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HeadID : 0;
-		int32 ApplyChestID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.ChestID : 0;
-		int32 ApplyHandID = UpperPS->CustomizationData.bIsDataValid ? UpperPS->CustomizationData.HandID : 0;
-
-		ApplyMeshFromID(EArmorSlot::Head, ApplyHeadID);
-		ApplyMeshFromID(EArmorSlot::Chest, ApplyChestID);
-		ApplyMeshFromID(EArmorSlot::Hands, ApplyHandID);
+		LOG_PLAYER(Warning, TEXT("TryApplyCustomization: 상/하체 파트너 정보 또는 역할 동기화 대기 중..."));
+		return;
 	}
+
+	// [핵심 3] 양쪽의 커스터마이징 데이터가 모두 도착(Valid)했는지 엄격하게 검증합니다.
+	// 데이터가 아직 오지 않았다면 락을 걸지 않고 빠져나가 다음에 다시 시도할 수 있게 합니다.
+	if (!UpperPS->CustomizationData.bIsDataValid || !LowerPS->CustomizationData.bIsDataValid)
+	{
+		LOG_PLAYER(Warning, TEXT("TryApplyCustomization: 양쪽 커스터마이징 데이터 리플리케이션 대기 중..."));
+		return;
+	}
+
+	// --- 상체 적용 ---
+	int32 ApplyHeadID = UpperPS->CustomizationData.HeadID;
+	int32 ApplyChestID = UpperPS->CustomizationData.ChestID;
+	int32 ApplyHandID = UpperPS->CustomizationData.HandID;
+
+	ApplyMeshFromID(EArmorSlot::Head, ApplyHeadID);
+	ApplyMeshFromID(EArmorSlot::Chest, ApplyChestID);
+	ApplyMeshFromID(EArmorSlot::Hands, ApplyHandID);
+
+	LOG_PLAYER(Log, TEXT("상체 커스터마이징 적용 완료"));
 
 	// --- 하체 적용 ---
-	if (LowerPS && LowerPS->bIsLowerBody)
-	{
-		int32 ApplyLegID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.LegID : 0;
-		int32 ApplyFootID = LowerPS->CustomizationData.bIsDataValid ? LowerPS->CustomizationData.FootID : 0;
+	int32 ApplyLegID = LowerPS->CustomizationData.LegID;
+	int32 ApplyFootID = LowerPS->CustomizationData.FootID;
 
-		ApplyMeshFromID(EArmorSlot::Legs, ApplyLegID);
-		ApplyMeshFromID(EArmorSlot::Feet, ApplyFootID);
-	}
+	ApplyMeshFromID(EArmorSlot::Legs, ApplyLegID);
+	ApplyMeshFromID(EArmorSlot::Feet, ApplyFootID);
+
+	LOG_PLAYER(Log, TEXT("하체 커스터마이징 적용 완료"));
 
 	// =================================================================
-	// [핵심 2] 두 플레이어의 상/하체 역할이 정상적으로 나뉘어 배정되었다면,
-	// 커마 적용이 완전하게 끝났다고 판단하고 영구 잠금(Lock)을 겁니다.
+	// [핵심 4] 양쪽 역할이 확실히 나뉘었고, 데이터도 모두 유효하게 적용되었으므로 영구 잠금
 	// =================================================================
-	if (MyPS && MyPS->PartnerPlayerState && (MyPS->bIsLowerBody != MyPS->PartnerPlayerState->bIsLowerBody))
-	{
-		bAppearanceLocked = true;
-		LOG_PLAYER(Display, TEXT("Initial Appearance Fully Locked. It won't change on SwitchOrb Swaps."));
-	}
+	bAppearanceLocked = true;
+	LOG_PLAYER(Display, TEXT("Initial Appearance Fully Locked. It won't change on SwitchOrb Swaps."));
 }
 
 void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
@@ -562,6 +598,7 @@ void APlayerCharacter::BindToPartnerPlayerState(bool bIsLowerBody)
 	// 파트너가 갱신되었으므로 커스터마이징 갱신을 찔러줍니다.
 	// (최초 1회는 정상 적용 후 bAppearanceLocked가 true가 되며, 이후 스왑 시에는 무시되어 외형이 고정됩니다.)
 	TryApplyCustomization();
+
 }
 
 void APlayerCharacter::ApplyMeshFromID(EArmorSlot Slot, int32 MeshID)
@@ -735,38 +772,77 @@ void APlayerCharacter::Tick(float DeltaTime)
 	ProcessFootstep(DeltaTime);
 }
 
+
+// 발소리 처리 전용 함수 구현
 void APlayerCharacter::ProcessFootstep(float DeltaTime)
 {
-	// 1. 소리 파일이 없으면 실행 안 함
-	if (!FootstepSound) return;
+    if (!FootstepSound) return;
 
-	// 2. 공중에 떠 있거나(점프 중), 수영 중이면 소리 안 남
-	if (GetCharacterMovement()->IsFalling() || GetCharacterMovement()->IsSwimming()) 
-	{
-		AccumulatedDistance = 0.0f; 
-		return;
-	}
+    // 공중이거나 수영 중이면 소리 안 남
+    if (GetCharacterMovement()->IsFalling() || GetCharacterMovement()->IsSwimming()) 
+    {
+       AccumulatedDistance = 0.0f; 
+       return;
+    }
 
-	// 3. 현재 속도(Velocity) 가져오기 (Z축 제외, 수평 이동만 계산)
-	FVector Velocity = GetVelocity();
-	Velocity.Z = 0.0f;
-	float Speed = Velocity.Size();
+    FVector Velocity = GetVelocity();
+    Velocity.Z = 0.0f;
+    float Speed = Velocity.Size();
 
-	// 4. 멈춰있으면(속도가 10 미만) 계산 중단
-	if (Speed < 10.0f) return;
+    // 캐릭터가 멈춰있으면 계산 중단
+    if (Speed < 10.0f) return;
 
-	// 5. 이동 거리 누적 (속도 * 시간 = 거리)
-	AccumulatedDistance += Speed * DeltaTime;
+    // -------------------------------------------------------------------------
+    // 🧭 방향 및 상태 판별 (상하체 분리 반전 모델 기준)
+    // -------------------------------------------------------------------------
+    float CurrentThreshold = FootstepDistanceThreshold;
 
-	// 6. 누적 거리가 설정한 간격(Threshold)을 넘었는지 확인
-	if (AccumulatedDistance >= FootstepDistanceThreshold)
-	{
-		// [수정됨] 소리 재생 (볼륨 적용)
-		// PlaySoundAtLocation(WorldContextObject, Sound, Location, VolumeMultiplier, PitchMultiplier...)
-		// 네 번째 인자에 FootstepVolume을 넣어줍니다.
-		UGameplayStatics::PlaySoundAtLocation(this, FootstepSound, GetActorLocation(), FootstepVolume);
+    FVector ForwardDir = GetActorForwardVector();
+    FVector MoveDir = Velocity.GetSafeNormal();
+    float DirectionDot = FVector::DotProduct(ForwardDir, MoveDir);
 
-		// 7. 누적 거리 초기화 (나머지 값은 남겨두어 박자 밀림 방지)
-		AccumulatedDistance -= FootstepDistanceThreshold;
-	}
+    // [핵심] 캐릭터 방향이 반대이므로 양수가 뒤로 가는 것입니다.
+    bool bIsMovingBackward = (DirectionDot > 0.1f); 
+    bool bIsMovingForward = (DirectionDot < -0.1f); 
+    
+    // 달리기 상태 확인
+    bool bIsSprinting = false;
+    if (StaminaComp)
+    {
+        bIsSprinting = StaminaComp->bIsSprinting;
+    }
+
+    // -------------------------------------------------------------------------
+    // 🏃‍♂️ 상황별 에디터 배율 적용
+    // -------------------------------------------------------------------------
+    
+    if (bIsMovingBackward && bIsSprinting)
+    {
+        // 1. 뒤로 뛸 때
+        CurrentThreshold = FootstepDistanceThreshold * BackwardSprintFootstepMultiplier; 
+    }
+    else if (bIsMovingForward && bIsSprinting)
+    {
+        // 2. 앞으로 뛸 때
+        CurrentThreshold = FootstepDistanceThreshold * ForwardSprintFootstepMultiplier; 
+    }
+    else if (bIsMovingBackward && !bIsSprinting)
+    {
+        // 3. 뒤로 걸을 때
+        CurrentThreshold = FootstepDistanceThreshold * BackwardWalkFootstepMultiplier;
+    }
+    // (앞으로 걷거나 게걸음일 때는 기본값인 FootstepDistanceThreshold 적용)
+
+    // -------------------------------------------------------------------------
+    // 🔊 소리 재생
+    // -------------------------------------------------------------------------
+    
+    AccumulatedDistance += Speed * DeltaTime;
+
+    if (AccumulatedDistance >= CurrentThreshold)
+    {
+       UGameplayStatics::PlaySoundAtLocation(this, FootstepSound, GetActorLocation(), FootstepVolume);
+       
+       AccumulatedDistance -= CurrentThreshold;
+    }
 }

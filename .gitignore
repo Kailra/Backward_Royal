@@ -67,6 +67,9 @@ Build/*/**
 # Don't ignore icon files in Build
 !Build/**/*.ico
 
+# claude
+.claude/
+
 # Windows
 **/Windows/
 Windows/
