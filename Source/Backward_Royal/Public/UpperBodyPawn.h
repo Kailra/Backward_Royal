@@ -55,7 +55,7 @@ public:
 	class UInputAction* InteractAction;
 
 	UPROPERTY(EditAnywhere, Category = "Interaction")
-	float InteractionDistance = 300.0f;
+	float InteractionDistance;
 
 	// [수정] 이 변수가 없어서 TestSoloCharacter에서 에러가 났었습니다. 추가 필수!
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")

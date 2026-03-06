@@ -95,11 +95,20 @@ void ABaseCharacter::BeginPlay()
     UpdateHPUI();
 }
 
+void ABaseCharacter::ServerEquipWeapon_Implementation(ABaseWeapon* NewWeapon)
+{
+    EquipWeapon(NewWeapon);
+}
+
 void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
 {
     if (!NewWeapon) return;
 
-    if (!HasAuthority()) return;
+    if (!HasAuthority())
+    {
+        ServerEquipWeapon(NewWeapon);
+        return;
+    }
 
     // 기존 무기 제거
     if (CurrentWeapon)
