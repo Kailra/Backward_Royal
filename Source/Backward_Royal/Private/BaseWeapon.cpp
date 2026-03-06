@@ -127,6 +127,11 @@ void ABaseWeapon::InitializeWeaponStats(const FWeaponData& NewStats)
 
 void ABaseWeapon::Interact(ABaseCharacter* Character)
 {
+    if (bIsEquipped || GetOwner() != nullptr)
+    {
+        return;
+    }
+
     if (Character)
     {
         Character->EquipWeapon(this);

@@ -138,6 +138,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void EquipWeapon(ABaseWeapon* NewWeapon);
 
+    UFUNCTION(Server, Reliable)
+    void ServerEquipWeapon(class ABaseWeapon* NewWeapon);
+
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void DropCurrentWeapon();
 
