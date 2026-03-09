@@ -1,4 +1,4 @@
-# Backward Royal 기술 분석서 (Exhaustive Causal Chain Spec v8.4)
+# Backward Royal 기술 분석서 (Exhaustive Causal Chain Spec v8.5)
 
 ## 1. 개요 (Overview)
 본 문서는 Backward Royal 프로젝트의 **모든 실행 흐름(Execution Flow)** 을 인과 사슬(Causal Chain)로 정리하고, 각 단계에서 **블루프린트로 제어 가능한 지점(BP Hook / API)** 을 완벽하게 망라한 최종 기술 명세서입니다.
@@ -120,10 +120,11 @@
     3.  `MulticastPlayWeaponAttack`: 애니메이션 재생 및 `AttackComponent`의 공격 판정 활성화.
     4.  **타격 처리 (`UBRAttackComponent::ProcessHitDamage`)**:
         *   **데미지 계산**: 무기 타격 시 데미지 계산 및 `ApplyDamage` 호출 (맨손 추가 데미지 보정 등).
-        *   **타격음 연출**: 데미지 로직 직후 `MulticastPlayHitSound`를 쏴 타격 부위에서 사운드를 동기화 재생.
+        *   **충돌체 검증 및 타격음 연출**: 데미지 로직 직후 타겟이 `ABaseCharacter`인지 먼저 `Cast`하여 검증합니다. 대상이 유효한 캐릭터라면 `MulticastPlayHitSound(Volume=1.0f)`를 기폭합니다 (무생물 타격 크래시 방지).
+        *   **무기 내구도 감소**: 충돌한 메쉬가 유효한 캐릭터일 때만 무기 내구도(`DecreaseDurability`)를 차감시킵니다.
         *   **역경직 (Hit Stop)**: 타격 성공 시 `MulticastApplyHitStop(0.1f)` 호출 (잠시 후 몽타주 강제 종료).
         *   **물리 반발력 (Physics Reaction)**: 충돌한 메쉬(Mesh)의 뼈(BoneName)를 찾아 `AddImpulseAtLocation`을 이용해 명시적 충격을 가함 (거친 피지컬 애니메이션과 래그돌 흔들림 반응 유도).
-    5.  **무기 내구도 결과**: 무기 충돌 시 `DecreaseDurability`가 호출되며, 내구도가 0 이하라면 `BreakWeapon`이 동작하여 무기를 파괴 처리함.
+    5.  **무기 파괴 동기화**: 무기 충돌 및 내구도 감소 후, 내구도가 0 이하라면 `BreakWeapon`이 동작하여 캐릭터 본체의 `MulticastHandleWeaponBroken`을 호출해 전 클라이언트에서 무기를 파괴 처리함.
 
 ### 5-4. 피격 및 사망 (Damage & Death)
 *   **Trigger**: 무기 충돌 (`ApplyDamage`)
@@ -143,8 +144,9 @@
 *   **Trigger**: 상체 플레이어가 **'E' 키** 입력
 *   **Flow**:
     1.  `UpperBodyPawn::Interact` (Input Action)
-    2.  `SphereOverlap` -> `SwitchOrb` 감지.
-    3.  `ServerRequestInteract` RPC 전송.
+    2.  `SphereOverlap` 실행. 탐색 시작점은 상체 카메라가 아닌, 종속된 하체(`ParentBodyCharacter->GetActorLocation()`)의 중심축을 기준으로 반경 100.f 거리 내를 탐색합니다.
+    3.  오브젝트 탐색 시 시각적 디버그 구체(노란색, 초록색, 빨간색)를 그려 피드백을 제공합니다.
+    4.  탐색 성공 시 `ServerRequestInteract` RPC를 전송하여 실제 무기 획득 등 상호작용을 수행합니다.
 
 ### 6-2. 역할 교체 (Swap Role)
 *   **Trigger**: `SwitchOrb::OnOrbOverlap` (Server)
@@ -249,6 +251,8 @@
 ### PlayerCharacter / BaseCharacter
 *   `OnHPChanged` (Delegate): 체력 변경 알림 (HUD 연결용).
 *   `OnStaminaChanged` (Delegate): 스태미나 변경 알림.
+*   `EquipWeapon(...)` / `ServerEquipWeapon(...)`: 무기 획득 시 클라이언트/서버 동기화 처리를 위한 래퍼 함수.
+*   `MulticastHandleWeaponBroken`: 내구도 0 무기 강제 폐기 및 연출 동기화.
 *   `ApplyMeshFromID`: 커스터마이징 적용 함수.
 
 이 문서는 Backward Royal의 모든 코드 흐름을 블루프린트 관점에서 제어할 수 있도록 재구성한 것입니다.

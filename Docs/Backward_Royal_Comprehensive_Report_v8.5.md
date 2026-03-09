@@ -1,4 +1,4 @@
-# Backward Royal 종합 분석 보고서 (v8.4)
+# Backward Royal 종합 분석 보고서 (v8.5)
 
 ## 1. 프로젝트 소개 및 최신 현황
 
@@ -22,21 +22,25 @@
     *   사망 시 남은 파트너가 관전자 모드로 자동 전환되며(`StartSpectatingMode`), UI 갱신(`OnEnterSpectatorModeDelegate`) 처리를 포함한 관전 상태 진입이 안정화되었습니다.
     *   주요 RPC 함수 호출 빈도를 제한(`CheckSensitiveRPCRateLimit`)하여 스팸을 방지하고 서버 틱 안정성을 높였습니다.
     *   상체 컨트롤러의 시점 전환을 더 부드럽게(CameraLag, CameraRotationLag) 연출되도록 수정했습니다.
+*   **안정성 및 동기화 개선 (Stability & Sync)**:
+    *   커스터마이징(`TryApplyCustomization`) 적용 시 데이터의 검증(`bIsDataValid`) 단계를 엄격히 추가하여 역할 배정 후 파츠가 씹히거나 오작동하는 치명적 버그가 수정되었습니다.
+    *   무기 시스템 교체: 무기 획득(`ServerEquipWeapon`) 및 무기 파괴/내구도 고갈 연출(`MulticastHandleWeaponBroken`) 로직의 전역 멀티캐스트 동기화 처리가 강화되었습니다. 더불어 공격 충돌 연산 시 타겟이 폰(`ABaseCharacter`)이 아닐 때의 Null Reference 크래시가 해결되었습니다.
 *   **멀티플레이어 사운드 완벽 동기화 (Sound Event Sync)**:
     *   하체 카메라의 움직임(이동 거리)에 비례하여 자동으로 재생되는 **발자국 사운드 시스템(`ProcessFootstep`)**에 다방향(앞/뒤) 및 달리기 유무에 따른 보폭 배율(`ForwardSprintFootstepMultiplier` 등) 알고리즘이 도입되어 더욱 정교하게 동기화됩니다.
     *   무기 휘두름 및 타격음, 그리고 맨손 공격 시의 사운드가 볼륨 조절 변수와 함께 `MulticastPlayHitSound`를 거쳐 모든 클라이언트 위치에서 동기화됩니다.
 *   **피격 물리 반응(Physics Hit Reaction) 적용**:
     *   무기 타격 시 상대 메쉬(Mesh)의 타격 부위에 명시적인 물리적 힘(`AddImpulseAtLocation`)을 가하여 대상이 자연스럽게 흔들리는 피지컬 애니메이션 효과를 도입했습니다.
     *   내구도가 줄어들어 파괴될 위험 여부를 알리며(`BreakWeapon`), 내구도 파괴 연출을 위한 `FracturedMesh`(GeometryCollection) 설정이 추가되었습니다.
-*   **콘텐츠 확장 및 몬스터/UI 개선**:
+*   **콘텐츠 확장 및 몬스터/UI/BGM 개선**:
+    *   **메인 로고 및 사운드**: 전용 UI 로고(`GameLogo.uasset` 등)가 적용되었으며, 총 6개의 스테이지(`Stage01_Temple` ~ `Stage06_Hunting`) 각각 고유한 BGM 사운드가 설정되었습니다.
     *   **AI 몬스터 개선**: 몬스터의 체력을 시각적으로 보여주는 `WBP_AIHPBar` 및 관련 데이터가 추가되어 PVE 피드백이 강화되었습니다.
     *   **결산 화면 (Result UI)**: 게임 종료 로직 직후 띄워줄 `WBP_ResultMenu` 위젯과 관련 흐름이 추가 및 개선되었습니다.
-    *   **Level & UI**: 랜덤 레벨 선택 기능(`bUseRandomMap`) 추가 및 로딩 화면(`WBP_Loading`) 시스템 구축. 추가로 `BP_Killzone` 블루프린트가 도입되어 맵 밖 낙사 처리를 정형화했습니다.
+    *   **Level & UI**: 랜덤 레벨 선택 기능(`bUseRandomMap`) 추가 및 로딩 화면(`WBP_Loading`, `WBP_Load`) 시스템 구축. 추가로 `BP_Killzone` 블루프린트가 도입되어 맵 밖 낙사 처리를 정형화했습니다.
 
 ### 1.3. 연관 문서 (Linked Documents)
 본 보고서는 프로젝트의 거시적인 분석을 담고 있으며, 세부적인 구현 내용과 코드 참조는 아래의 별첨 문서를 통해 확인할 수 있습니다.
-*   **[Codebase Reference Report (v2.5)](Backward_Royal_Codebase_Reference_v2.5.md)**: 소스 코드를 전수 조사하여 작성한 **클래스 멤버 완벽 분석서**. 모든 변수와 함수를 빠짐없이 나열함(Full Inventory).
-*   **[Exhaustive Causal Chain Specification (v8.4)](Backward_Royal_Technical_Spec_v8.4.md)**: 인과 사슬 및 **블루프린트 연동 가이드(BP Hooks)** 가 포함된 최종 기술 명세서. 각 실행 흐름에서 사용 가능한 BP 함수(BlueprintCallable)를 명확히 태깅함.
+*   **[Codebase Reference Report (v2.6)](Backward_Royal_Codebase_Reference_v2.6.md)**: 소스 코드를 전수 조사하여 작성한 **클래스 멤버 완벽 분석서**. 모든 변수와 함수를 빠짐없이 나열함(Full Inventory).
+*   **[Exhaustive Causal Chain Specification (v8.5)](Backward_Royal_Technical_Spec_v8.5.md)**: 인과 사슬 및 **블루프린트 연동 가이드(BP Hooks)** 가 포함된 최종 기술 명세서. 각 실행 흐름에서 사용 가능한 BP 함수(BlueprintCallable)를 명확히 태깅함.
 
 ---
 
