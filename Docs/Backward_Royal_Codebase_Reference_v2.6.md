@@ -1,9 +1,9 @@
-# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.5)
+# Backward Royal 코드 베이스 분석서 (Codebase Reference v2.6)
 
 ## 1. 개요 (Overview)
 본 문서는 `Source/Backward_Royal` 디렉토리 내의 핵심 소스 코드 파일(헤더)을 **전면 재조사(Exhaustive Inventory)**하여 작성된 상세 분석서입니다. 누락되었던 가상 함수(`PreLogin`, `Logout`), 각종 타이머 핸들(`FTimerHandle`), 내부 검증용 변수까지 모두 포함하여 **단 하나의 함수나 변수도 빠짐없이 명세**하는 것을 원칙으로 합니다.
 
-*   **Version**: v2.5 (Exhaustive Full Inventory + Sound Sync/UI Updates)
+*   **Version**: v2.6 (Exhaustive Full Inventory + Crash/Sync Fixes, UI/BGM Updates)
 *   **Coverage**: Core Framework, Characters, Items, Components, UI Library
 *   **Legend**:
     *   `[Prop]`: `UPROPERTY` (변수)
@@ -258,7 +258,7 @@
 
 #### Functions
 *   `[Func] EnhancePhysics(bool)`: 충격 받았을 때 물리 애니메이션 강제 주입(경직용).
-*   `[Func] EquipWeapon(...)`, `DropCurrentWeapon()`: 무기 탈착/투척.
+*   `[Func] EquipWeapon(...)` / `[RPC Server] ServerEquipWeapon(...)`: 무기 탈착/투척 지시. 
 *   `[Func] EquipArmor(...)`, `SetArmorColor(...)`: 커스텀 적용 함수.
 *   `[Func] IsDead()`: 체력이 바닥인지 리턴.
 *   `[Event] OnEnterStunState()`, `OnRecoverFromStun()`: 기절 연출 별자리 표시용 UI 구동부.
@@ -266,6 +266,7 @@
 *   `[RPC NetMulticast] MulticastPerformDeathVisuals(...)`: 치명타를 받고 죽었을 시 클라이언트들도 똑같은 방향으로 랙돌 날아가게 강제 동기화.
 *   `[RPC NetMulticast] MulticastPlayPhysicalHitReaction(...)`: 한쪽 다리나 팔에만 데미지가 들어와 물리 흔들림이 필요할 때 사용.
 *   `[RPC NetMulticast] MulticastEnterStunState()`, `MulticastRecoverFromStun()`: 기절 멀티캐스트.
+*   `[RPC NetMulticast] MulticastHandleWeaponBroken()`: 내구도 파괴에 따른 무기 해제 및 시각효과(GeometryCollection) 통보 동기화.
 *   `(Virtual) TakeDamage(...)`: 범용 데미지 연산.
 *   `(Internal) OnRep_CurrentHP()`, `UpdateHPUI()`.
 *   `(Internal) RequestAttack()`, `HandleWeaponBroken()`: 로직 연계 허브.
@@ -320,7 +321,7 @@
 #### Member Variables
 *   `[Prop] FrontCameraBoom`, `FrontCamera`: 상체 전용 1인칭틱한 줌 시야.
 *   `[Prop] UpperBodyMappingContext`, `LookAction`, `AttackAction`, `InteractAction`: 2P 전용 키 매핑.
-*   `[Prop] InteractionDistance` (float): 파밍 탐지 거리 (기본 300).
+*   `[Prop] InteractionDistance` (float): 파밍 탐지 거리 (기본 100.0f).
 *   `[Prop] AttackMontage` (UAnimMontage*): 테스트용.
 *   `[Prop] ParentBodyCharacter` (APlayerCharacter*): 숙주 하체 참조.
 *   `(Internal) LastBodyYaw` (float): 시선 억제용 회전 한계선.
@@ -377,6 +378,7 @@
 *   **BaseWeapon**: `CurrentWeaponData`, `WeaponMesh`, `DurabilityReduction` 소유.
     *   `Interact(...)` (획득).
     *   `[Func] DecreaseDurability(...)` (내구 깎기).
+    *   `[Func] OnRep_CurrentWeaponData()`: 클라이언트에 데이터 동기화 시 스탯 초기화(InitializeWeaponStats)를 자동 트리거.
     *   `[RPC] Multicast_BreakWeaponVisual(...)` (깨짐 연출, GeometryCollection 투입).
     *   `BreakWeapon()` 및 `IsEquipped()`.
 
@@ -392,4 +394,9 @@
 ### 5.1. UI (UMG) Widgets
 *   `WBP_ResultMenu`: 게임 결산 화면을 담당. 승리자 정보 및 로비 복귀 타이머를 표시.
 *   `WBP_AIHPBar`: PVE 몬스터(`BP_AI_Enemy` 등) 머리 위에 출력되는 체력 프로그레스바 위젯.
-*   `WBP_Loading`, `WBP_InGameScreen`: 레벨 전환 시 및 게임 내 상태 HUD.
+*   `WBP_Loading`, `WBP_Load`, `WBP_InGameScreen`: 레벨 전환 시 및 게임 내 상태 HUD.
+*   `WBP_MainMenu`: 타이틀 진입 시 가장 먼저 출력되는 메인 메뉴(게임 로고 및 배경).
+
+### 5.2. Assets & BGM
+*   **Logos**: `GameLogo.uasset`, `MainLogo.uasset` (UI에 부착되는 전용 타이틀 이미지).
+*   **Stage BGM**: `Stage01_Temple` 부터 `Stage06_Hunting` 까지 각 맵에 대응되는 테마 BGM(e.g., `1MapSound.uasset` ~ `6MapSound.uasset`)이 맵별로 개별 적용됨.
