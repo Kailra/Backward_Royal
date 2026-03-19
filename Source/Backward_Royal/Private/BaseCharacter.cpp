@@ -95,11 +95,20 @@ void ABaseCharacter::BeginPlay()
     UpdateHPUI();
 }
 
+void ABaseCharacter::ServerEquipWeapon_Implementation(ABaseWeapon* NewWeapon)
+{
+    EquipWeapon(NewWeapon);
+}
+
 void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
 {
     if (!NewWeapon) return;
 
-    if (!HasAuthority()) return;
+    if (!HasAuthority())
+    {
+        ServerEquipWeapon(NewWeapon);
+        return;
+    }
 
     // 기존 무기 제거
     if (CurrentWeapon)
@@ -157,7 +166,7 @@ void ABaseCharacter::EquipWeapon(ABaseWeapon* NewWeapon)
     CHAR_LOG(Log, TEXT("Equipped Weapon: %s"), *NewWeapon->GetName());
 }
 
-// [신규] 공격 요청 처리 함수
+// 공격 요청 처리 함수
 void ABaseCharacter::RequestAttack()
 {
     if (bIsStunned || CurrentHP <= 0.0f || IsDead()) return;
@@ -512,7 +521,7 @@ void ABaseCharacter::EnhancePhysics(bool bEnable)
     }
 }
 
-void ABaseCharacter::HandleWeaponBroken()
+void ABaseCharacter::MulticastHandleWeaponBroken_Implementation()
 {
     CurrentWeapon = nullptr;
 }

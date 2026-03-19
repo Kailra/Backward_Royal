@@ -54,7 +54,7 @@ AUpperBodyPawn::AUpperBodyPawn()
 
 	LastBodyYaw = 0.0f;
 	ParentBodyCharacter = nullptr;
-	InteractionDistance = 300.0f;
+	InteractionDistance = 100.f;
 }
 
 void AUpperBodyPawn::BeginPlay()
@@ -304,8 +304,12 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 		if (!ParentBodyCharacter) return;
 	}
 
-	// 1. 탐색 시작점 설정 (카메라 위치 혹은 캐릭터 위치)
-	FVector SearchOrigin = FrontCamera->GetComponentLocation();
+	// 1. 탐색 시작점 설정 (캐릭터 위치 중심)
+	FVector SearchOrigin = ParentBodyCharacter->GetActorLocation();
+
+	// [추가됨] 탐색 범위를 시각적으로 확인하기 위한 노란색 디버그 구체 그리기
+	// 선 굵기 1.0f, 2초 동안 표시됩니다.
+	DrawDebugSphere(GetWorld(), SearchOrigin, InteractionDistance, 16, FColor::Yellow, false, 2.0f, 0, 1.0f);
 
 	// 2. 주변의 모든 액터 검출 (Overlap)
 	TArray<FOverlapResult> OverlapResults;
@@ -332,7 +336,7 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 	if (bHasOverlap)
 	{
 		AActor* ClosestActor = nullptr;
-		float MinDistance = InteractionDistance + 100.0f; // 초기값 설정
+		float MinDistance = InteractionDistance; // 초기값 설정
 
 		for (const FOverlapResult& Result : OverlapResults)
 		{
@@ -358,19 +362,16 @@ void AUpperBodyPawn::Interact(const FInputActionValue& Value)
 		{
 			ServerRequestInteract(ClosestActor);
 
-			if (GEngine)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan,
-					FString::Printf(TEXT("Closest Interactable Found: %s"), *ClosestActor->GetName()));
-			}
+			// GEngine 대신 클래스 전용 커스텀 디버그 로그 매크로 사용
+			BODY_LOG(Log, TEXT("Closest Interactable Found: %s"), *ClosestActor->GetName());
 
-			// 시각적 피드백 (디버그용)
+			// 대상을 찾았을 때 무기 위치에 초록색 구체로 표시
 			DrawDebugSphere(GetWorld(), ClosestActor->GetActorLocation(), 30.0f, 12, FColor::Green, false, 2.0f);
 		}
 	}
 	else
 	{
-		// 아무것도 찾지 못했을 때 디버그 표시
+		// 아무것도 찾지 못했을 때 전체 범위를 빨간색으로 표시
 		DrawDebugSphere(GetWorld(), SearchOrigin, InteractionDistance, 12, FColor::Red, false, 1.0f);
 	}
 }

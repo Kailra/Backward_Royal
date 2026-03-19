@@ -2050,7 +2050,11 @@ void ABRPlayerController::SetupRoleInput(bool bIsLower, APawn* OptionalPawnForFa
     if (bIsLower && IsLocalController())
     {
         ResetIgnoreLookInput();
+		ResetIgnoreMoveInput();
+
         SetIgnoreLookInput(false);
+		SetIgnoreMoveInput(false);
+
         FInputModeGameOnly GameInputMode;
         SetInputMode(GameInputMode);
         bShowMouseCursor = false;

@@ -100,7 +100,9 @@ public:
     bool bNextAttackIsLeft = false;
 
     void RequestAttack();
-    void HandleWeaponBroken();
+    
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastHandleWeaponBroken();
 
     UFUNCTION(NetMulticast, Reliable)
     void MulticastPlayWeaponAttack(UAnimMontage* MontageToPlay, APawn* RequestingPawn);
@@ -135,6 +137,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void EquipWeapon(ABaseWeapon* NewWeapon);
+
+    UFUNCTION(Server, Reliable)
+    void ServerEquipWeapon(class ABaseWeapon* NewWeapon);
 
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void DropCurrentWeapon();
